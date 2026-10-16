@@ -1,11 +1,11 @@
-import { useState, useCallback } from "react";
+import { create } from "zustand";
 import {
   type DocumentConfiguration,
   createDefaultDocumentConfiguration,
 } from "@/types/document";
 import type { ActiveTool, PopoverType, CanvasTransform, SoftProofMode } from "@/types/ui";
 
-export interface DocumentStore {
+export interface DocumentState {
   document: DocumentConfiguration;
   activeTool: ActiveTool;
   activeColor: string;
@@ -14,7 +14,8 @@ export interface DocumentStore {
   transform: CanvasTransform;
   activePopover: PopoverType;
   softProofMode: SoftProofMode;
-  setDocument: (doc: DocumentConfiguration) => void;
+
+  setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
   setActiveColor: (color: string) => void;
   setBrushSize: (size: number) => void;
@@ -26,48 +27,34 @@ export interface DocumentStore {
   resetTransform: () => void;
 }
 
-export function useDocumentStore(): DocumentStore {
-  const [document, setDocument] = useState<DocumentConfiguration>(
-    createDefaultDocumentConfiguration
-  );
-  const [activeTool, setActiveTool] = useState<ActiveTool>("brush");
-  const [activeColor, setActiveColor] = useState<string>("#1e1e1e");
-  const [brushSize, setBrushSize] = useState<number>(32);
-  const [brushOpacity, setBrushOpacity] = useState<number>(1.0);
-  const [transform, setTransform] = useState<CanvasTransform>({
+export const useDocumentStore = create<DocumentState>((set) => ({
+  document: createDefaultDocumentConfiguration(),
+  activeTool: "brush",
+  activeColor: "#1e1e1e",
+  brushSize: 32,
+  brushOpacity: 1.0,
+  transform: {
     scale: 0.8,
     panX: 0,
     panY: 0,
-  });
-  const [activePopover, setActivePopover] = useState<PopoverType>("none");
-  const [softProofMode, setSoftProofMode] = useState<SoftProofMode>("none");
+  },
+  activePopover: "none",
+  softProofMode: "none",
 
-  const togglePopover = useCallback((popover: PopoverType) => {
-    setActivePopover((current) => (current === popover ? "none" : popover));
-  }, []);
-
-  const resetTransform = useCallback(() => {
-    setTransform({ scale: 0.8, panX: 0, panY: 0 });
-  }, []);
-
-  return {
-    document,
-    activeTool,
-    activeColor,
-    brushSize,
-    brushOpacity,
-    transform,
-    activePopover,
-    softProofMode,
-    setDocument,
-    setActiveTool,
-    setActiveColor,
-    setBrushSize,
-    setBrushOpacity,
-    setTransform,
-    setActivePopover,
-    togglePopover,
-    setSoftProofMode,
-    resetTransform,
-  };
-}
+  setDocument: (document) => set({ document }),
+  setActiveTool: (activeTool) => set({ activeTool }),
+  setActiveColor: (activeColor) => set({ activeColor }),
+  setBrushSize: (brushSize) => set({ brushSize }),
+  setBrushOpacity: (brushOpacity) => set({ brushOpacity }),
+  setTransform: (transform) => set({ transform }),
+  setActivePopover: (activePopover) => set({ activePopover }),
+  togglePopover: (popover) =>
+    set((state) => ({
+      activePopover: state.activePopover === popover ? "none" : popover,
+    })),
+  setSoftProofMode: (softProofMode) => set({ softProofMode }),
+  resetTransform: () =>
+    set({
+      transform: { scale: 0.8, panX: 0, panY: 0 },
+    }),
+}));
