@@ -864,12 +864,37 @@ Procreate-style ergonomic vertical floating rail (dockable to left or right):
 ---
 
 #### [NEW] `src/ui/components/ColorPickerPopover.tsx`
-Floating color picker popover:
-- HSV Color Wheel / Ring (Hue angle 0–360°).
-- Inner Saturation/Value 2D gradient square.
-- Hex / RGB input fields.
-- Current vs. Previous color comparison swatch.
-- Quick palette row (recent colors).
+Direct interactive Dual-Mode Color Picker (eliminates secondary dialog clicks and provides instant, fluid touch/stylus color picking):
+
+- **Mode Switcher Tab**:
+  - `Classic`: Digital HSV Ring with inner Triangle or Rectangle.
+  - `Artistic`: Krita-inspired circular artistic color wheel with value/saturation rings.
+
+- **Mode 1: Classic Digital Color Picker (HSV Ring + Triangle/Square)**:
+  - **Outer Hue Ring (0°–360°)**: Continuous circular spectrum rendered via canvas with an interactive angle handle.
+  - **Inner Saturation-Value Surface**:
+    - **Triangle Mode** (Krita / Photoshop classic): Equilateral triangle inside the hue ring where the apex is the pure hue, one bottom corner is white, and the other is black.
+    - **Square Mode** (Procreate classic): 2D gradient box (horizontal axis: Saturation 0–100%, vertical axis: Value 100%–0%).
+    - Toggle button to flip between Triangle and Square inner geometry.
+
+- **Mode 2: Krita-Style Artistic Color Selector**:
+  - Designed for fine artists using traditional color theory (Munsell / Goethe / Itten wheel).
+  - **Hue Ring**: Divided into 12 or 24 artistic color sectors (pure pigments).
+  - **Concentric Radial Rings**:
+    - Outer ring: Pure hues (full chroma).
+    - Middle rings: Tones (desaturated with gray) and Tints (lightened with white).
+    - Inner ring / core: Shades (darkened with black).
+  - **Harmonic Chord Overlay**: Selectable visual lines showing color harmonies:
+    - Complementary ($180^\circ$)
+    - Split-Complementary ($150^\circ / 210^\circ$)
+    - Triadic ($120^\circ / 240^\circ$)
+    - Analogous ($\pm 30^\circ$)
+
+- **Direct Controls & Palette**:
+  - Dual swatch comparison: Current active color vs. Previous color.
+  - Direct Hex code input & RGB sliders.
+  - Quick-access palette row of recent swatches.
+  - Zero secondary browser dialogs: pure custom canvas/SVG direct manipulation.
 
 ---
 
