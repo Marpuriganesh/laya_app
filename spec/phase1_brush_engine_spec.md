@@ -1,17 +1,40 @@
-# Phase 1 Spec: Drawing Application — UI Shell, Canvas Setup & Krita/ABR Brush Engine
+# Spec: Drawing Application — UI Shell & Core Brush Engine
 
-## Goal & Phasing Strategy
+## Goal & Phasing Roadmap
 
-Build the foundational drawing application with a user-first, ergonomic workflow:
-1. **Step 1 (First Implementation Target): Procreate-Inspired Minimalist Interface & Photoshop-Style Document Setup**:
-   - Deliver a sleek, distraction-free creative interface (Procreate-style top navigation bar, floating vertical brush size/opacity sliders, quick undo/redo, and color disc popover).
-   - Provide a Photoshop-style **New Canvas / Document Configuration** system: resolution (custom width × height, presets), DPI, color space (`sRGB`, `Display P3`), and color bit depth (`8-bit`, `16-bit float`).
-   - Implement an interactive canvas viewport with smooth centering, pan, and zoom navigation.
-2. **Step 2: Stroke Smoothing & Anti-Faceting Pipeline**:
-   - Streamline (velocity-adaptive pull-string), Moving Average, and Predictive Bézier look-ahead.
-3. **Step 3: Multi-Engine Brush Core with Krita & ABR Compatibility**:
-   - Support for Krita `.kpp` presets and `.bundle` archives (Pixel Brush, Color Smudge, MyPaint via WASM).
-   - Support for Adobe Photoshop `.abr` brush imports (using clean binary parsing referenced from `storytold/photocraft`).
+We are building a production-grade digital painting suite combining **Procreate's minimalist ergonomics** with **Krita's artistic brush depth**:
+
+### 🎯 Step 1 (Immediate Target): Basic Interface & Photoshop-Style Document Setup
+Get the basic, clean UI in place first so there is a working, visual workspace to draw on:
+1. **Procreate-Inspired Minimalist Interface**:
+   - Sleek top navigation bar (Left: Gallery/New Canvas, Actions, Adjustments, Selection, Transform; Right: Paint, Smudge, Erase, Layers toggle, Active Color swatch pill).
+   - Ergonomic floating vertical sidebar rail (Brush Size slider, Opacity slider, quick Undo/Redo buttons).
+   - Floating popovers for Color Picker (HSV disc + saturation/value box) and Brush Library.
+   - Central interactive canvas viewport with smooth centering, pan, and zoom navigation.
+2. **Photoshop-Style Canvas/Document Setup**:
+   - New Document modal with presets (Screen Size, 4K UHD, Square 2K, A4 Print).
+   - Custom dimension inputs (Width, Height, units in px, in, cm, mm).
+   - Resolution / DPI configuration (72, 144, 300).
+   - Color Space (`sRGB`, `Display P3`) and Color Bit Depth (`8-bit`, `16-bit float` prepared in descriptors).
+
+### 🎨 Step 2: The Core Brush Engine (The "Real Stuff" — Reusing Krita & ABR Science)
+Once the basic UI is in place, we build the engine core and plug it directly into the canvas:
+1. **Unified Stroke & Smoothing Pipeline**:
+   - 3 smoothing algorithms: **Streamline** (velocity-adaptive pull-string), **Moving Average**, and **Predictive Bézier** (anti-faceting look-ahead).
+   - Spacing & dab stamping pipeline.
+2. **3 Essential Krita Brush Engines**:
+   - **Pixel Brush** (`paintopid="pixelbrush"` / `"autobrush"`) — standard stamping engine.
+   - **Color Smudge** (`paintopid="colorsmudge"`) — dynamic color picking, mixing, and smearing.
+   - **MyPaint** (`paintopid="mypaint"`) — organic natural media via vendored `libmypaint` WASM.
+3. **Preset Compatibility**:
+   - Full in-browser parser for Krita `.kpp` presets and `.bundle` archives.
+   - Adobe Photoshop `.abr` brush importer (using binary parsing logic referenced from `storytold/photocraft`).
+4. **Raster Blitter**:
+   - Headless `MemoryRasterBuffer` for automated tests.
+   - `Canvas2dRasterTarget` (backed by OffscreenCanvas) for high-performance interactive drawing.
+
+### 🚀 Step 3 (Subsequent Phase): Non-Destructive Layers & History
+- Multi-layer composition tree, opacity, blending modes (Multiply, Screen, Overlay, etc.), and OPFS tile caching.
 
 ---
 
@@ -1226,7 +1249,7 @@ After `npm run dev`:
 
 ```
 ════════════════════════════════════════════════════════════════════════════
-STAGE 1: PROCREATE UI SHELL & PHOTOSHOP DOCUMENT SETUP (IMMEDIATE TARGET)
+🎯 STEP 1: BASIC INTERFACE & PHOTOSHOP DOCUMENT SETUP (IMMEDIATE TARGET)
 ════════════════════════════════════════════════════════════════════════════
  1. src/types/document.ts — DocumentConfiguration, presets, color space, bit depth contracts
  2. src/ui/hooks/useDocumentStore.ts — React state for document, tool, color, size, opacity, zoom/pan
@@ -1239,28 +1262,32 @@ STAGE 1: PROCREATE UI SHELL & PHOTOSHOP DOCUMENT SETUP (IMMEDIATE TARGET)
  9. src/App.tsx — Assemble the complete Procreate UI shell & initial canvas setup
 
 ════════════════════════════════════════════════════════════════════════════
-STAGE 2: STROKE SMOOTHING & MATH CORE
+🎨 STEP 2: THE CORE BRUSH ENGINE (THE REAL STUFF — KRITA & ABR SCIENCE)
 ════════════════════════════════════════════════════════════════════════════
-10. npm deps: add vitest, jszip, fast-xml-parser
-11. /src/types/ — stroke.ts, brush.ts, raster.ts, engine.ts
-12. src/engine/math/ — vector2d, dynamics_curve + tests
-13. src/engine/stroke/ — Streamline, MovingAverage, PredictiveBezier smoothers + tests
-14. src/engine/stroke/ — StrokeInterpolator & DabSpacingCalculator + tests
+ [Part A: Math & Stroke Smoothing Pipeline]
+ 10. npm deps: add vitest, jszip, fast-xml-parser
+ 11. /src/types/ — stroke.ts, brush.ts, raster.ts, engine.ts
+ 12. src/engine/math/ — vector2d, dynamics_curve + tests
+ 13. src/engine/stroke/ — Streamline, MovingAverage, PredictiveBezier smoothers + tests
+ 14. src/engine/stroke/ — StrokeInterpolator & DabSpacingCalculator + tests
+
+ [Part B: Raster Core & Brush Engines]
+ 15. src/engine/raster/ — MemoryRasterBuffer + tests
+ 16. src/engine/brush/ — PixelBrushEngine, ColorSmudgeEngine + tests
+ 17. src/engine/brush/ — MyPaintEngine (WASM) & BrushEngineDispatcher
+ 18. src/engine/raster/ — Canvas2dRasterTarget & DrawingAppEngine facade
+ 19. src/input/pointer/ — PointerEventNormalizer
+
+ [Part C: Preset Parsers & Live File Import]
+ 20. src/engine/brush/ — KppParser (.kpp), BundleParser (.bundle) + tests
+ 21. src/engine/brush/ — AbrParser (.abr from PhotoCraft ref) + tests
+ 22. public/wasm/ — vendor libmypaint WASM assets
+ 23. Full integration: hook brush engine to CanvasViewport & UI controls
 
 ════════════════════════════════════════════════════════════════════════════
-STAGE 3: RASTER CORE & BRUSH ENGINES
+🚀 STEP 3: NON-DESTRUCTIVE LAYERS & HISTORY (FUTURE PHASE)
 ════════════════════════════════════════════════════════════════════════════
-15. src/engine/raster/ — MemoryRasterBuffer + tests
-16. src/engine/brush/ — PixelBrushEngine, ColorSmudgeEngine + tests
-17. src/engine/brush/ — MyPaintEngine (WASM) & BrushEngineDispatcher
-18. src/engine/raster/ — Canvas2dRasterTarget & DrawingAppEngine facade
-19. src/input/pointer/ — PointerEventNormalizer
-
-════════════════════════════════════════════════════════════════════════════
-STAGE 4: PRESET PARSERS & FILE IMPORT
-════════════════════════════════════════════════════════════════════════════
-20. src/engine/brush/ — KppParser (.kpp), BundleParser (.bundle) + tests
-21. src/engine/brush/ — AbrParser (.abr from PhotoCraft ref) + tests
-22. public/wasm/ — vendor libmypaint WASM assets
-23. Full integration & manual verification pass
+ 24. Layer stack tree & composite pipeline
+ 25. Layer blend modes (Multiply, Screen, Overlay, etc.)
+ 26. Tile-based undo/redo history & OPFS persistence
 ```
