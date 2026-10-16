@@ -10,6 +10,7 @@ import {
   Palette,
   ChevronDown,
   ChevronUp,
+  RotateCcw,
 } from "lucide-react";
 import {
   hsvToRgb,
@@ -71,16 +72,49 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const [innerShape, setInnerShape] = useState<InnerShape>("triangle");
   const [harmonyType, setHarmonyType] = useState<HarmonyType>("complementary");
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
-  const [initialColor] = useState(activeColor);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const [initialColor, setInitialColor] = useState(activeColor);
+
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) {
+      setInitialColor(activeColor);
+    }
+  }
+
+  const [prevActiveColorForHex, setPrevActiveColorForHex] = useState(activeColor);
+  const [hexInput, setHexInput] = useState(activeColor.replace(/^#/, "").toUpperCase());
+
+  if (activeColor !== prevActiveColorForHex) {
+    setPrevActiveColorForHex(activeColor);
+    setHexInput(activeColor.replace(/^#/, "").toUpperCase());
+  }
 
   // Krita Discrete Wheel configuration
   const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
 
   // Derive HSV from active color for Classic Mode
-  const [currentHue, currentSaturation, currentValue] = useMemo(() => {
+  const [, rawSaturation, rawValue] = useMemo(() => {
     const rgb = hexToRgb(activeColor) || [30, 30, 30];
     return rgbToHsv(rgb[0], rgb[1], rgb[2]);
   }, [activeColor]);
+
+  const currentSaturation = rawSaturation;
+  const currentValue = rawValue;
+
+  // Persist hue so when saturation is 0 (black/gray/white), hue is not lost
+  const [persistedHue, setPersistedHue] = useState<number>(() => {
+    const rgb = hexToRgb(activeColor) || [30, 30, 30];
+    return rgbToHsv(rgb[0], rgb[1], rgb[2])[0];
+  });
+
+  const currentHue = useMemo(() => {
+    if (currentSaturation > 0.03) {
+      const rgb = hexToRgb(activeColor) || [30, 30, 30];
+      return rgbToHsv(rgb[0], rgb[1], rgb[2])[0];
+    }
+    return persistedHue;
+  }, [activeColor, currentSaturation, persistedHue]);
 
   // Initial target luma derived from active color upon mount
   const [artisticTargetLuma, setArtisticTargetLuma] = useState<number>(() => {
@@ -113,6 +147,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
   const commitHsv = useCallback(
     (h: number, s: number, v: number) => {
+      setPersistedHue(h);
       const [r, g, b] = hsvToRgb(h, s, v);
       const hex = rgbToHex(r, g, b);
       const luma = calculatePerceptualLuma(r, g, b);
@@ -130,6 +165,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     (hex: string) => {
       const rgb = hexToRgb(hex) || [30, 30, 30];
       const [h, s] = rgbToHsv(rgb[0], rgb[1], rgb[2]);
+      setPersistedHue(h);
       const luma = calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
       setArtisticTargetLuma(luma);
       setLastSat(s);
@@ -504,8 +540,13 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
     let angleDeg = (Math.atan2(y, x) * 180) / Math.PI;
     if (angleDeg < 0) angleDeg += 360;
+    const roundedHue = Math.round(angleDeg);
 
-    commitHsv(Math.round(angleDeg), currentSaturation, currentValue);
+    // If saturation is 0 (neutral gray or black), dragging the hue ring selects a vibrant color of this hue!
+    const effectiveSat = currentSaturation < 0.05 ? 1.0 : currentSaturation;
+    const effectiveVal = currentValue < 0.08 ? 1.0 : currentValue;
+
+    commitHsv(roundedHue, effectiveSat, effectiveVal);
   };
 
   const handleInnerPointer = (e: PointerEvent<HTMLCanvasElement>) => {
@@ -541,11 +582,17 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     const dist = Math.hypot(x, y);
     const satRatio = Math.max(0, Math.min(1, dist / maxRadius));
 
+    // If starting from near-black, bump target luma so picking a color on the wheel produces visible color
+    const effectiveLuma = artisticTargetLuma < 0.08 ? 0.5 : artisticTargetLuma;
+    if (artisticTargetLuma < 0.08) {
+      setArtisticTargetLuma(0.5);
+    }
+
     if (wheelConfig.isContinuous) {
       setLastRybAngle(Math.round(angleDeg));
       setLastSat(satRatio);
       const rgbHue = rybHueToRgbHue(angleDeg);
-      const [r, g, b] = hsyToRgb(rgbHue, satRatio, artisticTargetLuma);
+      const [r, g, b] = hsyToRgb(rgbHue, satRatio, effectiveLuma);
       onSelectColor(rgbToHex(r, g, b));
     } else {
       const { quantizedAngle } = quantizeRybHue(angleDeg, wheelConfig.hueSectors);
@@ -555,11 +602,11 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       setLastSat(isCenterGray ? 0.0 : quantizedSat);
 
       if (isCenterGray) {
-        const grayByte = Math.round(artisticTargetLuma * 255);
+        const grayByte = Math.round(effectiveLuma * 255);
         onSelectColor(rgbToHex(grayByte, grayByte, grayByte));
       } else {
         const rgbHue = rybHueToRgbHue(quantizedAngle);
-        const [r, g, b] = hsyToRgb(rgbHue, quantizedSat, artisticTargetLuma);
+        const [r, g, b] = hsyToRgb(rgbHue, quantizedSat, effectiveLuma);
         onSelectColor(rgbToHex(r, g, b));
       }
     }
@@ -570,7 +617,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     const clampedVal = Math.max(0.0, Math.min(1.0, targetVal));
     setArtisticTargetLuma(clampedVal);
 
-    if (lastSat < 0.15) {
+    if (lastSat < 0.08) {
       const grayByte = Math.round(clampedVal * 255);
       onSelectColor(rgbToHex(grayByte, grayByte, grayByte));
     } else {
@@ -943,35 +990,42 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
 
 
-      {/* Direct Hex & Swatch Comparison */}
+      {/* Active Color Preview & Hex Input */}
       <div className="flex items-center gap-3 pt-2 border-t border-zinc-800/80">
-        <div className="flex items-center rounded-xl overflow-hidden border border-zinc-700/80 shrink-0 shadow-xs">
-          <button
-            type="button"
-            title="Revert to initial color"
-            onClick={() => handleSelectExternalColor(initialColor)}
-            className="w-7 h-8 cursor-pointer"
-            style={{ backgroundColor: initialColor }}
-          />
+        {/* Active Color Display Swatch with Revert Button */}
+        <div className="flex items-center gap-2 shrink-0">
           <div
-            title="Current active color"
-            className="w-7 h-8"
+            title={`Active Color: ${activeColor}`}
+            className="w-10 h-8 rounded-lg border border-zinc-700 shadow-inner"
             style={{ backgroundColor: activeColor }}
           />
+          {initialColor.toUpperCase() !== activeColor.toUpperCase() && (
+            <button
+              type="button"
+              onClick={() => handleSelectExternalColor(initialColor)}
+              title={`Revert to previous color (${initialColor})`}
+              className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        <div className="flex-1 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800">
+        {/* Hex Input */}
+        <div className="flex-1 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 focus-within:border-amber-400/80 transition-colors">
           <span className="text-[11px] font-mono text-zinc-400">#</span>
           <input
             type="text"
-            value={activeColor.replace(/^#/, "").toUpperCase()}
+            value={hexInput}
             onChange={(e) => {
-              const val = e.target.value.trim();
-              if (/^[0-9A-Fa-f]{0,6}$/.test(val)) {
-                if (val.length === 6 || val.length === 3) {
-                  handleSelectExternalColor("#" + val);
-                }
+              const val = e.target.value.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+              setHexInput(val);
+              if (val.length === 6 || val.length === 3) {
+                handleSelectExternalColor("#" + val);
               }
+            }}
+            onBlur={() => {
+              setHexInput(activeColor.replace(/^#/, "").toUpperCase());
             }}
             className="w-full bg-transparent text-xs text-zinc-100 font-mono focus:outline-none"
             maxLength={6}
