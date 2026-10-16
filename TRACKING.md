@@ -36,6 +36,8 @@
   - [`src/engine/color/barycentric_triangle.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/barycentric_triangle.ts) — Pure barycentric projection for equilateral triangle color pickers $(x, y) \leftrightarrow (S, V)$ with perimeter segment clamping.
 - [x] **Discrete Wheel & Value Ladder Quantization**
   - [`src/engine/color/discrete_wheel.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/discrete_wheel.ts) — Sector/ring quantization, center neutral gray detection, discrete value steps generation.
+- [x] **Unified Color Harmony Engine (Classic RGB & Artist RYB)**
+  - [`src/engine/color/harmonies.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/harmonies.ts) — Multi-type color harmony generator (Complementary, Split-Complementary, Triadic, Tetradic/Square, Analogous) for both Classic 360° Hue ring and Artist RYB wheel, with chord overlay lines and live interactive harmonic palette strip.
 - [x] **HSY' Isoluminant Color Generation (Krita Constant Perceived Value)**
   - [`src/engine/color/hsy.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/hsy.ts) — Rec. 709 isoluminant color conversion ($0.2126R + 0.7152G + 0.0722B \equiv Y'_{\text{target}}$ across all hues and saturations). Guarantees all colors on the wheel evaluate to the exact same gray in B&W soft proofing, with zero value drift or darkening feedback loops.
 - [x] **Artist RYB Color Space & Perceptual Lightness Mathematics**
@@ -46,7 +48,7 @@
 - [x] **Pure Color Space Conversions**
   - [`src/engine/color/color_conversions.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/color_conversions.ts) — `hsvToRgb`, `rgbToHsv`, `rgbToHex`, `hexToRgb`.
 - [x] **Automated Headless Test Suite (Vitest)**
-  - 51 unit tests across `hsy.test.ts`, `ryb.test.ts`, `soft_proofing.test.ts`, `color_conversions.test.ts`, `useDocumentStore.test.ts`, `barycentric_triangle.test.ts`, and `discrete_wheel.test.ts` passing in <100ms.
+  - 60 unit tests across `harmonies.test.ts`, `hsy.test.ts`, `ryb.test.ts`, `soft_proofing.test.ts`, `color_conversions.test.ts`, `useDocumentStore.test.ts`, `barycentric_triangle.test.ts`, and `discrete_wheel.test.ts` passing in <140ms.
 - [x] **Brush Library Popover**
   - [`src/ui/components/BrushLibraryPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/BrushLibraryPopover.tsx) — Categories, presets list tagged by engine, and import buttons.
 - [x] **Centered Canvas Viewport with Pan & Zoom**
