@@ -30,8 +30,12 @@
   - [`src/ui/components/TopNavBar.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/TopNavBar.tsx) — Actions, Adjustments, Select, Move; Paint, Smudge, Erase, Layers, and Active Color swatch.
 - [x] **Procreate-Style Floating Sidebar Rail**
   - [`src/ui/components/SidebarRail.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/SidebarRail.tsx) — Vertical brush size slider (with live tooltip), vertical opacity slider, Undo & Redo.
-- [x] **Dual-Mode Interactive Color Picker Popover**
-  - [`src/ui/components/ColorPickerPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/ColorPickerPopover.tsx) — Classic Mode (HSV Ring + Triangle/Square) AND **Krita-style Artistic RYB Wheel** with isoluminant saturation rings, center gray core, companion vertical Value slider, and harmonic chords.
+- [x] **Dual-Mode Interactive Color Picker Popover (Krita Fidelity + Robust Pointer Capture)**
+  - [`src/ui/components/ColorPickerPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/ColorPickerPopover.tsx) — Full `setPointerCapture` across all surfaces; Classic Mode with **true Barycentric Triangle** mapping & edge clamping; **Krita-style Artistic RYB Wheel** with configurable discrete Hue sectors (6–36), Saturation rings (2–10), Value steps (4–20), Continuous ($\infty$) toggle, and stepped Value ladder.
+- [x] **Barycentric Triangle Mathematics**
+  - [`src/engine/color/barycentric_triangle.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/barycentric_triangle.ts) — Pure barycentric projection for equilateral triangle color pickers $(x, y) \leftrightarrow (S, V)$ with perimeter segment clamping.
+- [x] **Discrete Wheel & Value Ladder Quantization**
+  - [`src/engine/color/discrete_wheel.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/discrete_wheel.ts) — Sector/ring quantization, center neutral gray detection, discrete value steps generation.
 - [x] **Artist RYB Color Space & Perceptual Lightness Mathematics**
   - [`src/engine/color/ryb.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/ryb.ts) — Johannes Itten color wheel knot mappings, smooth interpolations, Rec. 709 perceptual luma ($Y' = 0.2126R + 0.7152G + 0.0722B$), and color harmony chord calculations.
 - [x] **Non-Destructive Viewport Soft Proofing**
@@ -40,7 +44,7 @@
 - [x] **Pure Color Space Conversions**
   - [`src/engine/color/color_conversions.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/color_conversions.ts) — `hsvToRgb`, `rgbToHsv`, `rgbToHex`, `hexToRgb`.
 - [x] **Automated Headless Test Suite (Vitest)**
-  - 30 unit tests across `ryb.test.ts`, `soft_proofing.test.ts`, and `color_conversions.test.ts` passing in <100ms.
+  - 46 unit tests across `ryb.test.ts`, `soft_proofing.test.ts`, `color_conversions.test.ts`, `useDocumentStore.test.ts`, `barycentric_triangle.test.ts`, and `discrete_wheel.test.ts` passing in <100ms.
 - [x] **Brush Library Popover**
   - [`src/ui/components/BrushLibraryPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/BrushLibraryPopover.tsx) — Categories, presets list tagged by engine, and import buttons.
 - [x] **Centered Canvas Viewport with Pan & Zoom**
