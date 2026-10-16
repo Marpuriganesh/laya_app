@@ -16,6 +16,7 @@ export default function App() {
     brushOpacity,
     transform,
     activePopover,
+    softProofMode,
     setDocument,
     setActiveTool,
     setActiveColor,
@@ -25,6 +26,7 @@ export default function App() {
     setActivePopover,
     togglePopover,
     resetTransform,
+    setSoftProofMode,
   } = useDocumentStore();
 
   const handleClosePopover = useCallback(() => {
@@ -40,9 +42,11 @@ export default function App() {
         activeColor={activeColor}
         zoomScale={transform.scale}
         activePopover={activePopover}
+        softProofMode={softProofMode}
         onSelectTool={setActiveTool}
         onTogglePopover={togglePopover}
         onResetZoom={resetTransform}
+        onSelectSoftProofMode={setSoftProofMode}
       />
 
       {/* Main Workspace Body */}
@@ -63,6 +67,7 @@ export default function App() {
           brushSize={brushSize}
           brushOpacity={brushOpacity}
           transform={transform}
+          softProofMode={softProofMode}
           onTransformChange={setTransform}
         />
       </div>

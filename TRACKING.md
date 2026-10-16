@@ -31,9 +31,16 @@
 - [x] **Procreate-Style Floating Sidebar Rail**
   - [`src/ui/components/SidebarRail.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/SidebarRail.tsx) — Vertical brush size slider (with live tooltip), vertical opacity slider, Undo & Redo.
 - [x] **Dual-Mode Interactive Color Picker Popover**
-  - [`src/ui/components/ColorPickerPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/ColorPickerPopover.tsx) — Classic Mode (Hue Ring + Triangle/Square) and Artistic Mode (Krita circular wheel).
+  - [`src/ui/components/ColorPickerPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/ColorPickerPopover.tsx) — Classic Mode (HSV Ring + Triangle/Square) AND **Krita-style Artistic RYB Wheel** with isoluminant saturation rings, center gray core, companion vertical Value slider, and harmonic chords.
+- [x] **Artist RYB Color Space & Perceptual Lightness Mathematics**
+  - [`src/engine/color/ryb.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/ryb.ts) — Johannes Itten color wheel knot mappings, smooth interpolations, Rec. 709 perceptual luma ($Y' = 0.2126R + 0.7152G + 0.0722B$), and color harmony chord calculations.
+- [x] **Non-Destructive Viewport Soft Proofing**
+  - [`src/engine/color/soft_proofing.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/soft_proofing.ts) — Pure transformations for grayscale tonal evaluation, CMYK pigment print simulation (with paper reflectance factor), and CSS display filter mapping.
+  - Connected to [`TopNavBar.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/TopNavBar.tsx) (interactive dropdown with live badge) and [`CanvasViewport.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/CanvasViewport.tsx) (non-destructive artboard presentation filter).
 - [x] **Pure Color Space Conversions**
   - [`src/engine/color/color_conversions.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/color_conversions.ts) — `hsvToRgb`, `rgbToHsv`, `rgbToHex`, `hexToRgb`.
+- [x] **Automated Headless Test Suite (Vitest)**
+  - 30 unit tests across `ryb.test.ts`, `soft_proofing.test.ts`, and `color_conversions.test.ts` passing in <100ms.
 - [x] **Brush Library Popover**
   - [`src/ui/components/BrushLibraryPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/BrushLibraryPopover.tsx) — Categories, presets list tagged by engine, and import buttons.
 - [x] **Centered Canvas Viewport with Pan & Zoom**
@@ -93,10 +100,11 @@
 
 ---
 
-- [ ] **Krita Artistic Color Selector Full Fidelity**:
+- [x] **Krita Artistic Color Selector (Core Science & UI)**:
   - Reference: [`invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector`](https://invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector)
   - **Artist RYB Color Space**: Johannes Itten color wheel (Blue ↔ Orange, Yellow ↔ Purple, Red ↔ Green complements).
-  - **Perceptual Value ($Y'$ Luma / Oklab $L$)**: Equal visual brightness around the wheel (unlike HSV where pure blue and yellow have the same mathematical $V$ despite vast lightness difference).
-  - **Isoluminant Desaturation**: Desaturating radially inward leads to the exact gray tone of the same luminance.
-  - **James Gurney Gamut Masking**: Rotatable vector masks (`.kgm` format) over the wheel to constrain palettes.
-  - Dedicated companion linear Value/Lightness slider beside the wheel.
+  - **Perceptual Value ($Y'$ Luma / Rec. 709)**: Preserves perceived lightness around the wheel.
+  - **Isoluminant Desaturation**: Desaturating radially inward leads to the exact neutral gray of that same luminance.
+  - **Dedicated Companion Value Slider**: Linear value scale beside the wheel.
+  - **Harmonic Chords**: Interactive complementary and triadic indicators.
+  - *Future Enhancements*: James Gurney rotatable vector gamut masks (`.kgm` format).

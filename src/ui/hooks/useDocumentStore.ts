@@ -3,7 +3,7 @@ import {
   type DocumentConfiguration,
   createDefaultDocumentConfiguration,
 } from "@/types/document";
-import type { ActiveTool, PopoverType, CanvasTransform } from "@/types/ui";
+import type { ActiveTool, PopoverType, CanvasTransform, SoftProofMode } from "@/types/ui";
 
 export interface DocumentStore {
   document: DocumentConfiguration;
@@ -13,6 +13,7 @@ export interface DocumentStore {
   brushOpacity: number;
   transform: CanvasTransform;
   activePopover: PopoverType;
+  softProofMode: SoftProofMode;
   setDocument: (doc: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
   setActiveColor: (color: string) => void;
@@ -21,6 +22,7 @@ export interface DocumentStore {
   setTransform: (transform: CanvasTransform) => void;
   setActivePopover: (popover: PopoverType) => void;
   togglePopover: (popover: PopoverType) => void;
+  setSoftProofMode: (mode: SoftProofMode) => void;
   resetTransform: () => void;
 }
 
@@ -38,6 +40,7 @@ export function useDocumentStore(): DocumentStore {
     panY: 0,
   });
   const [activePopover, setActivePopover] = useState<PopoverType>("none");
+  const [softProofMode, setSoftProofMode] = useState<SoftProofMode>("none");
 
   const togglePopover = useCallback((popover: PopoverType) => {
     setActivePopover((current) => (current === popover ? "none" : popover));
@@ -55,6 +58,7 @@ export function useDocumentStore(): DocumentStore {
     brushOpacity,
     transform,
     activePopover,
+    softProofMode,
     setDocument,
     setActiveTool,
     setActiveColor,
@@ -63,6 +67,7 @@ export function useDocumentStore(): DocumentStore {
     setTransform,
     setActivePopover,
     togglePopover,
+    setSoftProofMode,
     resetTransform,
   };
 }

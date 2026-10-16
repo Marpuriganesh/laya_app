@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { useState, useRef, useEffect, type FC } from "react";
 import {
   FilePlus2,
   Wrench,
@@ -10,8 +10,11 @@ import {
   Eraser,
   Layers,
   ZoomIn,
+  Eye,
+  Check,
+  ChevronDown,
 } from "lucide-react";
-import type { ActiveTool, PopoverType } from "@/types/ui";
+import type { ActiveTool, PopoverType, SoftProofMode } from "@/types/ui";
 import type { DocumentConfiguration } from "@/types/document";
 
 interface TopNavBarProps {
@@ -20,10 +23,19 @@ interface TopNavBarProps {
   activeColor: string;
   zoomScale: number;
   activePopover: PopoverType;
+  softProofMode: SoftProofMode;
   onSelectTool: (tool: ActiveTool) => void;
   onTogglePopover: (popover: PopoverType) => void;
   onResetZoom: () => void;
+  onSelectSoftProofMode: (mode: SoftProofMode) => void;
 }
+
+const SOFT_PROOF_OPTIONS: { id: SoftProofMode; label: string; description: string }[] = [
+  { id: "none", label: "Off (Standard View)", description: "Normal RGB display output" },
+  { id: "grayscale-values", label: "Value Check (B&W)", description: "Perceptual luma check (Rec. 709)" },
+  { id: "cmyk-print", label: "CMYK Print Simulation", description: "Pigment ink gamut & dynamic range" },
+  { id: "gamut-warning", label: "Contrast Gamut Warning", description: "Highlights extreme saturation boundaries" },
+];
 
 export const TopNavBar: FC<TopNavBarProps> = ({
   document,
@@ -31,11 +43,27 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   activeColor,
   zoomScale,
   activePopover,
+  softProofMode,
   onSelectTool,
   onTogglePopover,
   onResetZoom,
+  onSelectSoftProofMode,
 }) => {
+  const [isProofMenuOpen, setIsProofMenuOpen] = useState(false);
+  const proofMenuRef = useRef<HTMLDivElement>(null);
   const zoomPercent = Math.round(zoomScale * 100);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (proofMenuRef.current && !proofMenuRef.current.contains(e.target as Node)) {
+        setIsProofMenuOpen(false);
+      }
+    };
+    if (isProofMenuOpen) {
+      window.addEventListener("mousedown", handleClickOutside);
+      return () => window.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isProofMenuOpen]);
 
   const handleBrushClick = () => {
     if (activeTool === "brush") {
@@ -104,7 +132,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
         </button>
       </div>
 
-      {/* Center Document Title & Zoom */}
+      {/* Center Document Title, Zoom, & Soft Proofing */}
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-zinc-300 max-w-[140px] sm:max-w-xs truncate hidden sm:inline">
           {document.title}
@@ -119,6 +147,65 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           <ZoomIn className="w-3 h-3" />
           <span>{zoomPercent}%</span>
         </button>
+
+        {/* Soft Proofing View Mode Selector */}
+        <div className="relative" ref={proofMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsProofMenuOpen((prev) => !prev)}
+            aria-label="Soft proofing view mode"
+            title="Soft Proofing / Tonal Value Check"
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border ${
+              softProofMode !== "none"
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs"
+                : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+            }`}
+          >
+            <Eye className="w-3 h-3" />
+            <span className="hidden sm:inline">
+              {softProofMode === "none"
+                ? "Proof"
+                : softProofMode === "grayscale-values"
+                ? "Values (B&W)"
+                : softProofMode === "cmyk-print"
+                ? "CMYK Print"
+                : "Gamut"}
+            </span>
+            <ChevronDown className="w-3 h-3 opacity-60" />
+          </button>
+
+          {isProofMenuOpen && (
+            <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 w-64 p-1.5 rounded-xl bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-300">
+                Non-Destructive Soft Proofing
+              </div>
+              {SOFT_PROOF_OPTIONS.map((opt) => {
+                const isSelected = softProofMode === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectSoftProofMode(opt.id);
+                      setIsProofMenuOpen(false);
+                    }}
+                    className={`flex items-start justify-between p-2 rounded-lg text-left transition-colors ${
+                      isSelected
+                        ? "bg-zinc-800/90 text-white"
+                        : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-medium text-zinc-200">{opt.label}</div>
+                      <div className="text-[10px] text-zinc-300">{opt.description}</div>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Tool Cluster */}

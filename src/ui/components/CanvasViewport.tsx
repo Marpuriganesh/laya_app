@@ -8,7 +8,8 @@ import {
   type WheelEvent,
 } from "react";
 import type { DocumentConfiguration } from "@/types/document";
-import type { ActiveTool, CanvasTransform } from "@/types/ui";
+import type { ActiveTool, CanvasTransform, SoftProofMode } from "@/types/ui";
+import { getCssFilterForSoftProof } from "@/engine/color/soft_proofing";
 
 interface CanvasViewportProps {
   document: DocumentConfiguration;
@@ -17,6 +18,7 @@ interface CanvasViewportProps {
   brushSize: number;
   brushOpacity: number;
   transform: CanvasTransform;
+  softProofMode: SoftProofMode;
   onTransformChange: (transform: CanvasTransform) => void;
 }
 
@@ -27,6 +29,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   brushSize,
   brushOpacity,
   transform,
+  softProofMode,
   onTransformChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -237,6 +240,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
             width: doc.width,
             height: doc.height,
             backgroundColor: doc.backgroundColor === "transparent" ? "#ffffff" : doc.backgroundColor,
+            filter: getCssFilterForSoftProof(softProofMode),
           }}
         >
           {/* Transparency checkerboard when transparent background */}
