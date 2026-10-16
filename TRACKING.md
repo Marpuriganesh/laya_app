@@ -55,6 +55,7 @@
   - [`src/ui/components/CanvasViewport.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/CanvasViewport.tsx) — Centered artboard paper on `#121214` dark matte, smooth zoom (ctrl+wheel/pinch), pan, and immediate test drawing.
 - [x] **App Shell Assembly**
   - [`src/App.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/App.tsx) — Integrated workspace shell.
+- [ ] **Dedicated Color Palette Docker / Panel** (Queued: custom palettes, GIMP `.gpl` / Photoshop `.aco` palette import/export).
 
 ---
 
