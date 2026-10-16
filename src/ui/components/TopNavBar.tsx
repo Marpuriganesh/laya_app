@@ -51,7 +51,19 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 }) => {
   const [isProofMenuOpen, setIsProofMenuOpen] = useState(false);
   const proofMenuRef = useRef<HTMLDivElement>(null);
+  const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
   const zoomPercent = Math.round(zoomScale * 100);
+
+  useEffect(() => {
+    const canvas = navSwatchCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const safeColor = activeColor ? (activeColor.startsWith("#") ? activeColor : `#${activeColor}`) : "#ffffff";
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = safeColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, [activeColor]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -275,10 +287,14 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Color Picker"
           className="p-1 rounded-full hover:scale-105 transition-transform"
         >
-          <span
-            className="block w-6 h-6 rounded-full border-2 border-zinc-700 shadow-inner"
-            style={{ backgroundColor: activeColor }}
-          />
+          <span className="block w-6 h-6 rounded-full overflow-hidden border-2 border-zinc-700 shadow-inner bg-zinc-950 flex items-center justify-center">
+            <canvas
+              ref={navSwatchCanvasRef}
+              width={24}
+              height={24}
+              className="w-full h-full block"
+            />
+          </span>
         </button>
       </div>
     </header>

@@ -137,6 +137,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const innerCanvasRef = useRef<HTMLCanvasElement>(null);
   const artisticWheelCanvasRef = useRef<HTMLCanvasElement>(null);
   const valueLadderRef = useRef<HTMLDivElement>(null);
+  const miniSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const [isDraggingHue, setIsDraggingHue] = useState(false);
   const [isDraggingInner, setIsDraggingInner] = useState(false);
@@ -529,6 +530,19 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     activeColor,
     wheelConfig,
   ]);
+
+  // 4. Draw Mini Active Color Swatch directly onto canvas bitmap (extension-immune, hardware-accurate)
+  useEffect(() => {
+    if (!isOpen) return;
+    const canvas = miniSwatchCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const safeColor = activeColor ? (activeColor.startsWith("#") ? activeColor : `#${activeColor}`) : "#ffffff";
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = safeColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, [isOpen, activeColor]);
 
   // Robust Pointer Handlers with Pointer Capture
   const handleHuePointer = (e: PointerEvent<HTMLCanvasElement>) => {
@@ -996,9 +1010,15 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           <div
             title={`Active Color: ${activeColor}`}
-            className="w-10 h-8 rounded-lg border border-zinc-700 shadow-inner"
-            style={{ backgroundColor: activeColor }}
-          />
+            className="w-10 h-8 rounded-lg overflow-hidden border border-zinc-700 shadow-inner bg-zinc-950 flex items-center justify-center shrink-0"
+          >
+            <canvas
+              ref={miniSwatchCanvasRef}
+              width={40}
+              height={32}
+              className="w-full h-full block"
+            />
+          </div>
           {initialColor.toUpperCase() !== activeColor.toUpperCase() && (
             <button
               type="button"
