@@ -25,13 +25,24 @@ export default function App() {
     setTransform,
     setActivePopover,
     togglePopover,
-    resetTransform,
     setSoftProofMode,
   } = useDocumentStore();
 
   const handleClosePopover = useCallback(() => {
     setActivePopover("none");
   }, [setActivePopover]);
+
+  const handleResetZoom = useCallback(() => {
+    const scaleFactor = Math.min(
+      (window.innerWidth * 0.85) / document.width,
+      (window.innerHeight * 0.85) / document.height,
+      1.0
+    );
+    const scale = Math.max(0.05, Math.min(scaleFactor, 2.0));
+    const panX = (window.innerWidth - document.width * scale) / 2;
+    const panY = (window.innerHeight - document.height * scale) / 2;
+    setTransform({ scale, panX, panY });
+  }, [document.width, document.height, setTransform]);
 
   return (
     <div className="dark flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans select-none">
@@ -45,7 +56,7 @@ export default function App() {
         softProofMode={softProofMode}
         onSelectTool={setActiveTool}
         onTogglePopover={togglePopover}
-        onResetZoom={resetTransform}
+        onResetZoom={handleResetZoom}
         onSelectSoftProofMode={setSoftProofMode}
       />
 

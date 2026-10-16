@@ -5,11 +5,17 @@ import {
   useCallback,
   type FC,
   type PointerEvent,
-  type WheelEvent,
 } from "react";
 import type { DocumentConfiguration } from "@/types/document";
 import type { ActiveTool, CanvasTransform, SoftProofMode } from "@/types/ui";
 import { getCssFilterForSoftProof } from "@/engine/color/soft_proofing";
+import {
+  calculateFocalZoom,
+  calculateFitToScreen,
+  calculateTwoFingerTransform,
+  type TwoFingerGestureState,
+  type Point2D,
+} from "@/engine/math/canvas_transform";
 
 interface CanvasViewportProps {
   document: DocumentConfiguration;
@@ -34,12 +40,74 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Interaction States
   const [isDrawing, setIsDrawing] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [isSpaceDown, setIsSpaceDown] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Refs for high-frequency tracking without stale closures
+  const transformRef = useRef<CanvasTransform>(transform);
+  const isPanningRef = useRef(false);
+  const isSpaceDownRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Initialize Canvas background whenever document dimensions or background change
+  useEffect(() => {
+    transformRef.current = transform;
+  }, [transform]);
+
+  useEffect(() => {
+    isPanningRef.current = isPanning;
+  }, [isPanning]);
+
+  useEffect(() => {
+    isSpaceDownRef.current = isSpaceDown;
+  }, [isSpaceDown]);
+
+  // Multi-Touch tracking for two-finger gestures (pinch-to-zoom and pan)
+  const activePointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map());
+  const gestureStateRef = useRef<TwoFingerGestureState | null>(null);
+
+  // Fit document into viewport
+  const fitToScreen = useCallback(
+    (paddingRatio = 0.85) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const { clientWidth, clientHeight } = container;
+      const fitTransform = calculateFitToScreen(clientWidth, clientHeight, doc.width, doc.height, paddingRatio);
+      onTransformChange(fitTransform);
+    },
+    [doc.width, doc.height, onTransformChange]
+  );
+
+  // Zoom to 100% (1:1 pixel scale) centered
+  const zoomTo100 = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const { clientWidth, clientHeight } = container;
+    const targetScale = 1.0;
+    const panX = (clientWidth - doc.width * targetScale) * 0.5;
+    const panY = (clientHeight - doc.height * targetScale) * 0.5;
+    onTransformChange({ scale: targetScale, panX, panY });
+  }, [doc.width, doc.height, onTransformChange]);
+
+  // Zoom by a multiplicative factor relative to container center
+  const zoomByFactor = useCallback(
+    (factor: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const { clientWidth, clientHeight } = container;
+      const centerX = clientWidth * 0.5;
+      const centerY = clientHeight * 0.5;
+      const targetScale = transformRef.current.scale * factor;
+      const nextTransform = calculateFocalZoom(transformRef.current, centerX, centerY, targetScale);
+      onTransformChange(nextTransform);
+    },
+    [onTransformChange]
+  );
+
+  // Initialize Canvas background on document size or color change
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -58,59 +126,115 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     }
   }, [doc.width, doc.height, doc.backgroundColor]);
 
-  // Center canvas on initial mount or when document size changes
+  // Center canvas on initial mount or when document dimension changes
   useEffect(() => {
-    if (!containerRef.current) return;
-    const { clientWidth, clientHeight } = containerRef.current;
-    const scaleFactor = Math.min(
-      (clientWidth * 0.8) / doc.width,
-      (clientHeight * 0.8) / doc.height,
-      1.0
-    );
-    const initialPanX = (clientWidth - doc.width * scaleFactor) / 2;
-    const initialPanY = (clientHeight - doc.height * scaleFactor) / 2;
+    fitToScreen(0.85);
+  }, [doc.id, doc.width, doc.height, fitToScreen]);
 
-    onTransformChange({
-      scale: Math.max(0.1, Math.min(scaleFactor, 2.0)),
-      panX: initialPanX,
-      panY: initialPanY,
-    });
-  }, [doc.id, doc.width, doc.height, onTransformChange]);
+  // Listen for window resize to optionally update fit if centered
+  useEffect(() => {
+    const handleResize = () => {
+      // Auto-fit on window resize if desired
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
-  // Handle Zoom & Pan via Mouse Wheel / Trackpad
-  const handleWheel = useCallback(
-    (e: WheelEvent) => {
+  // Keyboard navigation shortcuts: Spacebar pan & Cmd/Ctrl + 0/1/+/-
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Do not intercept if typing in an input or textarea
+      const targetTag = (document.activeElement?.tagName || "").toUpperCase();
+      if (targetTag === "INPUT" || targetTag === "TEXTAREA") {
+        return;
+      }
+
+      if (e.code === "Space" && !e.repeat) {
+        e.preventDefault();
+        setIsSpaceDown(true);
+      }
+
+      // Keyboard Zoom Shortcuts
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "0") {
+          e.preventDefault();
+          fitToScreen();
+        } else if (e.key === "1") {
+          e.preventDefault();
+          zoomTo100();
+        } else if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          zoomByFactor(1.25);
+        } else if (e.key === "-") {
+          e.preventDefault();
+          zoomByFactor(0.8);
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        setIsSpaceDown(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      setIsSpaceDown(false);
+      setIsPanning(false);
+      activePointersRef.current.clear();
+      gestureStateRef.current = null;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [fitToScreen, zoomTo100, zoomByFactor]);
+
+  // Native non-passive Wheel / Trackpad listener for butter-smooth 120fps zoom & pan
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleNativeWheel = (e: globalThis.WheelEvent) => {
+      // Stop native page pinch-zoom and horizontal back-swipe
       e.preventDefault();
-      if (!containerRef.current) return;
 
-      const rect = containerRef.current.getBoundingClientRect();
+      const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      if (e.ctrlKey || e.metaKey) {
-        // Zooming
-        const zoomDelta = -e.deltaY * 0.005;
-        const newScale = Math.max(0.1, Math.min(10, transform.scale * (1 + zoomDelta)));
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        // Trackpad pinch-to-zoom or Ctrl/Alt + Mouse Wheel
+        // Symmetrical exponential zoom factor
+        const zoomDelta = -e.deltaY * (e.ctrlKey ? 0.008 : 0.002);
+        const zoomFactor = Math.exp(zoomDelta);
+        const targetScale = transformRef.current.scale * zoomFactor;
 
-        // Zoom relative to mouse position
-        const scaleRatio = newScale / transform.scale;
-        const newPanX = mouseX - (mouseX - transform.panX) * scaleRatio;
-        const newPanY = mouseY - (mouseY - transform.panY) * scaleRatio;
-
-        onTransformChange({ scale: newScale, panX: newPanX, panY: newPanY });
+        const nextTransform = calculateFocalZoom(transformRef.current, mouseX, mouseY, targetScale);
+        onTransformChange(nextTransform);
       } else {
-        // Panning
+        // Trackpad 2-finger pan / Mouse wheel scroll
         onTransformChange({
-          scale: transform.scale,
-          panX: transform.panX - e.deltaX,
-          panY: transform.panY - e.deltaY,
+          scale: transformRef.current.scale,
+          panX: transformRef.current.panX - e.deltaX,
+          panY: transformRef.current.panY - e.deltaY,
         });
       }
-    },
-    [transform, onTransformChange]
-  );
+    };
 
-  // Convert client viewport coordinates to canvas pixel coordinates
+    container.addEventListener("wheel", handleNativeWheel, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", handleNativeWheel);
+    };
+  }, [onTransformChange]);
+
+  // Convert viewport client coordinates to canvas pixel space
   const getCanvasCoordinates = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -120,12 +244,72 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     return { x, y };
   };
 
-  // Immediate Basic Interactive Drawing (Foundation for Step 2's full brush engine)
-  const handlePointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
-    // If middle click or space held, initiate pan instead of draw
-    if (e.button === 1 || e.buttons === 4 || e.altKey) {
-      setIsPanning(true);
-      setPanStart({ x: e.clientX - transform.panX, y: e.clientY - transform.panY });
+  // Convert client viewport coordinates to container local coordinates
+  const getContainerCoordinates = (clientX: number, clientY: number): Point2D => {
+    const container = containerRef.current;
+    if (!container) return { x: clientX, y: clientY };
+    const rect = container.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+  };
+
+  // --- Pointer Event Handlers (Canvas & Container) ---
+
+  const startPanning = (clientX: number, clientY: number, pointerId: number, targetElement: HTMLElement | HTMLCanvasElement) => {
+    setIsPanning(true);
+    setPanStart({
+      x: clientX - transformRef.current.panX,
+      y: clientY - transformRef.current.panY,
+    });
+    try {
+      targetElement.setPointerCapture(pointerId);
+    } catch {
+      // Ignore
+    }
+  };
+
+  // Click on background matte (outside document paper) to pan
+  const handleContainerPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    // Only handle if clicked directly on the container backdrop
+    if (e.target !== containerRef.current) return;
+
+    // Track active pointer
+    activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+
+    if (e.button === 0 || e.button === 1) {
+      startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
+    }
+  };
+
+  // Canvas pointer down
+  const handleCanvasPointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
+    // Track pointer for multi-touch gestures
+    activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+
+    // Multi-touch pinch check (2 fingers on screen)
+    if (activePointersRef.current.size === 2) {
+      // Abort any in-progress drawing immediately so finger doesn't draw streaks
+      setIsDrawing(false);
+      lastPointRef.current = null;
+
+      const pointers = Array.from(activePointersRef.current.values());
+      const p1 = getContainerCoordinates(pointers[0].clientX, pointers[0].clientY);
+      const p2 = getContainerCoordinates(pointers[1].clientX, pointers[1].clientY);
+
+      gestureStateRef.current = {
+        initialDistance: Math.hypot(p2.x - p1.x, p2.y - p1.y),
+        initialScale: transformRef.current.scale,
+        initialCentroid: { x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5 },
+        initialPan: { x: transformRef.current.panX, y: transformRef.current.panY },
+      };
+      return;
+    }
+
+    // Pan via Middle Click (button 1), Spacebar hold, or Alt key
+    if (e.button === 1 || e.buttons === 4 || isSpaceDownRef.current || e.altKey) {
+      startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
       return;
     }
 
@@ -133,7 +317,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.setPointerCapture(e.pointerId);
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
     setIsDrawing(true);
 
     const point = getCanvasCoordinates(e.clientX, e.clientY);
@@ -161,16 +349,34 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     ctx.restore();
   };
 
-  const handlePointerMove = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (isPanning) {
+  const handlePointerMove = (e: PointerEvent<HTMLDivElement | HTMLCanvasElement>) => {
+    // Update active pointer position
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+    }
+
+    // 1. Two-Finger Pinch-to-Zoom & Pan Gesture
+    if (activePointersRef.current.size === 2 && gestureStateRef.current) {
+      const pointers = Array.from(activePointersRef.current.values());
+      const p1 = getContainerCoordinates(pointers[0].clientX, pointers[0].clientY);
+      const p2 = getContainerCoordinates(pointers[1].clientX, pointers[1].clientY);
+
+      const nextTransform = calculateTwoFingerTransform(gestureStateRef.current, p1, p2);
+      onTransformChange(nextTransform);
+      return;
+    }
+
+    // 2. Viewport Panning
+    if (isPanningRef.current) {
       onTransformChange({
-        scale: transform.scale,
+        scale: transformRef.current.scale,
         panX: e.clientX - panStart.x,
         panY: e.clientY - panStart.y,
       });
       return;
     }
 
+    // 3. Drawing
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -204,31 +410,64 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     lastPointRef.current = currentPoint;
   };
 
-  const handlePointerUp = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (isPanning) {
+  const handlePointerUp = (e: PointerEvent<HTMLDivElement | HTMLCanvasElement>) => {
+    activePointersRef.current.delete(e.pointerId);
+
+    if (activePointersRef.current.size < 2) {
+      gestureStateRef.current = null;
+    }
+
+    if (isPanningRef.current) {
       setIsPanning(false);
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore
+      }
       return;
     }
+
     if (isDrawing) {
       setIsDrawing(false);
       lastPointRef.current = null;
       try {
-        canvasRef.current?.releasePointerCapture(e.pointerId);
+        if (canvasRef.current?.hasPointerCapture(e.pointerId)) {
+          canvasRef.current.releasePointerCapture(e.pointerId);
+        }
       } catch {
-        // Ignore if already released
+        // Ignore
       }
     }
+  };
+
+  // Cursor styling based on active mode
+  const getContainerCursorClass = () => {
+    if (isPanning) return "cursor-grabbing";
+    if (isSpaceDown) return "cursor-grab";
+    return "";
+  };
+
+  const getCanvasCursorClass = () => {
+    if (isPanning) return "cursor-grabbing";
+    if (isSpaceDown) return "cursor-grab";
+    return "cursor-crosshair";
   };
 
   return (
     <main
       ref={containerRef}
-      onWheel={handleWheel}
-      className="flex-1 w-full h-full relative overflow-hidden bg-[#121214] select-none touch-none"
+      onPointerDown={handleContainerPointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onDoubleClick={() => fitToScreen()}
+      className={`flex-1 w-full h-full relative overflow-hidden bg-[#121214] select-none touch-none ${getContainerCursorClass()}`}
     >
-      {/* Pan & Zoom Container */}
+      {/* Pan & Zoom Container — zero CSS transition lag for instant 1:1 hardware feel */}
       <div
-        className="absolute origin-top-left will-change-transform transition-transform duration-75 ease-out"
+        className="absolute origin-top-left will-change-transform"
         style={{
           transform: `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale})`,
         }}
@@ -258,11 +497,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           {/* Core Drawing Canvas */}
           <canvas
             ref={canvasRef}
-            onPointerDown={handlePointerDown}
+            onPointerDown={handleCanvasPointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className="block touch-none cursor-crosshair"
+            className={`block touch-none ${getCanvasCursorClass()}`}
             style={{ width: doc.width, height: doc.height }}
           />
         </div>

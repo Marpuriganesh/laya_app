@@ -48,11 +48,12 @@
 - [x] **Pure Color Space Conversions**
   - [`src/engine/color/color_conversions.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/color_conversions.ts) — `hsvToRgb`, `rgbToHsv`, `rgbToHex`, `hexToRgb`.
 - [x] **Automated Headless Test Suite (Vitest)**
-  - 60 unit tests across `harmonies.test.ts`, `hsy.test.ts`, `ryb.test.ts`, `soft_proofing.test.ts`, `color_conversions.test.ts`, `useDocumentStore.test.ts`, `barycentric_triangle.test.ts`, and `discrete_wheel.test.ts` passing in <140ms.
+  - 65 unit tests across `harmonies.test.ts`, `hsy.test.ts`, `ryb.test.ts`, `soft_proofing.test.ts`, `color_conversions.test.ts`, `useDocumentStore.test.ts`, `barycentric_triangle.test.ts`, `discrete_wheel.test.ts`, and `canvas_transform.test.ts` passing in <140ms.
 - [x] **Brush Library Popover**
   - [`src/ui/components/BrushLibraryPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/BrushLibraryPopover.tsx) — Categories, presets list tagged by engine, and import buttons.
-- [x] **Centered Canvas Viewport with Pan & Zoom**
-  - [`src/ui/components/CanvasViewport.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/CanvasViewport.tsx) — Centered artboard paper on `#121214` dark matte, smooth zoom (ctrl+wheel/pinch), pan, and immediate test drawing.
+- [x] **Procreate & Photoshop-Grade Canvas Viewport Navigation**
+  - [`src/ui/components/CanvasViewport.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/CanvasViewport.tsx) — Zero-latency 1:1 hardware feel (removed CSS transition delay); Spacebar-drag pan navigation with grab/grabbing cursor; Middle-click drag pan; Backdrop drag pan; Non-passive native wheel/trackpad pan & exponential focal-point zoom; 2-finger multi-touch pinch-to-zoom and pan (with stroke cancel); Cmd/Ctrl + 0 / 1 / + / - shortcuts; double-click auto-fit.
+  - [`src/engine/math/canvas_transform.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/math/canvas_transform.ts) — Pure mathematical transformations for focal zoom, fit-to-screen, and two-finger pinch.
 - [x] **App Shell Assembly**
   - [`src/App.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/App.tsx) — Integrated workspace shell.
 - [ ] **Dedicated Color Palette Docker / Panel** (Queued: custom palettes, GIMP `.gpl` / Photoshop `.aco` palette import/export).
