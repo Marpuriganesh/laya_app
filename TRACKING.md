@@ -22,8 +22,8 @@
 - [x] **Document & UI Contracts**
   - [`src/types/document.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/types/document.ts) — `DocumentConfiguration`, DPI (72, 144, 300), Color Spaces (`sRGB`, `Display P3`), Bit Depths (`8-bit`, `16-bit float`), and presets (Screen, Square, 4K, A4).
   - [`src/types/ui.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/types/ui.ts) — Tool types (`brush`, `smudge`, `eraser`), popover states, and transform matrices.
-- [x] **Document Store**
-  - [`src/ui/hooks/useDocumentStore.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/hooks/useDocumentStore.ts) — Reactive state for document, tool, size, opacity, color, zoom/pan.
+- [x] **Document Store (Zustand)**
+  - [`src/ui/hooks/useDocumentStore.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/hooks/useDocumentStore.ts) — Centralized Zustand reactive store for document, tool, size, opacity, color, zoom/pan transforms, soft proofing, and popover dialogs (with selective subscribing and non-React external access via `useDocumentStore.getState()`).
 - [x] **Photoshop-Style New Canvas Setup Modal**
   - [`src/ui/components/NewCanvasModal.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/NewCanvasModal.tsx) — Presets, custom dimension inputs with unit switcher (px, in, cm, mm), resolution/DPI, color space, and background choice.
 - [x] **Procreate-Style Minimalist Top Navigation Bar**
