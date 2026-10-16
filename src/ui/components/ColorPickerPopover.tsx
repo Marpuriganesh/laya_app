@@ -62,23 +62,6 @@ const HARMONY_OPTIONS: { id: HarmonyType; label: string }[] = [
   { id: "analogous", label: "Analogous" },
 ];
 
-const ARTISTIC_PALETTE = [
-  "#000000",
-  "#334155",
-  "#64748b",
-  "#cbd5e1",
-  "#ffffff",
-  "#ef4444",
-  "#f97316",
-  "#f59e0b",
-  "#10b981",
-  "#06b6d4",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-  "#78350f",
-];
-
 export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   isOpen,
   activeColor,
@@ -1009,27 +992,6 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             maxLength={6}
           />
         </div>
-      </div>
-
-      {/* Quick Swatches */}
-      <div className="grid grid-cols-7 gap-1.5 pt-1">
-        {ARTISTIC_PALETTE.map((color) => {
-          const isSelected = activeColor.toLowerCase() === color.toLowerCase();
-          return (
-            <button
-              key={color}
-              type="button"
-              onClick={() => handleSelectExternalColor(color)}
-              aria-label={`Select color ${color}`}
-              className={`h-5 rounded-md border transition-transform hover:scale-110 ${
-                isSelected
-                  ? "border-white ring-1 ring-zinc-300 scale-105"
-                  : "border-zinc-800 hover:border-zinc-600"
-              }`}
-              style={{ backgroundColor: color }}
-            />
-          );
-        })}
       </div>
     </div>
   );
