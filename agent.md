@@ -207,6 +207,12 @@ To guarantee that multiple agents can work in parallel without integration failu
 - `/src/engine` **CANNOT** use DOM APIs (`window`, `document`, `HTMLElement`).
 - `/src/ui` interacts with `/src/engine` solely through the `IDrawingEngine` facade interface.
 
+### UI & Iconography Standards:
+- **Mandatory Icon Library (`lucide-react`)**:
+  - Always use `lucide-react` for all UI icons (toolbars, brush palettes, layer controls, color pickers, modal triggers, and buttons).
+  - Do not introduce alternative icon packages (e.g. Heroicons, FontAwesome, Material Icons) or inline raw SVG paths.
+  - Consistent icon sizing and accessible labels: Always provide accessible `aria-label` or tooltip text for icon-only buttons.
+
 ---
 
 ## 5. Coding Standards & Implementation Patterns
@@ -335,4 +341,5 @@ When generating or modifying code in this repository, all AI agents must follow 
 - [ ] **1:1 Portability**: Could this function be converted line-for-line to C++ or Rust without altering data structures or flow?
 - [ ] **Static/Offline Safety**: Does the feature function without any external server or network connectivity?
 - [ ] **Readability & Comments**: Are formulas and non-obvious algorithms accompanied by explanatory mathematical comments?
+- [ ] **Standardized Iconography**: Are all UI icons strictly imported from `lucide-react`?
 - [ ] **Type Safety & Build**: Does the project pass TypeScript compilation (`npm run build`) without errors or warnings?
