@@ -25,7 +25,6 @@ import {
 import { hsyToRgb } from "@/engine/color/hsy";
 import {
   calculateHarmonyAngles,
-  generateHarmonySwatches,
   type HarmonyType,
 } from "@/engine/color/harmonies";
 import {
@@ -110,11 +109,18 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const [isDraggingArtisticWheel, setIsDraggingArtisticWheel] = useState(false);
   const [isDraggingValueLadder, setIsDraggingValueLadder] = useState(false);
 
+
+
   const commitHsv = useCallback(
     (h: number, s: number, v: number) => {
       const [r, g, b] = hsvToRgb(h, s, v);
       const hex = rgbToHex(r, g, b);
-      setArtisticTargetLuma(calculatePerceptualLuma(r, g, b));
+      const luma = calculatePerceptualLuma(r, g, b);
+      setArtisticTargetLuma(luma);
+      setLastSat(s);
+      if (s > 0.02) {
+        setLastRybAngle(rgbHueToRybHue(h));
+      }
       onSelectColor(hex);
     },
     [onSelectColor]
@@ -123,8 +129,13 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const handleSelectExternalColor = useCallback(
     (hex: string) => {
       const rgb = hexToRgb(hex) || [30, 30, 30];
+      const [h, s] = rgbToHsv(rgb[0], rgb[1], rgb[2]);
       const luma = calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
       setArtisticTargetLuma(luma);
+      setLastSat(s);
+      if (s > 0.02) {
+        setLastRybAngle(rgbHueToRybHue(h));
+      }
       onSelectColor(hex);
     },
     [onSelectColor]
@@ -585,6 +596,20 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     }
   };
 
+  const handleSwitchTab = (newTab: PickerTab) => {
+    if (newTab === "artistic") {
+      const rgb = hexToRgb(activeColor) || [30, 30, 30];
+      const [h, s] = rgbToHsv(rgb[0], rgb[1], rgb[2]);
+      const luma = calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
+      setArtisticTargetLuma(luma);
+      setLastSat(s);
+      if (s > 0.02) {
+        setLastRybAngle(rgbHueToRybHue(h));
+      }
+    }
+    setTab(newTab);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -598,7 +623,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800">
           <button
             type="button"
-            onClick={() => setTab("artistic")}
+            onClick={() => handleSwitchTab("artistic")}
             className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
               tab === "artistic" ? "bg-zinc-800 text-white shadow-xs" : "text-zinc-400 hover:text-zinc-200"
             }`}
@@ -608,7 +633,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setTab("classic")}
+            onClick={() => handleSwitchTab("classic")}
             className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
               tab === "classic" ? "bg-zinc-800 text-white shadow-xs" : "text-zinc-400 hover:text-zinc-200"
             }`}
@@ -916,47 +941,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         )}
       </div>
 
-      {/* Live Harmonic Swatch Palette Strip (Available in both Classic and Artistic modes) */}
-      {harmonyType !== "none" && (
-        <div className="flex flex-col gap-1 px-2 py-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
-          <div className="flex items-center justify-between text-[10px] text-zinc-400 font-medium px-0.5">
-            <span>Harmonic Palette ({harmonyType})</span>
-            <span className="text-[9px] text-zinc-300">Click swatch to select</span>
-          </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-            {generateHarmonySwatches(
-              tab === "artistic" ? artisticRybAngle : currentHue,
-              harmonyType,
-              tab === "artistic" ? "ryb" : "rgb",
-              tab === "artistic" ? lastSat : currentSaturation,
-              tab === "artistic" ? artisticTargetLuma : currentValue,
-              tab === "artistic"
-            ).map((item, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  if (tab === "artistic") {
-                    onSelectColor(item.hex);
-                  } else {
-                    const chords = calculateHarmonyAngles(currentHue, harmonyType, "rgb");
-                    const targetAngle = idx === 0 ? currentHue : chords[idx - 1]?.angleDeg ?? currentHue;
-                    commitHsv(targetAngle, currentSaturation, currentValue);
-                  }
-                }}
-                title={`${item.label}: ${item.hex}`}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/70 hover:bg-zinc-800 border border-zinc-700/80 hover:border-zinc-500 transition-all hover:scale-105 shrink-0"
-              >
-                <span
-                  className="w-3.5 h-3.5 rounded-full border border-black/40 shadow-xs shrink-0"
-                  style={{ backgroundColor: item.hex }}
-                />
-                <span className="text-[10px] font-mono text-zinc-300">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* Direct Hex & Swatch Comparison */}
       <div className="flex items-center gap-3 pt-2 border-t border-zinc-800/80">

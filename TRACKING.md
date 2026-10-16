@@ -30,14 +30,14 @@
   - [`src/ui/components/TopNavBar.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/TopNavBar.tsx) — Actions, Adjustments, Select, Move; Paint, Smudge, Erase, Layers, and Active Color swatch.
 - [x] **Procreate-Style Floating Sidebar Rail**
   - [`src/ui/components/SidebarRail.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/SidebarRail.tsx) — Vertical brush size slider (with live tooltip), vertical opacity slider, Undo & Redo.
-- [x] **Dual-Mode Interactive Color Picker Popover (Krita Fidelity + Robust Pointer Capture)**
-  - [`src/ui/components/ColorPickerPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/ColorPickerPopover.tsx) — Full `setPointerCapture` across all surfaces; Classic Mode with **true Barycentric Triangle** mapping & edge clamping; **Krita-style Artistic RYB Wheel** with configurable discrete Hue sectors (6–36), Saturation rings (2–10), Value steps (4–20), Continuous ($\infty$) toggle, and stepped Value ladder.
+- [x] **Dual-Mode Interactive Color Picker Popover (Automatic Bidirectional Sync + Krita Fidelity)**
+  - [`src/ui/components/ColorPickerPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/ColorPickerPopover.tsx) — Full automatic bidirectional synchronization between Classic HSV and Artistic RYB modes (hue, saturation, and photometric value ladder stay in lockstep across tab switches, wheel interactions, and hex inputs); Full `setPointerCapture` across all surfaces; Classic Mode with **true Barycentric Triangle** mapping & edge clamping; **Krita-style Artistic RYB Wheel** with configurable discrete Hue sectors (6–36), Saturation rings (2–10), Value steps (4–20), Continuous ($\infty$) toggle, and companion stepped Value ladder.
 - [x] **Barycentric Triangle Mathematics**
   - [`src/engine/color/barycentric_triangle.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/barycentric_triangle.ts) — Pure barycentric projection for equilateral triangle color pickers $(x, y) \leftrightarrow (S, V)$ with perimeter segment clamping.
 - [x] **Discrete Wheel & Value Ladder Quantization**
   - [`src/engine/color/discrete_wheel.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/discrete_wheel.ts) — Sector/ring quantization, center neutral gray detection, discrete value steps generation.
 - [x] **Unified Color Harmony Engine (Classic RGB & Artist RYB)**
-  - [`src/engine/color/harmonies.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/harmonies.ts) — Multi-type color harmony generator (Complementary, Split-Complementary, Triadic, Tetradic/Square, Analogous) for both Classic 360° Hue ring and Artist RYB wheel, with chord overlay lines and live interactive harmonic palette strip.
+  - [`src/engine/color/harmonies.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/harmonies.ts) — Multi-type color harmony generator (Complementary, Split-Complementary, Triadic, Tetradic/Square, Analogous) for both Classic 360° Hue ring and Artist RYB wheel, with geometric chord overlay lines.
 - [x] **HSY' Isoluminant Color Generation (Krita Constant Perceived Value)**
   - [`src/engine/color/hsy.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/hsy.ts) — Rec. 709 isoluminant color conversion ($0.2126R + 0.7152G + 0.0722B \equiv Y'_{\text{target}}$ across all hues and saturations). Guarantees all colors on the wheel evaluate to the exact same gray in B&W soft proofing, with zero value drift or darkening feedback loops.
 - [x] **Artist RYB Color Space & Perceptual Lightness Mathematics**
@@ -56,6 +56,7 @@
   - [`src/engine/math/canvas_transform.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/math/canvas_transform.ts) — Pure mathematical transformations for focal zoom, fit-to-screen, and two-finger pinch.
 - [x] **App Shell Assembly**
   - [`src/App.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/App.tsx) — Integrated workspace shell.
+- [ ] **Color Picker UI/UX Redesign** (Queued: rethink visual hierarchy, compact floating layout, cleaner harmony controls without clutter).
 - [ ] **Dedicated Color Palette Docker / Panel** (Queued: custom palettes, GIMP `.gpl` / Photoshop `.aco` palette import/export).
 
 ---
