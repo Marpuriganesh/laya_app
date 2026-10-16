@@ -877,18 +877,22 @@ Direct interactive Dual-Mode Color Picker (eliminates secondary dialog clicks an
     - **Square Mode** (Procreate classic): 2D gradient box (horizontal axis: Saturation 0–100%, vertical axis: Value 100%–0%).
     - Toggle button to flip between Triangle and Square inner geometry.
 
-- **Mode 2: Krita-Style Artistic Color Selector**:
-  - Designed for fine artists using traditional color theory (Munsell / Goethe / Itten wheel).
-  - **Hue Ring**: Divided into 12 or 24 artistic color sectors (pure pigments).
-  - **Concentric Radial Rings**:
-    - Outer ring: Pure hues (full chroma).
-    - Middle rings: Tones (desaturated with gray) and Tints (lightened with white).
-    - Inner ring / core: Shades (darkened with black).
-  - **Harmonic Chord Overlay**: Selectable visual lines showing color harmonies:
-    - Complementary ($180^\circ$)
-    - Split-Complementary ($150^\circ / 210^\circ$)
-    - Triadic ($120^\circ / 240^\circ$)
-    - Analogous ($\pm 30^\circ$)
+- **Mode 2: Krita-Style Artistic Color Selector (Reference: `plugins/dockers/artisticcolorselector`)**:
+  - **Source Code Reference**:
+    - Repository: [`invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector`](https://invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector)
+    - Key Files: `kis_color_selector.cpp`, `kis_color_selector.h`, and gamut mask definitions.
+    - Foundation: James Gurney's *Color and Light* theory & Munsell/Itten color harmony.
+  - **Wheel Architecture (Hue & Saturation)**:
+    - **Angle ($\theta$)**: Divided into $N$ configurable hue sectors (e.g., 12, 16, or 24 artistic pigment sectors) or smooth continuous gradient.
+    - **Radius ($r$)**: Concentric saturation rings. Center is neutral gray ($S = 0$), outer perimeter is full saturation ($S = 1$). (Configurable inversion option).
+  - **Companion Value / Lightness Scale**:
+    - Linear vertical or horizontal stepped/continuous value bar beside the wheel controlling brightness ($V \in [0, 1]$).
+    - Black at bottom/left, white at top/right.
+  - **Interactive Blip Indicator**:
+    - Synchronized circular marker ("blip") on the wheel showing active hue + saturation.
+    - Indicator line on the value scale tracking current brightness.
+  - **Gamut Masking Support (Future Sub-phase)**:
+    - Rotatable geometric mask overlay (e.g. triad triangle, atmospheric gamut polygon) restricting selectable colors to harmonic palettes (`.kgm` format).
 
 - **Direct Controls & Palette**:
   - Dual swatch comparison: Current active color vs. Previous color.
