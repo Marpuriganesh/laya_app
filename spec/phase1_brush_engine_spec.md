@@ -882,15 +882,21 @@ Direct interactive Dual-Mode Color Picker (eliminates secondary dialog clicks an
     - Repository: [`invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector`](https://invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector)
     - Key Files: `kis_color_selector.cpp`, `kis_color_selector.h`, and gamut mask definitions.
     - Foundation: James Gurney's *Color and Light* theory & Munsell/Itten color harmony.
+  - **Artist RYB Color Space Mapping**:
+    - Unlike digital RGB (where red is opposite cyan and green is opposite magenta), the Artistic Selector uses the **painter's RYB wheel** (Johannes Itten):
+      - Primaries: Red ($0^\circ$), Yellow ($120^\circ$), Blue ($240^\circ$).
+      - Complements: Blue ↔ Orange (warm/cool contrast), Yellow ↔ Purple, Red ↔ Green.
+      - Mapping uses trilinear cubic interpolation from RYB to sRGB.
+  - **Perceptual Inherent Value ($Y'$ / Luma) vs. Digital HSV $V$**:
+    - In standard digital HSV, pure Yellow (`#FFFF00`) and pure Blue (`#0000FF`) both have $V = 1.0$, even though human vision perceives yellow as very light ($Y' \approx 0.89$) and blue as very dark ($Y' \approx 0.11$).
+    - Krita's Artistic Color Selector keeps **all colors around the wheel at the same perceptual value (Luma $Y'$ or Oklab $L$)**:
+      $$Y' = 0.2126 R + 0.7152 G + 0.0722 B$$
+    - **Isoluminant Desaturation & Harmonious Grays**: Moving radially inward toward the center desaturates the color into the **exact neutral gray of the same perceived luminance**, preventing value shifts when desaturating.
   - **Wheel Architecture (Hue & Saturation)**:
     - **Angle ($\theta$)**: Divided into $N$ configurable hue sectors (e.g., 12, 16, or 24 artistic pigment sectors) or smooth continuous gradient.
-    - **Radius ($r$)**: Concentric saturation rings. Center is neutral gray ($S = 0$), outer perimeter is full saturation ($S = 1$). (Configurable inversion option).
+    - **Radius ($r$)**: Concentric saturation rings. Center is neutral gray ($S = 0$), outer perimeter is full saturation ($S = 1$).
   - **Companion Value / Lightness Scale**:
-    - Linear vertical or horizontal stepped/continuous value bar beside the wheel controlling brightness ($V \in [0, 1]$).
-    - Black at bottom/left, white at top/right.
-  - **Interactive Blip Indicator**:
-    - Synchronized circular marker ("blip") on the wheel showing active hue + saturation.
-    - Indicator line on the value scale tracking current brightness.
+    - Dedicated linear vertical/horizontal value scale beside the wheel controlling brightness ($V \in [0, 1]$).
   - **Gamut Masking Support (Future Sub-phase)**:
     - Rotatable geometric mask overlay (e.g. triad triangle, atmospheric gamut polygon) restricting selectable colors to harmonic palettes (`.kgm` format).
 

@@ -93,8 +93,10 @@
 
 ---
 
-## Backlog / Polish Items
 - [ ] **Krita Artistic Color Selector Full Fidelity**:
   - Reference: [`invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector`](https://invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector)
-  - Implement James Gurney's Gamut Masking engine (`.kgm` masks).
-  - Hue & Saturation disk with companion linear Value scale.
+  - **Artist RYB Color Space**: Johannes Itten color wheel (Blue ↔ Orange, Yellow ↔ Purple, Red ↔ Green complements).
+  - **Perceptual Value ($Y'$ Luma / Oklab $L$)**: Equal visual brightness around the wheel (unlike HSV where pure blue and yellow have the same mathematical $V$ despite vast lightness difference).
+  - **Isoluminant Desaturation**: Desaturating radially inward leads to the exact gray tone of the same luminance.
+  - **James Gurney Gamut Masking**: Rotatable vector masks (`.kgm` format) over the wheel to constrain palettes.
+  - Dedicated companion linear Value/Lightness slider beside the wheel.
