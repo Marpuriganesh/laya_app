@@ -22,6 +22,7 @@ import {
   calculateRybHarmonies,
   calculatePerceptualLuma,
 } from "@/engine/color/ryb";
+import { hsyToRgb } from "@/engine/color/hsy";
 import {
   pointToSaturationValue,
   saturationValueToPoint,
@@ -79,28 +80,28 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   // Krita Discrete Wheel configuration
   const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
 
-  // Derive HSV from active color
+  // Derive HSV from active color for Classic Mode
   const [currentHue, currentSaturation, currentValue] = useMemo(() => {
     const rgb = hexToRgb(activeColor) || [30, 30, 30];
     return rgbToHsv(rgb[0], rgb[1], rgb[2]);
   }, [activeColor]);
 
-  // Artistic RYB coordinates reactively derived from activeColor
+  // Initial target luma derived from active color upon mount
+  const [artisticTargetLuma, setArtisticTargetLuma] = useState<number>(() => {
+    const rgb = hexToRgb(activeColor) || [128, 128, 128];
+    return calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
+  });
+
+  // Artistic RYB angle & saturation
   const [lastRybAngle, setLastRybAngle] = useState(0);
+  const [lastSat, setLastSat] = useState(0.85);
+
   const artisticRybAngle = useMemo(() => {
     if (currentSaturation > 0.03) {
       return rgbHueToRybHue(currentHue);
     }
     return lastRybAngle;
   }, [currentHue, currentSaturation, lastRybAngle]);
-
-  const artisticSat = currentSaturation;
-
-  const artisticVal = useMemo(() => {
-    const rgb = hexToRgb(activeColor) || [30, 30, 30];
-    const luma = calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
-    return Math.max(0.0, Math.min(1.0, luma));
-  }, [activeColor]);
 
   const hueCanvasRef = useRef<HTMLCanvasElement>(null);
   const innerCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -115,7 +116,19 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const commitHsv = useCallback(
     (h: number, s: number, v: number) => {
       const [r, g, b] = hsvToRgb(h, s, v);
-      onSelectColor(rgbToHex(r, g, b));
+      const hex = rgbToHex(r, g, b);
+      setArtisticTargetLuma(calculatePerceptualLuma(r, g, b));
+      onSelectColor(hex);
+    },
+    [onSelectColor]
+  );
+
+  const handleSelectExternalColor = useCallback(
+    (hex: string) => {
+      const rgb = hexToRgb(hex) || [30, 30, 30];
+      const luma = calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
+      setArtisticTargetLuma(luma);
+      onSelectColor(hex);
     },
     [onSelectColor]
   );
@@ -257,7 +270,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     getTriangleVertices,
   ]);
 
-  // 3. Draw Krita-Style Artistic RYB Wheel (Discrete Swatches vs Continuous Gradient)
+  // 3. Draw Krita-Style Isoluminant HSY' Wheel (Guaranteed Constant Perceived Value)
   useEffect(() => {
     if (!isOpen || tab !== "artistic") return;
     const canvas = artisticWheelCanvasRef.current;
@@ -273,7 +286,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.clearRect(0, 0, size, size);
 
     if (wheelConfig.isContinuous) {
-      // Continuous Smooth RYB Gradient via direct pixel buffer
+      // Continuous Smooth Isoluminant HSY' Gradient
       const imgData = ctx.createImageData(size, size);
       const data32 = new Uint32Array(imgData.data.buffer);
 
@@ -289,7 +302,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
             const sat = Math.max(0, Math.min(1, dist / outerRadius));
             const rgbHue = rybHueToRgbHue(angleDeg);
-            const [r, g, b] = hsvToRgb(rgbHue, sat, artisticVal);
+            const [r, g, b] = hsyToRgb(rgbHue, sat, artisticTargetLuma);
 
             data32[y * size + x] = (255 << 24) | (b << 16) | (g << 8) | r;
           }
@@ -297,7 +310,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       }
       ctx.putImageData(imgData, 0, 0);
     } else {
-      // Discrete Swatch Sectors & Concentric Rings (Krita Default)
+      // Discrete Swatch Sectors & Concentric Rings (Isoluminant HSY')
       const sectors = wheelConfig.hueSectors;
       const rings = wheelConfig.saturationRings;
       const sectorSpanRad = (Math.PI * 2) / sectors;
@@ -313,7 +326,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           const rInner = innerRadius + (r / rings) * (outerRadius - innerRadius);
           const rOuter = innerRadius + ((r + 1) / rings) * (outerRadius - innerRadius);
 
-          const [red, green, blue] = hsvToRgb(rgbHue, satRatio, artisticVal);
+          // Guaranteed identical perceived lightness across all hues & saturations!
+          const [red, green, blue] = hsyToRgb(rgbHue, satRatio, artisticTargetLuma);
 
           ctx.beginPath();
           ctx.arc(center, center, rOuter, startAngle, endAngle);
@@ -328,9 +342,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       }
 
       // Discrete Active Cell Highlight
-      if (artisticSat >= 0.15) {
+      if (lastSat >= 0.15) {
         const { sectorIndex } = quantizeRybHue(artisticRybAngle, sectors);
-        const { ringIndex } = quantizeSaturation(artisticSat, rings);
+        const { ringIndex } = quantizeSaturation(lastSat, rings);
 
         if (ringIndex >= 0) {
           const rInner = innerRadius + (ringIndex / rings) * (outerRadius - innerRadius);
@@ -352,14 +366,14 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       }
     }
 
-    // Center Neutral Gray Core (photometric luminance of current value)
-    const grayByte = Math.round(artisticVal * 255);
+    // Center Neutral Gray Core (photometric luminance of target value)
+    const grayByte = Math.round(artisticTargetLuma * 255);
     ctx.beginPath();
     ctx.arc(center, center, innerRadius, 0, Math.PI * 2);
     ctx.fillStyle = `rgb(${grayByte},${grayByte},${grayByte})`;
     ctx.fill();
-    ctx.strokeStyle = artisticSat < 0.15 ? "#ffffff" : "rgba(0,0,0,0.3)";
-    ctx.lineWidth = artisticSat < 0.15 ? 2.5 : 1;
+    ctx.strokeStyle = lastSat < 0.15 ? "#ffffff" : "rgba(0,0,0,0.3)";
+    ctx.lineWidth = lastSat < 0.15 ? 2.5 : 1;
     ctx.stroke();
 
     // Harmonic Chord Overlay (Complementary dashed line)
@@ -398,14 +412,14 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     // Active Selection Blip (in continuous mode)
     if (wheelConfig.isContinuous) {
       const blipAngleRad = (artisticRybAngle * Math.PI) / 180 - Math.PI / 2;
-      const blipDist = innerRadius + artisticSat * (outerRadius - innerRadius);
+      const blipDist = innerRadius + lastSat * (outerRadius - innerRadius);
       const blipX = center + Math.cos(blipAngleRad) * blipDist;
       const blipY = center + Math.sin(blipAngleRad) * blipDist;
 
       ctx.beginPath();
       ctx.arc(blipX, blipY, 6, 0, Math.PI * 2);
       ctx.fillStyle = activeColor;
-      ctx.strokeStyle = artisticVal > 0.6 ? "#000000" : "#ffffff";
+      ctx.strokeStyle = artisticTargetLuma > 0.6 ? "#000000" : "#ffffff";
       ctx.lineWidth = 2;
       ctx.fill();
       ctx.stroke();
@@ -414,8 +428,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     isOpen,
     tab,
     artisticRybAngle,
-    artisticSat,
-    artisticVal,
+    lastSat,
+    artisticTargetLuma,
     showHarmonies,
     activeColor,
     wheelConfig,
@@ -453,6 +467,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     }
   };
 
+  // Wheel interaction: computes color strictly at artisticTargetLuma WITHOUT modifying target luma!
   const handleArtisticWheelPointer = (e: PointerEvent<HTMLCanvasElement>) => {
     const canvas = artisticWheelCanvasRef.current;
     if (!canvas) return;
@@ -469,33 +484,39 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
     if (wheelConfig.isContinuous) {
       setLastRybAngle(Math.round(angleDeg));
+      setLastSat(satRatio);
       const rgbHue = rybHueToRgbHue(angleDeg);
-      const [r, g, b] = hsvToRgb(rgbHue, satRatio, artisticVal);
+      const [r, g, b] = hsyToRgb(rgbHue, satRatio, artisticTargetLuma);
       onSelectColor(rgbToHex(r, g, b));
     } else {
       const { quantizedAngle } = quantizeRybHue(angleDeg, wheelConfig.hueSectors);
       const { quantizedSat, isCenterGray } = quantizeSaturation(satRatio, wheelConfig.saturationRings);
 
       setLastRybAngle(Math.round(quantizedAngle));
+      setLastSat(isCenterGray ? 0.0 : quantizedSat);
 
       if (isCenterGray) {
-        const grayByte = Math.round(artisticVal * 255);
+        const grayByte = Math.round(artisticTargetLuma * 255);
         onSelectColor(rgbToHex(grayByte, grayByte, grayByte));
       } else {
         const rgbHue = rybHueToRgbHue(quantizedAngle);
-        const [r, g, b] = hsvToRgb(rgbHue, quantizedSat, artisticVal);
+        const [r, g, b] = hsyToRgb(rgbHue, quantizedSat, artisticTargetLuma);
         onSelectColor(rgbToHex(r, g, b));
       }
     }
   };
 
+  // Value Ladder interaction: sets a new target perceived luma and updates color
   const handleArtisticValueStepSelect = (targetVal: number) => {
-    if (artisticSat < 0.15) {
-      const grayByte = Math.round(targetVal * 255);
+    const clampedVal = Math.max(0.0, Math.min(1.0, targetVal));
+    setArtisticTargetLuma(clampedVal);
+
+    if (lastSat < 0.15) {
+      const grayByte = Math.round(clampedVal * 255);
       onSelectColor(rgbToHex(grayByte, grayByte, grayByte));
     } else {
       const rgbHue = rybHueToRgbHue(artisticRybAngle);
-      const [r, g, b] = hsvToRgb(rgbHue, artisticSat, targetVal);
+      const [r, g, b] = hsyToRgb(rgbHue, lastSat, clampedVal);
       onSelectColor(rgbToHex(r, g, b));
     }
   };
@@ -667,7 +688,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       {/* Main Interactive Surface */}
       <div className="flex justify-center items-center py-1">
         {tab === "artistic" ? (
-          /* Krita Artistic RYB Wheel + Companion Vertical Value Ladder */
+          /* Krita Isoluminant RYB Wheel + Companion Vertical Value Ladder */
           <div className="flex items-center gap-4 w-full justify-center">
             {/* RYB Wheel Canvas with Pointer Capture */}
             <div className="relative w-54 h-54 flex items-center justify-center">
@@ -738,7 +759,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   {/* Indicator line */}
                   <div
                     className="absolute left-0 right-0 h-1 bg-amber-400 border border-black shadow-md -translate-y-1/2"
-                    style={{ top: `${(1.0 - artisticVal) * 100}%` }}
+                    style={{ top: `${(1.0 - artisticTargetLuma) * 100}%` }}
                   />
                 </div>
               ) : (
@@ -771,7 +792,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                 >
                   {discreteValueStepsList.map((stepVal, idx) => {
                     const grayByte = Math.round(stepVal * 255);
-                    const isSelected = Math.abs(artisticVal - stepVal) < 0.5 / wheelConfig.valueSteps;
+                    const isSelected = Math.abs(artisticTargetLuma - stepVal) < 0.5 / wheelConfig.valueSteps;
                     return (
                       <div
                         key={idx}
@@ -786,7 +807,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               )}
 
               <span className="text-[10px] font-mono text-zinc-400">
-                {Math.round(artisticVal * 100)}%
+                {Math.round(artisticTargetLuma * 100)}%
               </span>
             </div>
           </div>
@@ -891,7 +912,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           <button
             type="button"
             title="Revert to initial color"
-            onClick={() => onSelectColor(initialColor)}
+            onClick={() => handleSelectExternalColor(initialColor)}
             className="w-7 h-8 cursor-pointer"
             style={{ backgroundColor: initialColor }}
           />
@@ -911,7 +932,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               const val = e.target.value.trim();
               if (/^[0-9A-Fa-f]{0,6}$/.test(val)) {
                 if (val.length === 6 || val.length === 3) {
-                  onSelectColor("#" + val);
+                  handleSelectExternalColor("#" + val);
                 }
               }
             }}
@@ -929,7 +950,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             <button
               key={color}
               type="button"
-              onClick={() => onSelectColor(color)}
+              onClick={() => handleSelectExternalColor(color)}
               aria-label={`Select color ${color}`}
               className={`h-5 rounded-md border transition-transform hover:scale-110 ${
                 isSelected
