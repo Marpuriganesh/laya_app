@@ -7,6 +7,7 @@ import {
   Sliders,
   Settings2,
   Infinity as InfinityIcon,
+  Palette,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -19,10 +20,14 @@ import {
 import {
   rybHueToRgbHue,
   rgbHueToRybHue,
-  calculateRybHarmonies,
   calculatePerceptualLuma,
 } from "@/engine/color/ryb";
 import { hsyToRgb } from "@/engine/color/hsy";
+import {
+  calculateHarmonyAngles,
+  generateHarmonySwatches,
+  type HarmonyType,
+} from "@/engine/color/harmonies";
 import {
   pointToSaturationValue,
   saturationValueToPoint,
@@ -47,6 +52,15 @@ interface ColorPickerPopoverProps {
 
 type PickerTab = "artistic" | "classic";
 type InnerShape = "triangle" | "square";
+
+const HARMONY_OPTIONS: { id: HarmonyType; label: string }[] = [
+  { id: "none", label: "None" },
+  { id: "complementary", label: "Complementary" },
+  { id: "split-complementary", label: "Split-Comp" },
+  { id: "triadic", label: "Triadic" },
+  { id: "tetradic", label: "Tetradic" },
+  { id: "analogous", label: "Analogous" },
+];
 
 const ARTISTIC_PALETTE = [
   "#000000",
@@ -73,7 +87,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 }) => {
   const [tab, setTab] = useState<PickerTab>("artistic");
   const [innerShape, setInnerShape] = useState<InnerShape>("triangle");
-  const [showHarmonies, setShowHarmonies] = useState(true);
+  const [harmonyType, setHarmonyType] = useState<HarmonyType>("complementary");
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
   const [initialColor] = useState(activeColor);
 
@@ -143,7 +157,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     };
   }, []);
 
-  // 1. Draw Classic Outer Hue Ring
+  // 1. Draw Classic Outer Hue Ring (with optional harmony chords)
   useEffect(() => {
     if (!isOpen || tab !== "classic") return;
     const canvas = hueCanvasRef.current;
@@ -155,9 +169,11 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     const center = size / 2;
     const outerRadius = size / 2 - 2;
     const innerRadius = outerRadius - 16;
+    const handleDist = (outerRadius + innerRadius) / 2;
 
     ctx.clearRect(0, 0, size, size);
 
+    // Draw full 360° Hue Ring
     for (let angle = 0; angle < 360; angle += 1) {
       const startAngle = ((angle - 1) * Math.PI) / 180;
       const endAngle = ((angle + 1) * Math.PI) / 180;
@@ -170,8 +186,49 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       ctx.fill();
     }
 
+    // Draw Harmony Chords on Classic Hue Ring
+    if (harmonyType !== "none") {
+      const chords = calculateHarmonyAngles(currentHue, harmonyType, "rgb");
+      const activeAngleRad = (currentHue * Math.PI) / 180;
+
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "rgba(255,255,255,0.45)";
+      ctx.lineWidth = 1;
+
+      for (const chord of chords) {
+        const chordAngleRad = (chord.angleDeg * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(
+          center + Math.cos(activeAngleRad) * handleDist,
+          center + Math.sin(activeAngleRad) * handleDist
+        );
+        ctx.lineTo(
+          center + Math.cos(chordAngleRad) * handleDist,
+          center + Math.sin(chordAngleRad) * handleDist
+        );
+        ctx.stroke();
+
+        // Draw chord indicator blip
+        ctx.beginPath();
+        ctx.arc(
+          center + Math.cos(chordAngleRad) * handleDist,
+          center + Math.sin(chordAngleRad) * handleDist,
+          4,
+          0,
+          Math.PI * 2
+        );
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1.5;
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Active Hue Handle
     const handleAngle = (currentHue * Math.PI) / 180;
-    const handleDist = (outerRadius + innerRadius) / 2;
     const handleX = center + Math.cos(handleAngle) * handleDist;
     const handleY = center + Math.sin(handleAngle) * handleDist;
 
@@ -182,7 +239,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.lineWidth = 2;
     ctx.fill();
     ctx.stroke();
-  }, [isOpen, tab, currentHue]);
+  }, [isOpen, tab, currentHue, harmonyType]);
 
   // 2. Draw Classic Inner Saturation-Value Surface (Barycentric Triangle or Square)
   useEffect(() => {
@@ -376,37 +433,45 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.lineWidth = lastSat < 0.15 ? 2.5 : 1;
     ctx.stroke();
 
-    // Harmonic Chord Overlay (Complementary dashed line)
-    if (showHarmonies) {
-      const harmonies = calculateRybHarmonies(artisticRybAngle);
-      const complementAngleRad = (harmonies.complement * Math.PI) / 180 - Math.PI / 2;
+    // Harmonic Chord Overlay (on Artistic RYB Wheel)
+    if (harmonyType !== "none") {
+      const chords = calculateHarmonyAngles(artisticRybAngle, harmonyType, "ryb");
       const activeAngleRad = (artisticRybAngle * Math.PI) / 180 - Math.PI / 2;
 
-      ctx.beginPath();
+      ctx.save();
       ctx.setLineDash([3, 3]);
-      ctx.moveTo(
-        center + Math.cos(activeAngleRad) * outerRadius,
-        center + Math.sin(activeAngleRad) * outerRadius
-      );
-      ctx.lineTo(
-        center + Math.cos(complementAngleRad) * outerRadius,
-        center + Math.sin(complementAngleRad) * outerRadius
-      );
       ctx.strokeStyle = "rgba(255,255,255,0.45)";
       ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.setLineDash([]);
 
-      ctx.beginPath();
-      ctx.arc(
-        center + Math.cos(complementAngleRad) * (outerRadius - 4),
-        center + Math.sin(complementAngleRad) * (outerRadius - 4),
-        3.5,
-        0,
-        Math.PI * 2
-      );
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
+      for (const chord of chords) {
+        const chordAngleRad = (chord.angleDeg * Math.PI) / 180 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(
+          center + Math.cos(activeAngleRad) * outerRadius,
+          center + Math.sin(activeAngleRad) * outerRadius
+        );
+        ctx.lineTo(
+          center + Math.cos(chordAngleRad) * outerRadius,
+          center + Math.sin(chordAngleRad) * outerRadius
+        );
+        ctx.stroke();
+
+        // Draw chord blip on perimeter
+        ctx.beginPath();
+        ctx.arc(
+          center + Math.cos(chordAngleRad) * (outerRadius - 4),
+          center + Math.sin(chordAngleRad) * (outerRadius - 4),
+          3.5,
+          0,
+          Math.PI * 2
+        );
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1;
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     // Active Selection Blip (in continuous mode)
@@ -430,7 +495,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     artisticRybAngle,
     lastSat,
     artisticTargetLuma,
-    showHarmonies,
+    harmonyType,
     activeColor,
     wheelConfig,
   ]);
@@ -537,20 +602,13 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     }
   };
 
-  // Generate discrete value steps from top (1.0) to bottom (0.0)
-  const discreteValueStepsList = useMemo(() => {
-    const steps = generateDiscreteValueSteps(wheelConfig.valueSteps);
-    // Reverse so white is at the top, black at the bottom
-    return [...steps].reverse();
-  }, [wheelConfig.valueSteps]);
-
   if (!isOpen) return null;
 
   return (
     <div
       role="dialog"
       aria-label="Color Picker"
-      className="fixed right-4 top-16 z-40 w-92 p-4 rounded-2xl bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 shadow-2xl select-none animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-3"
+      className="fixed right-4 top-16 z-40 w-94 p-4 rounded-2xl bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 shadow-2xl select-none animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-3"
     >
       {/* Header & Mode Switcher */}
       <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
@@ -585,6 +643,26 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         >
           <X className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* Harmony Selector (Available in BOTH Classic and Artistic modes) */}
+      <div className="flex items-center justify-between px-2 py-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs">
+        <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
+          <Palette className="w-3.5 h-3.5 text-amber-400" />
+          <span>Harmony:</span>
+        </div>
+        <select
+          value={harmonyType}
+          onChange={(e) => setHarmonyType(e.target.value as HarmonyType)}
+          aria-label="Color Harmony Scheme"
+          className="bg-zinc-800 text-zinc-200 text-[11px] px-2 py-0.5 rounded-md border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
+        >
+          {HARMONY_OPTIONS.map((opt) => (
+            <option key={opt.id} value={opt.id}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Krita Discrete Settings Drawer (in Artistic Mode) */}
@@ -688,7 +766,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       {/* Main Interactive Surface */}
       <div className="flex justify-center items-center py-1">
         {tab === "artistic" ? (
-          /* Krita Isoluminant RYB Wheel + Companion Vertical Value Ladder */
+          /* Krita Isoluminant RYB Wheel + Companion Vertical Value Bar */
           <div className="flex items-center gap-4 w-full justify-center">
             {/* RYB Wheel Canvas with Pointer Capture */}
             <div className="relative w-54 h-54 flex items-center justify-center">
@@ -722,89 +800,56 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               />
             </div>
 
-            {/* Companion Vertical Value Ladder (Stepped Blocks vs Continuous Slider) */}
+            {/* Companion Vertical Value Bar: Pure CSS Linear Gradient (White at Top, Black at Bottom) */}
             <div className="flex flex-col items-center gap-1.5 h-54 justify-center">
               <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest">
                 Val
               </span>
 
-              {wheelConfig.isContinuous ? (
-                /* Continuous Value Slider */
-                <div
-                  ref={valueLadderRef}
-                  onPointerDown={(e) => {
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                    setIsDraggingValueLadder(true);
+              <div
+                ref={valueLadderRef}
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setIsDraggingValueLadder(true);
+                  handleValueLadderPointer(e);
+                }}
+                onPointerMove={(e) => {
+                  if (isDraggingValueLadder) {
                     handleValueLadderPointer(e);
-                  }}
-                  onPointerMove={(e) => {
-                    if (isDraggingValueLadder) {
-                      handleValueLadderPointer(e);
-                    }
-                  }}
-                  onPointerUp={(e) => {
-                    setIsDraggingValueLadder(false);
-                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                      e.currentTarget.releasePointerCapture(e.pointerId);
-                    }
-                  }}
-                  onPointerCancel={(e) => {
-                    setIsDraggingValueLadder(false);
-                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                      e.currentTarget.releasePointerCapture(e.pointerId);
-                    }
-                  }}
-                  className="relative h-44 w-6 rounded-lg bg-gradient-to-b from-white via-zinc-500 to-black border border-zinc-700 cursor-pointer touch-none shadow-inner"
-                >
-                  {/* Indicator line */}
-                  <div
-                    className="absolute left-0 right-0 h-1 bg-amber-400 border border-black shadow-md -translate-y-1/2"
-                    style={{ top: `${(1.0 - artisticTargetLuma) * 100}%` }}
-                  />
-                </div>
-              ) : (
-                /* Discrete Stepped Swatch Ladder */
+                  }
+                }}
+                onPointerUp={(e) => {
+                  setIsDraggingValueLadder(false);
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+                onPointerCancel={(e) => {
+                  setIsDraggingValueLadder(false);
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+                className="relative h-44 w-6 rounded-md border border-zinc-700 cursor-pointer touch-none overflow-hidden shadow-sm"
+                style={{
+                  background: "linear-gradient(to bottom, #ffffff 0%, #000000 100%)",
+                }}
+              >
+                {/* Discrete Step Notches in Discrete Mode */}
+                {!wheelConfig.isContinuous && (
+                  <div className="absolute inset-y-0 right-0 w-2 flex flex-col justify-between pointer-events-none py-1">
+                    {generateDiscreteValueSteps(wheelConfig.valueSteps).map((_, idx) => (
+                      <div key={idx} className="w-1.5 h-0.5 bg-zinc-500 rounded-full ml-auto" />
+                    ))}
+                  </div>
+                )}
+
+                {/* Active Value Indicator Line with Glow */}
                 <div
-                  ref={valueLadderRef}
-                  onPointerDown={(e) => {
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                    setIsDraggingValueLadder(true);
-                    handleValueLadderPointer(e);
-                  }}
-                  onPointerMove={(e) => {
-                    if (isDraggingValueLadder) {
-                      handleValueLadderPointer(e);
-                    }
-                  }}
-                  onPointerUp={(e) => {
-                    setIsDraggingValueLadder(false);
-                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                      e.currentTarget.releasePointerCapture(e.pointerId);
-                    }
-                  }}
-                  onPointerCancel={(e) => {
-                    setIsDraggingValueLadder(false);
-                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                      e.currentTarget.releasePointerCapture(e.pointerId);
-                    }
-                  }}
-                  className="flex flex-col h-44 w-6 rounded-md overflow-hidden border border-zinc-700 cursor-pointer touch-none shadow-md"
-                >
-                  {discreteValueStepsList.map((stepVal, idx) => {
-                    const grayByte = Math.round(stepVal * 255);
-                    const isSelected = Math.abs(artisticTargetLuma - stepVal) < 0.5 / wheelConfig.valueSteps;
-                    return (
-                      <div
-                        key={idx}
-                        className={`flex-1 w-full transition-transform ${
-                          isSelected ? "ring-2 ring-amber-400 z-10 scale-105" : ""
-                        }`}
-                        style={{ backgroundColor: `rgb(${grayByte},${grayByte},${grayByte})` }}
-                      />
-                    );
-                  })}
-                </div>
-              )}
+                  className="absolute left-0 right-0 h-1.5 bg-amber-400 border border-black shadow-[0_0_8px_rgba(251,191,36,0.8)] -translate-y-1/2 rounded-full pointer-events-none z-10"
+                  style={{ top: `${(1.0 - artisticTargetLuma) * 100}%` }}
+                />
+              </div>
 
               <span className="text-[10px] font-mono text-zinc-400">
                 {Math.round(artisticTargetLuma * 100)}%
@@ -888,21 +933,45 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         )}
       </div>
 
-      {/* Harmony Toggle (in Artistic Mode) */}
-      {tab === "artistic" && (
-        <div className="flex items-center justify-between px-1 text-[11px] text-zinc-400">
-          <span>Artistic Complements (RYB)</span>
-          <button
-            type="button"
-            onClick={() => setShowHarmonies((prev) => !prev)}
-            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-              showHarmonies
-                ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
-                : "bg-zinc-900 text-zinc-400 border border-zinc-800"
-            }`}
-          >
-            {showHarmonies ? "Harmonies On" : "Harmonies Off"}
-          </button>
+      {/* Live Harmonic Swatch Palette Strip (Available in both Classic and Artistic modes) */}
+      {harmonyType !== "none" && (
+        <div className="flex flex-col gap-1 px-2 py-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
+          <div className="flex items-center justify-between text-[10px] text-zinc-400 font-medium px-0.5">
+            <span>Harmonic Palette ({harmonyType})</span>
+            <span className="text-[9px] text-zinc-300">Click swatch to select</span>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+            {generateHarmonySwatches(
+              tab === "artistic" ? artisticRybAngle : currentHue,
+              harmonyType,
+              tab === "artistic" ? "ryb" : "rgb",
+              tab === "artistic" ? lastSat : currentSaturation,
+              tab === "artistic" ? artisticTargetLuma : currentValue,
+              tab === "artistic"
+            ).map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  if (tab === "artistic") {
+                    onSelectColor(item.hex);
+                  } else {
+                    const chords = calculateHarmonyAngles(currentHue, harmonyType, "rgb");
+                    const targetAngle = idx === 0 ? currentHue : chords[idx - 1]?.angleDeg ?? currentHue;
+                    commitHsv(targetAngle, currentSaturation, currentValue);
+                  }
+                }}
+                title={`${item.label}: ${item.hex}`}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/70 hover:bg-zinc-800 border border-zinc-700/80 hover:border-zinc-500 transition-all hover:scale-105 shrink-0"
+              >
+                <span
+                  className="w-3.5 h-3.5 rounded-full border border-black/40 shadow-xs shrink-0"
+                  style={{ backgroundColor: item.hex }}
+                />
+                <span className="text-[10px] font-mono text-zinc-300">{item.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
