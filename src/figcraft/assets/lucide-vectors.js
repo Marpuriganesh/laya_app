@@ -1,7 +1,7 @@
 /**
  * Pre-bundled Lucide icon structural node data for FigCraft.
  * Total icons: 1634
- * Generated: 2026-10-17T18:45:38.338Z
+ * Generated: 2026-10-17T20:12:51.473Z
  */
 export const LucideVectors = {
   "a-arrow-down": [

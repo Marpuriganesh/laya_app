@@ -32,7 +32,12 @@ export function nodeToSvgPath(tag, attrs) {
   if (tag === 'path') {
     let d = attrs.d || '';
     if (d.startsWith('m')) {
-      d = 'M' + d.slice(1);
+      // In SVG: "m x y dx dy" treats coordinates after the initial pair as relative linetos ('l').
+      // When capitalizing to absolute 'M', an explicit 'l' must be inserted before subsequent coordinate pairs.
+      d = d.replace(/^m\s*([+-]?\d*\.?\d+(?:e[+-]?\d+)?)[,\s]+([+-]?\d*\.?\d+(?:e[+-]?\d+)?)\s*(?=[+-]?\d)/i, 'M$1 $2 l ');
+      if (d.startsWith('m')) {
+        d = 'M' + d.slice(1);
+      }
     }
     return d;
   }
