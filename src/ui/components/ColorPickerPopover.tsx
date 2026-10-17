@@ -1,16 +1,13 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type FC, type PointerEvent } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   X,
+  Circle,
   Square,
   Triangle,
-  Sparkles,
-  Sliders,
-  Settings2,
-  Infinity as InfinityIcon,
-  Palette,
-  ChevronDown,
-  ChevronUp,
+  SwatchBook,
   RotateCcw,
+  Infinity as InfinityIcon,
 } from "lucide-react";
 import {
   hsvToRgb,
@@ -50,16 +47,15 @@ interface ColorPickerPopoverProps {
   onSelectColor: (color: string) => void;
 }
 
-type PickerTab = "artistic" | "classic";
-type InnerShape = "triangle" | "square";
+type ShapeMode = "circle" | "square" | "triangle";
 
 const HARMONY_OPTIONS: { id: HarmonyType; label: string }[] = [
   { id: "none", label: "None" },
-  { id: "complementary", label: "Complementary" },
-  { id: "split-complementary", label: "Split-Comp" },
-  { id: "triadic", label: "Triadic" },
-  { id: "tetradic", label: "Tetradic" },
-  { id: "analogous", label: "Analogous" },
+  { id: "complementary", label: "Comp" },
+  { id: "split-complementary", label: "Split" },
+  { id: "triadic", label: "Triad" },
+  { id: "tetradic", label: "Tetrad" },
+  { id: "analogous", label: "Analog" },
 ];
 
 export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
@@ -68,10 +64,17 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   onClose,
   onSelectColor,
 }) => {
-  const [tab, setTab] = useState<PickerTab>("artistic");
-  const [innerShape, setInnerShape] = useState<InnerShape>("triangle");
-  const [harmonyType, setHarmonyType] = useState<HarmonyType>("complementary");
-  const [showConfigDrawer, setShowConfigDrawer] = useState(false);
+  // Shape mode: circle | square | triangle
+  const [shapeMode, setShapeMode] = useState<ShapeMode>("circle");
+
+  // In circle mode: toggles between Artistic RYB Wheel and Classic HSV Wheel
+  const [isArtisticWheel, setIsArtisticWheel] = useState(true);
+
+  // Artistic harmonies & discrete configuration
+  const [harmonyType, setHarmonyType] = useState<HarmonyType>("none");
+  const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
+
+  // Initial color tracking for revert capability
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   const [initialColor, setInitialColor] = useState(activeColor);
 
@@ -82,6 +85,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     }
   }
 
+  // Hex input state
   const [prevActiveColorForHex, setPrevActiveColorForHex] = useState(activeColor);
   const [hexInput, setHexInput] = useState(activeColor.replace(/^#/, "").toUpperCase());
 
@@ -90,33 +94,30 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     setHexInput(activeColor.replace(/^#/, "").toUpperCase());
   }
 
-  // Krita Discrete Wheel configuration
-  const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
-
-  // Derive HSV from active color for Classic Mode
+  // Derive HSV from active color
   const [, rawSaturation, rawValue] = useMemo(() => {
-    const rgb = hexToRgb(activeColor) || [30, 30, 30];
+    const rgb = hexToRgb(activeColor) || [255, 255, 255];
     return rgbToHsv(rgb[0], rgb[1], rgb[2]);
   }, [activeColor]);
 
   const currentSaturation = rawSaturation;
   const currentValue = rawValue;
 
-  // Persist hue so when saturation is 0 (black/gray/white), hue is not lost
+  // Persist hue so when saturation is 0 (white, black, gray), hue is not lost
   const [persistedHue, setPersistedHue] = useState<number>(() => {
-    const rgb = hexToRgb(activeColor) || [30, 30, 30];
+    const rgb = hexToRgb(activeColor) || [255, 255, 255];
     return rgbToHsv(rgb[0], rgb[1], rgb[2])[0];
   });
 
   const currentHue = useMemo(() => {
     if (currentSaturation > 0.03) {
-      const rgb = hexToRgb(activeColor) || [30, 30, 30];
+      const rgb = hexToRgb(activeColor) || [255, 255, 255];
       return rgbToHsv(rgb[0], rgb[1], rgb[2])[0];
     }
     return persistedHue;
   }, [activeColor, currentSaturation, persistedHue]);
 
-  // Initial target luma derived from active color upon mount
+  // Target perceptual luma for Krita isoluminant wheel
   const [artisticTargetLuma, setArtisticTargetLuma] = useState<number>(() => {
     const rgb = hexToRgb(activeColor) || [128, 128, 128];
     return calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
@@ -133,19 +134,23 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     return lastRybAngle;
   }, [currentHue, currentSaturation, lastRybAngle]);
 
-  const hueCanvasRef = useRef<HTMLCanvasElement>(null);
-  const innerCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Canvas refs for the 234x234px center stage
   const artisticWheelCanvasRef = useRef<HTMLCanvasElement>(null);
-  const valueLadderRef = useRef<HTMLDivElement>(null);
-  const miniSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
+  const classicWheelCanvasRef = useRef<HTMLCanvasElement>(null);
+  const squareCanvasRef = useRef<HTMLCanvasElement>(null);
+  const triangleCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [isDraggingHue, setIsDraggingHue] = useState(false);
-  const [isDraggingInner, setIsDraggingInner] = useState(false);
-  const [isDraggingArtisticWheel, setIsDraggingArtisticWheel] = useState(false);
-  const [isDraggingValueLadder, setIsDraggingValueLadder] = useState(false);
+  // Slider refs
+  const hueSliderRef = useRef<HTMLDivElement>(null);
+  const valueSliderRef = useRef<HTMLDivElement>(null);
+  const satSliderRef = useRef<HTMLDivElement>(null);
+  const artisticLadderRef = useRef<HTMLDivElement>(null);
 
+  // Dragging states
+  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
+  const [isDraggingSlider, setIsDraggingSlider] = useState<string | null>(null);
 
-
+  // Unified color commit for HSV
   const commitHsv = useCallback(
     (h: number, s: number, v: number) => {
       setPersistedHue(h);
@@ -164,7 +169,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
   const handleSelectExternalColor = useCallback(
     (hex: string) => {
-      const rgb = hexToRgb(hex) || [30, 30, 30];
+      const rgb = hexToRgb(hex) || [255, 255, 255];
       const [h, s] = rgbToHsv(rgb[0], rgb[1], rgb[2]);
       setPersistedHue(h);
       const luma = calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
@@ -178,189 +183,19 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     [onSelectColor]
   );
 
-  // Triangle vertex generator
-  const getTriangleVertices = useCallback((width: number, height: number): TriangleVertices => {
-    const padding = 6;
+  // Barycentric Triangle vertices for 234x234px canvas
+  const getTriangleVertices = useCallback((size: number): TriangleVertices => {
+    const pad = 12;
     return {
-      hueVertex: { x: width / 2, y: padding },                       // Top apex: Pure Hue (S=1, V=1)
-      whiteVertex: { x: padding, y: height - padding },             // Bottom-left: Pure White (S=0, V=1)
-      blackVertex: { x: width - padding, y: height - padding },     // Bottom-right: Pure Black (V=0)
+      hueVertex: { x: size / 2, y: pad },
+      whiteVertex: { x: pad, y: size - pad },
+      blackVertex: { x: size - pad, y: size - pad },
     };
   }, []);
 
-  // 1. Draw Classic Outer Hue Ring (with optional harmony chords)
+  // 1. Draw Artistic RYB Isoluminant Wheel (234x234px)
   useEffect(() => {
-    if (!isOpen || tab !== "classic") return;
-    const canvas = hueCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const size = canvas.width;
-    const center = size / 2;
-    const outerRadius = size / 2 - 2;
-    const innerRadius = outerRadius - 16;
-    const handleDist = (outerRadius + innerRadius) / 2;
-
-    ctx.clearRect(0, 0, size, size);
-
-    // Draw full 360° Hue Ring
-    for (let angle = 0; angle < 360; angle += 1) {
-      const startAngle = ((angle - 1) * Math.PI) / 180;
-      const endAngle = ((angle + 1) * Math.PI) / 180;
-      const [r, g, b] = hsvToRgb(angle, 1, 1);
-
-      ctx.beginPath();
-      ctx.arc(center, center, outerRadius, startAngle, endAngle);
-      ctx.arc(center, center, innerRadius, endAngle, startAngle, true);
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-      ctx.fill();
-    }
-
-    // Draw Harmony Chords on Classic Hue Ring
-    if (harmonyType !== "none") {
-      const chords = calculateHarmonyAngles(currentHue, harmonyType, "rgb");
-      const activeAngleRad = (currentHue * Math.PI) / 180;
-
-      ctx.save();
-      ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = "rgba(255,255,255,0.45)";
-      ctx.lineWidth = 1;
-
-      for (const chord of chords) {
-        const chordAngleRad = (chord.angleDeg * Math.PI) / 180;
-        ctx.beginPath();
-        ctx.moveTo(
-          center + Math.cos(activeAngleRad) * handleDist,
-          center + Math.sin(activeAngleRad) * handleDist
-        );
-        ctx.lineTo(
-          center + Math.cos(chordAngleRad) * handleDist,
-          center + Math.sin(chordAngleRad) * handleDist
-        );
-        ctx.stroke();
-
-        // Draw chord indicator blip
-        ctx.beginPath();
-        ctx.arc(
-          center + Math.cos(chordAngleRad) * handleDist,
-          center + Math.sin(chordAngleRad) * handleDist,
-          4,
-          0,
-          Math.PI * 2
-        );
-        ctx.fillStyle = "#ffffff";
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 1.5;
-        ctx.fill();
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    // Active Hue Handle
-    const handleAngle = (currentHue * Math.PI) / 180;
-    const handleX = center + Math.cos(handleAngle) * handleDist;
-    const handleY = center + Math.sin(handleAngle) * handleDist;
-
-    ctx.beginPath();
-    ctx.arc(handleX, handleY, 6, 0, Math.PI * 2);
-    ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 2;
-    ctx.fill();
-    ctx.stroke();
-  }, [isOpen, tab, currentHue, harmonyType]);
-
-  // 2. Draw Classic Inner Saturation-Value Surface (Barycentric Triangle or Square)
-  useEffect(() => {
-    if (!isOpen || tab !== "classic") return;
-    const canvas = innerCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
-    ctx.clearRect(0, 0, width, height);
-
-    if (innerShape === "triangle") {
-      const vertices = getTriangleVertices(width, height);
-      const imgData = ctx.createImageData(width, height);
-      const data32 = new Uint32Array(imgData.data.buffer);
-
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const [wH, wW, wB] = calculateBarycentricWeights({ x, y }, vertices);
-          if (wH >= 0 && wW >= 0 && wB >= 0) {
-            const v = Math.max(0, Math.min(1, wH + wW));
-            const s = v > 1e-6 ? Math.max(0, Math.min(1, wH / v)) : 0;
-            const [r, g, b] = hsvToRgb(currentHue, s, v);
-            data32[y * width + x] = (255 << 24) | (b << 16) | (g << 8) | r;
-          }
-        }
-      }
-      ctx.putImageData(imgData, 0, 0);
-
-      // Outline triangle boundary
-      ctx.beginPath();
-      ctx.moveTo(vertices.hueVertex.x, vertices.hueVertex.y);
-      ctx.lineTo(vertices.whiteVertex.x, vertices.whiteVertex.y);
-      ctx.lineTo(vertices.blackVertex.x, vertices.blackVertex.y);
-      ctx.closePath();
-      ctx.strokeStyle = "rgba(255,255,255,0.3)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Handle blip position via pure barycentric mapping
-      const handlePos = saturationValueToPoint(currentSaturation, currentValue, vertices);
-      ctx.beginPath();
-      ctx.arc(handlePos.x, handlePos.y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = activeColor;
-      ctx.strokeStyle = currentValue > 0.5 && currentSaturation < 0.6 ? "#000000" : "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.fill();
-      ctx.stroke();
-    } else {
-      // Square Procreate-style picker
-      const [pureR, pureG, pureB] = hsvToRgb(currentHue, 1, 1);
-      const horizGrad = ctx.createLinearGradient(0, 0, width, 0);
-      horizGrad.addColorStop(0, "#ffffff");
-      horizGrad.addColorStop(1, `rgb(${pureR},${pureG},${pureB})`);
-      ctx.fillStyle = horizGrad;
-      ctx.fillRect(0, 0, width, height);
-
-      const vertGrad = ctx.createLinearGradient(0, 0, 0, height);
-      vertGrad.addColorStop(0, "rgba(0,0,0,0)");
-      vertGrad.addColorStop(1, "#000000");
-      ctx.fillStyle = vertGrad;
-      ctx.fillRect(0, 0, width, height);
-
-      const handleX = currentSaturation * width;
-      const handleY = (1 - currentValue) * height;
-
-      ctx.beginPath();
-      ctx.arc(handleX, handleY, 6, 0, Math.PI * 2);
-      ctx.fillStyle = activeColor;
-      ctx.strokeStyle = currentValue > 0.5 && currentSaturation < 0.5 ? "#000000" : "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.fill();
-      ctx.stroke();
-    }
-  }, [
-    isOpen,
-    tab,
-    innerShape,
-    currentHue,
-    currentSaturation,
-    currentValue,
-    activeColor,
-    getTriangleVertices,
-  ]);
-
-  // 3. Draw Krita-Style Isoluminant HSY' Wheel (Guaranteed Constant Perceived Value)
-  useEffect(() => {
-    if (!isOpen || tab !== "artistic") return;
+    if (!isOpen || shapeMode !== "circle" || !isArtisticWheel) return;
     const canvas = artisticWheelCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -369,12 +204,11 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     const size = canvas.width;
     const center = size / 2;
     const outerRadius = size / 2 - 4;
-    const innerRadius = 14;
+    const innerRadius = 16;
 
     ctx.clearRect(0, 0, size, size);
 
     if (wheelConfig.isContinuous) {
-      // Continuous Smooth Isoluminant HSY' Gradient
       const imgData = ctx.createImageData(size, size);
       const data32 = new Uint32Array(imgData.data.buffer);
 
@@ -398,7 +232,6 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       }
       ctx.putImageData(imgData, 0, 0);
     } else {
-      // Discrete Swatch Sectors & Concentric Rings (Isoluminant HSY')
       const sectors = wheelConfig.hueSectors;
       const rings = wheelConfig.saturationRings;
       const sectorSpanRad = (Math.PI * 2) / sectors;
@@ -414,7 +247,6 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           const rInner = innerRadius + (r / rings) * (outerRadius - innerRadius);
           const rOuter = innerRadius + ((r + 1) / rings) * (outerRadius - innerRadius);
 
-          // Guaranteed identical perceived lightness across all hues & saturations!
           const [red, green, blue] = hsyToRgb(rgbHue, satRatio, artisticTargetLuma);
 
           ctx.beginPath();
@@ -423,38 +255,14 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           ctx.closePath();
           ctx.fillStyle = `rgb(${red},${green},${blue})`;
           ctx.fill();
-          ctx.strokeStyle = "rgba(0,0,0,0.2)";
+          ctx.strokeStyle = "rgba(0,0,0,0.25)";
           ctx.lineWidth = 0.5;
-          ctx.stroke();
-        }
-      }
-
-      // Discrete Active Cell Highlight
-      if (lastSat >= 0.15) {
-        const { sectorIndex } = quantizeRybHue(artisticRybAngle, sectors);
-        const { ringIndex } = quantizeSaturation(lastSat, rings);
-
-        if (ringIndex >= 0) {
-          const rInner = innerRadius + (ringIndex / rings) * (outerRadius - innerRadius);
-          const rOuter = innerRadius + ((ringIndex + 1) / rings) * (outerRadius - innerRadius);
-          const startAngle = sectorIndex * sectorSpanRad - Math.PI / 2;
-          const endAngle = (sectorIndex + 1) * sectorSpanRad - Math.PI / 2;
-
-          ctx.beginPath();
-          ctx.arc(center, center, rOuter, startAngle, endAngle);
-          ctx.arc(center, center, rInner, endAngle, startAngle, true);
-          ctx.closePath();
-          ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
-          ctx.strokeStyle = "#000000";
-          ctx.lineWidth = 1;
           ctx.stroke();
         }
       }
     }
 
-    // Center Neutral Gray Core (photometric luminance of target value)
+    // Center Neutral Gray Core
     const grayByte = Math.round(artisticTargetLuma * 255);
     ctx.beginPath();
     ctx.arc(center, center, innerRadius, 0, Math.PI * 2);
@@ -464,14 +272,14 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.lineWidth = lastSat < 0.15 ? 2.5 : 1;
     ctx.stroke();
 
-    // Harmonic Chord Overlay (on Artistic RYB Wheel)
+    // Harmonic Chord Overlay
     if (harmonyType !== "none") {
       const chords = calculateHarmonyAngles(artisticRybAngle, harmonyType, "ryb");
       const activeAngleRad = (artisticRybAngle * Math.PI) / 180 - Math.PI / 2;
 
       ctx.save();
       ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = "rgba(255,255,255,0.45)";
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
       ctx.lineWidth = 1;
 
       for (const chord of chords) {
@@ -487,7 +295,6 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         );
         ctx.stroke();
 
-        // Draw chord blip on perimeter
         ctx.beginPath();
         ctx.arc(
           center + Math.cos(chordAngleRad) * (outerRadius - 4),
@@ -505,24 +312,23 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       ctx.restore();
     }
 
-    // Active Selection Blip (in continuous mode)
-    if (wheelConfig.isContinuous) {
-      const blipAngleRad = (artisticRybAngle * Math.PI) / 180 - Math.PI / 2;
-      const blipDist = innerRadius + lastSat * (outerRadius - innerRadius);
-      const blipX = center + Math.cos(blipAngleRad) * blipDist;
-      const blipY = center + Math.sin(blipAngleRad) * blipDist;
+    // Active Selection Blip
+    const blipAngleRad = (artisticRybAngle * Math.PI) / 180 - Math.PI / 2;
+    const blipDist = innerRadius + lastSat * (outerRadius - innerRadius);
+    const blipX = center + Math.cos(blipAngleRad) * blipDist;
+    const blipY = center + Math.sin(blipAngleRad) * blipDist;
 
-      ctx.beginPath();
-      ctx.arc(blipX, blipY, 6, 0, Math.PI * 2);
-      ctx.fillStyle = activeColor;
-      ctx.strokeStyle = artisticTargetLuma > 0.6 ? "#000000" : "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.fill();
-      ctx.stroke();
-    }
+    ctx.beginPath();
+    ctx.arc(blipX, blipY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = activeColor;
+    ctx.strokeStyle = artisticTargetLuma > 0.6 ? "#000000" : "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
   }, [
     isOpen,
-    tab,
+    shapeMode,
+    isArtisticWheel,
     artisticRybAngle,
     lastSat,
     artisticTargetLuma,
@@ -531,57 +337,176 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     wheelConfig,
   ]);
 
-  // 4. Draw Mini Active Color Swatch directly onto canvas bitmap (extension-immune, hardware-accurate)
+  // 2. Draw Classic HSV Wheel (234x234px)
   useEffect(() => {
-    if (!isOpen) return;
-    const canvas = miniSwatchCanvasRef.current;
+    if (!isOpen || shapeMode !== "circle" || isArtisticWheel) return;
+    const canvas = classicWheelCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const safeColor = activeColor ? (activeColor.startsWith("#") ? activeColor : `#${activeColor}`) : "#ffffff";
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = safeColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, [isOpen, activeColor]);
 
-  // Robust Pointer Handlers with Pointer Capture
-  const handleHuePointer = (e: PointerEvent<HTMLCanvasElement>) => {
-    const canvas = hueCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left - canvas.width / 2;
-    const y = e.clientY - rect.top - canvas.height / 2;
+    const size = canvas.width;
+    const center = size / 2;
+    const outerRadius = size / 2 - 4;
+    const ringWidth = 24;
+    const innerRadius = outerRadius - ringWidth;
 
-    let angleDeg = (Math.atan2(y, x) * 180) / Math.PI;
-    if (angleDeg < 0) angleDeg += 360;
-    const roundedHue = Math.round(angleDeg);
+    ctx.clearRect(0, 0, size, size);
 
-    // If saturation is 0 (neutral gray or black), dragging the hue ring selects a vibrant color of this hue!
-    const effectiveSat = currentSaturation < 0.05 ? 1.0 : currentSaturation;
-    const effectiveVal = currentValue < 0.08 ? 1.0 : currentValue;
+    // Outer Hue Ring
+    for (let angle = 0; angle < 360; angle += 1) {
+      const startAngle = ((angle - 1) * Math.PI) / 180;
+      const endAngle = ((angle + 1) * Math.PI) / 180;
+      const [r, g, b] = hsvToRgb(angle, 1, 1);
 
-    commitHsv(roundedHue, effectiveSat, effectiveVal);
-  };
-
-  const handleInnerPointer = (e: PointerEvent<HTMLCanvasElement>) => {
-    const canvas = innerCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if (innerShape === "triangle") {
-      const vertices = getTriangleVertices(canvas.width, canvas.height);
-      const [s, v] = pointToSaturationValue({ x, y }, vertices);
-      commitHsv(currentHue, s, v);
-    } else {
-      const s = Math.max(0, Math.min(1, x / canvas.width));
-      const v = Math.max(0, Math.min(1, 1 - y / canvas.height));
-      commitHsv(currentHue, s, v);
+      ctx.beginPath();
+      ctx.arc(center, center, outerRadius, startAngle, endAngle);
+      ctx.arc(center, center, innerRadius, endAngle, startAngle, true);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fill();
     }
-  };
 
-  // Wheel interaction: computes color strictly at artisticTargetLuma WITHOUT modifying target luma!
+    // Inner Saturation Disc (Radial gradient white -> pure hue, shaded by value)
+    const [r, g, b] = hsvToRgb(currentHue, 1, currentValue);
+    const [wr, wg, wb] = hsvToRgb(0, 0, currentValue);
+    const discGrad = ctx.createRadialGradient(center, center, 0, center, center, innerRadius - 4);
+    discGrad.addColorStop(0, `rgb(${wr},${wg},${wb})`);
+    discGrad.addColorStop(1, `rgb(${r},${g},${b})`);
+
+    ctx.beginPath();
+    ctx.arc(center, center, innerRadius - 4, 0, Math.PI * 2);
+    ctx.fillStyle = discGrad;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Hue Blip on Ring
+    const hueAngleRad = (currentHue * Math.PI) / 180;
+    const ringMidDist = (outerRadius + innerRadius) / 2;
+    ctx.beginPath();
+    ctx.arc(
+      center + Math.cos(hueAngleRad) * ringMidDist,
+      center + Math.sin(hueAngleRad) * ringMidDist,
+      5,
+      0,
+      Math.PI * 2
+    );
+    ctx.fillStyle = activeColor;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // Saturation Blip inside Disc
+    const satDist = currentSaturation * (innerRadius - 4);
+    ctx.beginPath();
+    ctx.arc(
+      center + Math.cos(hueAngleRad) * satDist,
+      center + Math.sin(hueAngleRad) * satDist,
+      5,
+      0,
+      Math.PI * 2
+    );
+    ctx.fillStyle = activeColor;
+    ctx.strokeStyle = currentValue > 0.5 ? "#000000" : "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+  }, [isOpen, shapeMode, isArtisticWheel, currentHue, currentSaturation, currentValue, activeColor]);
+
+  // 3. Draw Classic Square (234x234px)
+  useEffect(() => {
+    if (!isOpen || shapeMode !== "square") return;
+    const canvas = squareCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Horizontal Gradient: White -> Pure Hue
+    const [pureR, pureG, pureB] = hsvToRgb(currentHue, 1, 1);
+    const horizGrad = ctx.createLinearGradient(0, 0, width, 0);
+    horizGrad.addColorStop(0, "#ffffff");
+    horizGrad.addColorStop(1, `rgb(${pureR},${pureG},${pureB})`);
+    ctx.fillStyle = horizGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Vertical Gradient: Transparent -> Pure Black
+    const vertGrad = ctx.createLinearGradient(0, 0, 0, height);
+    vertGrad.addColorStop(0, "rgba(0,0,0,0)");
+    vertGrad.addColorStop(1, "#000000");
+    ctx.fillStyle = vertGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Interactive Crosshair Handle
+    const handleX = currentSaturation * width;
+    const handleY = (1 - currentValue) * height;
+
+    ctx.beginPath();
+    ctx.arc(handleX, handleY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = activeColor;
+    ctx.strokeStyle = currentValue > 0.5 && currentSaturation < 0.5 ? "#000000" : "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+  }, [isOpen, shapeMode, currentHue, currentSaturation, currentValue, activeColor]);
+
+  // 4. Draw Classic Barycentric Triangle (234x234px)
+  useEffect(() => {
+    if (!isOpen || shapeMode !== "triangle") return;
+    const canvas = triangleCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const size = canvas.width;
+    ctx.clearRect(0, 0, size, size);
+
+    const vertices = getTriangleVertices(size);
+    const imgData = ctx.createImageData(size, size);
+    const data32 = new Uint32Array(imgData.data.buffer);
+    const [pureR, pureG, pureB] = hsvToRgb(currentHue, 1, 1);
+
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        const [w0, w1, w2] = calculateBarycentricWeights({ x: px, y: py }, vertices);
+        if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+          const r = Math.round(w0 * pureR + w1 * 255 + w2 * 0);
+          const g = Math.round(w0 * pureG + w1 * 255 + w2 * 0);
+          const b = Math.round(w0 * pureB + w1 * 255 + w2 * 0);
+          data32[py * size + px] = (255 << 24) | (b << 16) | (g << 8) | r;
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Outline Triangle Boundary
+    ctx.beginPath();
+    ctx.moveTo(vertices.hueVertex.x, vertices.hueVertex.y);
+    ctx.lineTo(vertices.whiteVertex.x, vertices.whiteVertex.y);
+    ctx.lineTo(vertices.blackVertex.x, vertices.blackVertex.y);
+    ctx.closePath();
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Handle blip position via barycentric mapping
+    const handlePos = saturationValueToPoint(currentSaturation, currentValue, vertices);
+    ctx.beginPath();
+    ctx.arc(handlePos.x, handlePos.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = activeColor;
+    ctx.strokeStyle = currentValue > 0.5 && currentSaturation < 0.6 ? "#000000" : "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+  }, [isOpen, shapeMode, currentHue, currentSaturation, currentValue, activeColor, getTriangleVertices]);
+
+  // Pointer Handlers for 234x234px Canvas Surfaces
   const handleArtisticWheelPointer = (e: PointerEvent<HTMLCanvasElement>) => {
     const canvas = artisticWheelCanvasRef.current;
     if (!canvas) return;
@@ -592,11 +517,10 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     let angleDeg = (Math.atan2(y, x) * 180) / Math.PI + 90;
     if (angleDeg < 0) angleDeg += 360;
 
-    const maxRadius = canvas.width / 2 - 4;
+    const outerRadius = canvas.width / 2 - 4;
     const dist = Math.hypot(x, y);
-    const satRatio = Math.max(0, Math.min(1, dist / maxRadius));
+    const satRatio = Math.max(0.0, Math.min(1.0, dist / outerRadius));
 
-    // If starting from near-black, bump target luma so picking a color on the wheel produces visible color
     const effectiveLuma = artisticTargetLuma < 0.08 ? 0.5 : artisticTargetLuma;
     if (artisticTargetLuma < 0.08) {
       setArtisticTargetLuma(0.5);
@@ -626,432 +550,619 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     }
   };
 
-  // Value Ladder interaction: sets a new target perceived luma and updates color
-  const handleArtisticValueStepSelect = (targetVal: number) => {
-    const clampedVal = Math.max(0.0, Math.min(1.0, targetVal));
-    setArtisticTargetLuma(clampedVal);
+  const handleClassicWheelPointer = (e: PointerEvent<HTMLCanvasElement>) => {
+    const canvas = classicWheelCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left - canvas.width / 2;
+    const y = e.clientY - rect.top - canvas.height / 2;
 
+    let angleDeg = (Math.atan2(y, x) * 180) / Math.PI;
+    if (angleDeg < 0) angleDeg += 360;
+
+    const outerRadius = canvas.width / 2 - 4;
+    const ringWidth = 24;
+    const innerRadius = outerRadius - ringWidth;
+    const dist = Math.hypot(x, y);
+
+    if (dist >= innerRadius) {
+      // Dragging Hue Ring
+      const roundedHue = Math.round(angleDeg);
+      const effectiveSat = currentSaturation < 0.05 ? 1.0 : currentSaturation;
+      const effectiveVal = currentValue < 0.08 ? 1.0 : currentValue;
+      commitHsv(roundedHue, effectiveSat, effectiveVal);
+    } else {
+      // Dragging Inner Saturation Disc
+      const satRatio = Math.max(0, Math.min(1, dist / (innerRadius - 4)));
+      commitHsv(currentHue, satRatio, currentValue);
+    }
+  };
+
+  const handleSquarePointer = (e: PointerEvent<HTMLCanvasElement>) => {
+    const canvas = squareCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(canvas.width, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(canvas.height, e.clientY - rect.top));
+
+    const s = Math.max(0, Math.min(1, x / canvas.width));
+    const v = Math.max(0, Math.min(1, 1 - y / canvas.height));
+    commitHsv(currentHue, s, v);
+  };
+
+  const handleTrianglePointer = (e: PointerEvent<HTMLCanvasElement>) => {
+    const canvas = triangleCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const vertices = getTriangleVertices(canvas.width);
+    const [s, v] = pointToSaturationValue({ x, y }, vertices);
+    commitHsv(currentHue, s, v);
+  };
+
+  // Slider pointer interactions
+  const handleHueSliderPointer = (e: PointerEvent<HTMLDivElement>) => {
+    const container = hueSliderRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const hue = Math.round((x / rect.width) * 360) % 360;
+    const effectiveSat = currentSaturation < 0.05 ? 1.0 : currentSaturation;
+    const effectiveVal = currentValue < 0.08 ? 1.0 : currentValue;
+    commitHsv(hue, effectiveSat, effectiveVal);
+  };
+
+  const handleValueSliderPointer = (e: PointerEvent<HTMLDivElement>) => {
+    const container = valueSliderRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const v = Math.max(0, Math.min(1, x / rect.width));
+    commitHsv(currentHue, currentSaturation, v);
+  };
+
+  const handleSatSliderPointer = (e: PointerEvent<HTMLDivElement>) => {
+    const container = satSliderRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const s = Math.max(0, Math.min(1, x / rect.width));
+    commitHsv(currentHue, s, currentValue);
+  };
+
+  const handleArtisticLadderPointer = (e: PointerEvent<HTMLDivElement>) => {
+    const container = artisticLadderRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const valNormalized = Math.max(0, Math.min(1, x / rect.width));
+
+    let targetVal = valNormalized;
+    if (!wheelConfig.isContinuous) {
+      const { quantizedValue } = quantizeValue(valNormalized, wheelConfig.valueSteps);
+      targetVal = quantizedValue;
+    }
+
+    setArtisticTargetLuma(targetVal);
     if (lastSat < 0.08) {
-      const grayByte = Math.round(clampedVal * 255);
+      const grayByte = Math.round(targetVal * 255);
       onSelectColor(rgbToHex(grayByte, grayByte, grayByte));
     } else {
       const rgbHue = rybHueToRgbHue(artisticRybAngle);
-      const [r, g, b] = hsyToRgb(rgbHue, lastSat, clampedVal);
+      const [r, g, b] = hsyToRgb(rgbHue, lastSat, targetVal);
       onSelectColor(rgbToHex(r, g, b));
     }
-  };
-
-  const handleValueLadderPointer = (e: PointerEvent<HTMLDivElement>) => {
-    const container = valueLadderRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const relativeY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
-    // Top is White (1.0), bottom is Black (0.0)
-    const valNormalized = 1.0 - relativeY / rect.height;
-
-    if (wheelConfig.isContinuous) {
-      handleArtisticValueStepSelect(valNormalized);
-    } else {
-      const { quantizedValue } = quantizeValue(valNormalized, wheelConfig.valueSteps);
-      handleArtisticValueStepSelect(quantizedValue);
-    }
-  };
-
-  const handleSwitchTab = (newTab: PickerTab) => {
-    if (newTab === "artistic") {
-      const rgb = hexToRgb(activeColor) || [30, 30, 30];
-      const [h, s] = rgbToHsv(rgb[0], rgb[1], rgb[2]);
-      const luma = calculatePerceptualLuma(rgb[0], rgb[1], rgb[2]);
-      setArtisticTargetLuma(luma);
-      setLastSat(s);
-      if (s > 0.02) {
-        setLastRybAngle(rgbHueToRybHue(h));
-      }
-    }
-    setTab(newTab);
   };
 
   if (!isOpen) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-label="Color Picker"
-      className="fixed right-4 top-16 z-40 w-94 p-4 rounded-2xl bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 shadow-2xl select-none animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-3"
-    >
-      {/* Header & Mode Switcher */}
-      <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-        <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800">
+    <AnimatePresence>
+      <motion.div
+        role="dialog"
+        aria-label="Color Picker"
+        initial={{ opacity: 0, scale: 0.95, y: -6 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: -6 }}
+        transition={{ type: "spring", duration: 0.2, bounce: 0.05 }}
+        className="fixed right-4 top-16 z-50 w-[320px] h-[520px] rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
+      >
+        {/* Layer 1: Top Bar (h: 46px) */}
+        <div className="h-[46px] px-4.5 flex items-center justify-between shrink-0">
+          <span className="text-xs font-medium text-zinc-400 tracking-wide">
+            {shapeMode === "circle"
+              ? isArtisticWheel
+                ? "Artistic Wheel (RYB)"
+                : "Classic Wheel (HSV)"
+              : shapeMode === "square"
+              ? "Classic Matrix (HSV)"
+              : "Barycentric Triangle (HSV)"}
+          </span>
           <button
             type="button"
-            onClick={() => handleSwitchTab("artistic")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
-              tab === "artistic" ? "bg-zinc-800 text-white shadow-xs" : "text-zinc-400 hover:text-zinc-200"
-            }`}
+            onClick={onClose}
+            aria-label="Close color picker"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Artistic (Krita RYB)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSwitchTab("classic")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
-              tab === "classic" ? "bg-zinc-800 text-white shadow-xs" : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5 text-sky-400" />
-            Classic (HSV)
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close color picker"
-          className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Harmony Selector (Available in BOTH Classic and Artistic modes) */}
-      <div className="flex items-center justify-between px-2 py-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs">
-        <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
-          <Palette className="w-3.5 h-3.5 text-amber-400" />
-          <span>Harmony:</span>
-        </div>
-        <select
-          value={harmonyType}
-          onChange={(e) => setHarmonyType(e.target.value as HarmonyType)}
-          aria-label="Color Harmony Scheme"
-          className="bg-zinc-800 text-zinc-200 text-[11px] px-2 py-0.5 rounded-md border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
-        >
-          {HARMONY_OPTIONS.map((opt) => (
-            <option key={opt.id} value={opt.id}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Krita Discrete Settings Drawer (in Artistic Mode) */}
-      {tab === "artistic" && (
-        <div className="flex flex-col gap-2 p-2 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
-          <div className="flex items-center justify-between">
+        {/* Layer 2: Mode & Contextual Switcher Bar (h: 49px) */}
+        <div className="h-[49px] px-4.5 flex items-center justify-between border-t border-white/5 shrink-0">
+          {/* Left Shape Selector Group */}
+          <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => setShowConfigDrawer((prev) => !prev)}
-              className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-300 hover:text-white"
+              onClick={() => setShapeMode("circle")}
+              title="Circle Wheel Mode"
+              className="w-[22px] h-[22px] flex items-center justify-center transition-colors cursor-pointer"
             >
-              <Settings2 className="w-3.5 h-3.5 text-amber-400" />
-              <span>
-                {wheelConfig.isContinuous
-                  ? "Mode: Continuous (∞)"
-                  : `Discrete: ${wheelConfig.hueSectors} Hues • ${wheelConfig.saturationRings} Rings • ${wheelConfig.valueSteps} Values`}
-              </span>
-              {showConfigDrawer ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              <Circle
+                className={`w-4 h-4 transition-colors ${
+                  shapeMode === "circle" ? "stroke-white" : "stroke-[#3F3F46] hover:stroke-zinc-300"
+                }`}
+              />
             </button>
-
             <button
               type="button"
-              onClick={() =>
-                setWheelConfig((prev) => ({ ...prev, isContinuous: !prev.isContinuous }))
-              }
-              title={wheelConfig.isContinuous ? "Switch to Discrete Swatches" : "Switch to Continuous Gradient"}
-              className={`p-1 rounded-md border text-[10px] flex items-center gap-1 transition-colors ${
-                wheelConfig.isContinuous
-                  ? "bg-amber-400/20 text-amber-300 border-amber-400/40"
-                  : "bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white"
-              }`}
+              onClick={() => setShapeMode("square")}
+              title="Square HSV Matrix Mode"
+              className="w-[22px] h-[22px] flex items-center justify-center transition-colors cursor-pointer"
             >
-              <InfinityIcon className="w-3 h-3" />
-              <span>{wheelConfig.isContinuous ? "Continuous" : "Discrete"}</span>
+              <Square
+                className={`w-4 h-4 transition-colors ${
+                  shapeMode === "square" ? "stroke-white" : "stroke-[#3F3F46] hover:stroke-zinc-300"
+                }`}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShapeMode("triangle")}
+              title="Triangle Barycentric Mode"
+              className="w-[22px] h-[22px] flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <Triangle
+                className={`w-4 h-4 transition-colors ${
+                  shapeMode === "triangle" ? "stroke-white" : "stroke-[#3F3F46] hover:stroke-zinc-300"
+                }`}
+              />
             </button>
           </div>
 
-          {showConfigDrawer && !wheelConfig.isContinuous && (
-            <div className="flex flex-col gap-2 pt-2 border-t border-zinc-800/80 animate-in fade-in duration-100">
-              {/* Hue Sectors Slider */}
-              <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                <span>Hue Sectors (Steps):</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="6"
-                    max="36"
-                    step="2"
-                    value={wheelConfig.hueSectors}
-                    onChange={(e) =>
-                      setWheelConfig((prev) => ({ ...prev, hueSectors: Number(e.target.value) }))
-                    }
-                    className="w-24 h-1.5 bg-zinc-700 rounded-lg accent-amber-400 cursor-pointer"
-                  />
-                  <span className="font-mono text-zinc-200 w-5 text-right">{wheelConfig.hueSectors}</span>
-                </div>
-              </div>
-
-              {/* Saturation Rings Slider */}
-              <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                <span>Saturation Rings:</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="2"
-                    max="10"
-                    step="1"
-                    value={wheelConfig.saturationRings}
-                    onChange={(e) =>
-                      setWheelConfig((prev) => ({ ...prev, saturationRings: Number(e.target.value) }))
-                    }
-                    className="w-24 h-1.5 bg-zinc-700 rounded-lg accent-amber-400 cursor-pointer"
-                  />
-                  <span className="font-mono text-zinc-200 w-5 text-right">{wheelConfig.saturationRings}</span>
-                </div>
-              </div>
-
-              {/* Value Steps Slider */}
-              <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                <span>Value / Tone Steps:</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="4"
-                    max="20"
-                    step="1"
-                    value={wheelConfig.valueSteps}
-                    onChange={(e) =>
-                      setWheelConfig((prev) => ({ ...prev, valueSteps: Number(e.target.value) }))
-                    }
-                    className="w-24 h-1.5 bg-zinc-700 rounded-lg accent-amber-400 cursor-pointer"
-                  />
-                  <span className="font-mono text-zinc-200 w-5 text-right">{wheelConfig.valueSteps}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Main Interactive Surface */}
-      <div className="flex justify-center items-center py-1">
-        {tab === "artistic" ? (
-          /* Krita Isoluminant RYB Wheel + Companion Vertical Value Bar */
-          <div className="flex items-center gap-4 w-full justify-center">
-            {/* RYB Wheel Canvas with Pointer Capture */}
-            <div className="relative w-54 h-54 flex items-center justify-center">
-              <canvas
-                ref={artisticWheelCanvasRef}
-                width={216}
-                height={216}
-                onPointerDown={(e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setIsDraggingArtisticWheel(true);
-                  handleArtisticWheelPointer(e);
-                }}
-                onPointerMove={(e) => {
-                  if (isDraggingArtisticWheel) {
-                    handleArtisticWheelPointer(e);
-                  }
-                }}
-                onPointerUp={(e) => {
-                  setIsDraggingArtisticWheel(false);
-                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                  }
-                }}
-                onPointerCancel={(e) => {
-                  setIsDraggingArtisticWheel(false);
-                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                  }
-                }}
-                className="w-full h-full cursor-crosshair rounded-full touch-none shadow-xl select-none"
-              />
-            </div>
-
-            {/* Companion Vertical Value Bar: Pure CSS Linear Gradient (White at Top, Black at Bottom) */}
-            <div className="flex flex-col items-center gap-1.5 h-54 justify-center">
-              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest">
-                Val
-              </span>
-
-              <div
-                ref={valueLadderRef}
-                onPointerDown={(e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setIsDraggingValueLadder(true);
-                  handleValueLadderPointer(e);
-                }}
-                onPointerMove={(e) => {
-                  if (isDraggingValueLadder) {
-                    handleValueLadderPointer(e);
-                  }
-                }}
-                onPointerUp={(e) => {
-                  setIsDraggingValueLadder(false);
-                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                  }
-                }}
-                onPointerCancel={(e) => {
-                  setIsDraggingValueLadder(false);
-                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                  }
-                }}
-                className="relative h-44 w-6 rounded-md border border-zinc-700 cursor-pointer touch-none overflow-hidden shadow-sm"
-                style={{
-                  background: "linear-gradient(to bottom, #ffffff 0%, #000000 100%)",
-                }}
+          {/* Right Contextual Switcher Button (Visible ONLY in Circle Mode) */}
+          <AnimatePresence>
+            {shapeMode === "circle" && (
+              <motion.button
+                key="circle-mode-toggle"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                type="button"
+                onClick={() => setIsArtisticWheel((prev) => !prev)}
+                title={isArtisticWheel ? "Switch to Classic HSV Wheel" : "Switch to Artistic RYB Wheel"}
+                className="w-[22px] h-[22px] flex items-center justify-center cursor-pointer transition-colors"
               >
-                {/* Discrete Step Notches in Discrete Mode */}
-                {!wheelConfig.isContinuous && (
-                  <div className="absolute inset-y-0 right-0 w-2 flex flex-col justify-between pointer-events-none py-1">
-                    {generateDiscreteValueSteps(wheelConfig.valueSteps).map((_, idx) => (
-                      <div key={idx} className="w-1.5 h-0.5 bg-zinc-500 rounded-full ml-auto" />
+                <SwatchBook
+                  className={`w-4.5 h-4.5 transition-colors ${
+                    isArtisticWheel
+                      ? "stroke-white fill-white/20"
+                      : "stroke-[#3F3F46] hover:stroke-zinc-200"
+                  }`}
+                />
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Layer 3: Center Stage (h: 354px) */}
+        <div className="h-[354px] flex flex-col justify-between items-center py-3.5 px-4 overflow-hidden">
+          {/* Surface Container (234x234px) */}
+          <div className="relative w-[234px] h-[234px] flex items-center justify-center">
+            {shapeMode === "circle" ? (
+              isArtisticWheel ? (
+                /* Artistic Isoluminant RYB Wheel */
+                <canvas
+                  ref={artisticWheelCanvasRef}
+                  width={234}
+                  height={234}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setIsDraggingCanvas(true);
+                    handleArtisticWheelPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDraggingCanvas) handleArtisticWheelPointer(e);
+                  }}
+                  onPointerUp={(e) => {
+                    setIsDraggingCanvas(false);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsDraggingCanvas(false);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  className="w-full h-full cursor-crosshair rounded-full touch-none select-none"
+                />
+              ) : (
+                /* Classic HSV Wheel */
+                <canvas
+                  ref={classicWheelCanvasRef}
+                  width={234}
+                  height={234}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setIsDraggingCanvas(true);
+                    handleClassicWheelPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDraggingCanvas) handleClassicWheelPointer(e);
+                  }}
+                  onPointerUp={(e) => {
+                    setIsDraggingCanvas(false);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsDraggingCanvas(false);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  className="w-full h-full cursor-crosshair rounded-full touch-none select-none"
+                />
+              )
+            ) : shapeMode === "square" ? (
+              /* Classic HSV Saturation-Value Matrix */
+              <canvas
+                ref={squareCanvasRef}
+                width={234}
+                height={234}
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setIsDraggingCanvas(true);
+                  handleSquarePointer(e);
+                }}
+                onPointerMove={(e) => {
+                  if (isDraggingCanvas) handleSquarePointer(e);
+                }}
+                onPointerUp={(e) => {
+                  setIsDraggingCanvas(false);
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+                onPointerCancel={(e) => {
+                  setIsDraggingCanvas(false);
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+                className="w-full h-full cursor-crosshair rounded-xl touch-none shadow-md select-none border border-white/5"
+              />
+            ) : (
+              /* Classic Barycentric Triangle */
+              <canvas
+                ref={triangleCanvasRef}
+                width={234}
+                height={234}
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setIsDraggingCanvas(true);
+                  handleTrianglePointer(e);
+                }}
+                onPointerMove={(e) => {
+                  if (isDraggingCanvas) handleTrianglePointer(e);
+                }}
+                onPointerUp={(e) => {
+                  setIsDraggingCanvas(false);
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+                onPointerCancel={(e) => {
+                  setIsDraggingCanvas(false);
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  }
+                }}
+                className="w-full h-full cursor-crosshair rounded-xl touch-none select-none border border-white/5"
+              />
+            )}
+          </div>
+
+          {/* Contextual Sliders & Controls Band (h: 74px, w: 288px) */}
+          <div className="w-[288px] h-[74px] rounded-xl bg-[#252527]/50 border border-white/5 px-3 py-2 flex flex-col justify-center gap-1.5 shrink-0">
+            {shapeMode === "circle" && isArtisticWheel ? (
+              /* Artistic Controls: Tone Ladder + Harmony Pills */
+              <>
+                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                  <span>Tone Value</span>
+                  <span>{Math.round(artisticTargetLuma * 100)}%</span>
+                </div>
+                {/* Horizontal Value Ladder (0% Black -> 100% White) */}
+                <div
+                  ref={artisticLadderRef}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setIsDraggingSlider("ladder");
+                    handleArtisticLadderPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDraggingSlider === "ladder") handleArtisticLadderPointer(e);
+                  }}
+                  onPointerUp={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  className="relative w-full h-3 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                  style={{
+                    background: "linear-gradient(to right, #000000 0%, #ffffff 100%)",
+                  }}
+                >
+                  {/* Discrete notches */}
+                  {!wheelConfig.isContinuous && (
+                    <div className="absolute inset-x-1 inset-y-0 flex justify-between pointer-events-none items-center">
+                      {generateDiscreteValueSteps(wheelConfig.valueSteps).map((_, idx) => (
+                        <div key={idx} className="w-0.5 h-1.5 bg-zinc-600 rounded-full" />
+                      ))}
+                    </div>
+                  )}
+                  {/* Active Handle Blip */}
+                  <div
+                    className="absolute top-1/2 w-4 h-4 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ left: `${Math.max(0, Math.min(100, artisticTargetLuma * 100))}%` }}
+                  />
+                </div>
+
+                {/* Sub-row: Harmony and Continuous Toggles */}
+                <div className="flex items-center justify-between pt-0.5">
+                  <div className="flex items-center gap-1">
+                    {HARMONY_OPTIONS.slice(0, 4).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setHarmonyType(opt.id)}
+                        className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors ${
+                          harmonyType === opt.id
+                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                            : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
                     ))}
                   </div>
-                )}
 
-                {/* Active Value Indicator Line with Glow */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setWheelConfig((prev) => ({ ...prev, isContinuous: !prev.isContinuous }))
+                    }
+                    title={wheelConfig.isContinuous ? "Switch to Discrete Steps" : "Switch to Continuous Wheel"}
+                    className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
+                      wheelConfig.isContinuous
+                        ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                        : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                    }`}
+                  >
+                    <InfinityIcon className="w-2.5 h-2.5" />
+                    <span>{wheelConfig.isContinuous ? "Continuous" : "Discrete"}</span>
+                  </button>
+                </div>
+              </>
+            ) : shapeMode === "square" || shapeMode === "triangle" ? (
+              /* Square & Triangle Controls: Rainbow Hue Slider + Value Slider */
+              <>
+                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                  <span>Hue Spectrum</span>
+                  <span>{currentHue}°</span>
+                </div>
+                {/* Rainbow Hue Track */}
                 <div
-                  className="absolute left-0 right-0 h-1.5 bg-amber-400 border border-black shadow-[0_0_8px_rgba(251,191,36,0.8)] -translate-y-1/2 rounded-full pointer-events-none z-10"
-                  style={{ top: `${(1.0 - artisticTargetLuma) * 100}%` }}
-                />
-              </div>
+                  ref={hueSliderRef}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setIsDraggingSlider("hue");
+                    handleHueSliderPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDraggingSlider === "hue") handleHueSliderPointer(e);
+                  }}
+                  onPointerUp={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  className="relative w-full h-3 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                  style={{
+                    background:
+                      "linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)",
+                  }}
+                >
+                  <div
+                    className="absolute top-1/2 w-4 h-4 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ left: `${(currentHue / 360) * 100}%` }}
+                  />
+                </div>
 
-              <span className="text-[10px] font-mono text-zinc-400">
-                {Math.round(artisticTargetLuma * 100)}%
-              </span>
-            </div>
+                {/* Brightness / Value Slider */}
+                <div
+                  ref={valueSliderRef}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setIsDraggingSlider("val");
+                    handleValueSliderPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDraggingSlider === "val") handleValueSliderPointer(e);
+                  }}
+                  onPointerUp={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  className="relative w-full h-3 rounded-full cursor-pointer touch-none shadow-inner border border-white/10 mt-0.5"
+                  style={{
+                    background: `linear-gradient(to right, #000000 0%, hsl(${currentHue}, 100%, 50%) 100%)`,
+                  }}
+                >
+                  <div
+                    className="absolute top-1/2 w-4 h-4 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ left: `${currentValue * 100}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              /* Classic Circle Mode: Value + Saturation Sliders */
+              <>
+                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                  <span>Brightness / Saturation</span>
+                  <span>{Math.round(currentValue * 100)}%</span>
+                </div>
+                <div
+                  ref={valueSliderRef}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setIsDraggingSlider("val");
+                    handleValueSliderPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDraggingSlider === "val") handleValueSliderPointer(e);
+                  }}
+                  onPointerUp={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  className="relative w-full h-3 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                  style={{
+                    background: `linear-gradient(to right, #000000 0%, hsl(${currentHue}, 100%, 50%) 100%)`,
+                  }}
+                >
+                  <div
+                    className="absolute top-1/2 w-4 h-4 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ left: `${currentValue * 100}%` }}
+                  />
+                </div>
+
+                <div
+                  ref={satSliderRef}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setIsDraggingSlider("sat");
+                    handleSatSliderPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDraggingSlider === "sat") handleSatSliderPointer(e);
+                  }}
+                  onPointerUp={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  onPointerCancel={(e) => {
+                    setIsDraggingSlider(null);
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  }}
+                  className="relative w-full h-3 rounded-full cursor-pointer touch-none shadow-inner border border-white/10 mt-0.5"
+                  style={{
+                    background: `linear-gradient(to right, #ffffff 0%, hsl(${currentHue}, 100%, 50%) 100%)`,
+                  }}
+                >
+                  <div
+                    className="absolute top-1/2 w-4 h-4 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ left: `${currentSaturation * 100}%` }}
+                  />
+                </div>
+              </>
+            )}
           </div>
-        ) : (
-          /* Classic HSV Ring with Inner Triangle/Square (with Pointer Capture) */
-          <div className="relative w-52 h-52 flex items-center justify-center">
-            {/* Outer Hue Ring Canvas */}
-            <canvas
-              ref={hueCanvasRef}
-              width={208}
-              height={208}
-              onPointerDown={(e) => {
-                e.currentTarget.setPointerCapture(e.pointerId);
-                setIsDraggingHue(true);
-                handleHuePointer(e);
-              }}
-              onPointerMove={(e) => {
-                if (isDraggingHue) {
-                  handleHuePointer(e);
-                }
-              }}
-              onPointerUp={(e) => {
-                setIsDraggingHue(false);
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                  e.currentTarget.releasePointerCapture(e.pointerId);
-                }
-              }}
-              onPointerCancel={(e) => {
-                setIsDraggingHue(false);
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                  e.currentTarget.releasePointerCapture(e.pointerId);
-                }
-              }}
-              className="absolute inset-0 cursor-crosshair rounded-full touch-none select-none"
+        </div>
+
+        {/* Layer 4: Bottom Swatch & Hex Bar (h: 70px) */}
+        <div className="h-[70px] px-4.5 flex items-center justify-between border-t border-white/5 shrink-0">
+          {/* Color Preview Swatch (41x41px, rounded-[7.1px]) */}
+          <div className="flex items-center gap-2">
+            <div
+              title={`Active Color: ${activeColor}`}
+              className="w-[41px] h-[41px] rounded-[7.1px] shadow-inner border border-white/10 flex items-center justify-center shrink-0 transition-all duration-75"
+              style={{ backgroundColor: activeColor }}
             />
-
-            {/* Inner Saturation-Value Surface */}
-            <div className="w-28 h-28 relative">
-              <canvas
-                ref={innerCanvasRef}
-                width={112}
-                height={112}
-                onPointerDown={(e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setIsDraggingInner(true);
-                  handleInnerPointer(e);
-                }}
-                onPointerMove={(e) => {
-                  if (isDraggingInner) {
-                    handleInnerPointer(e);
-                  }
-                }}
-                onPointerUp={(e) => {
-                  setIsDraggingInner(false);
-                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                  }
-                }}
-                onPointerCancel={(e) => {
-                  setIsDraggingInner(false);
-                  if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                  }
-                }}
-                className="w-full h-full rounded-md cursor-crosshair touch-none shadow-md select-none"
-              />
-
+            {initialColor.toUpperCase() !== activeColor.toUpperCase() && (
               <button
                 type="button"
-                onClick={() => setInnerShape((prev) => (prev === "square" ? "triangle" : "square"))}
-                title={`Switch to ${innerShape === "square" ? "Triangle" : "Square"} color mode`}
-                className="absolute -top-6 right-0 p-1 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+                onClick={() => handleSelectExternalColor(initialColor)}
+                title={`Revert to previous color (${initialColor})`}
+                className="p-1 rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors"
               >
-                {innerShape === "square" ? <Triangle className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                <RotateCcw className="w-3.5 h-3.5" />
               </button>
-            </div>
+            )}
           </div>
-        )}
-      </div>
 
-
-
-      {/* Active Color Preview & Hex Input */}
-      <div className="flex items-center gap-3 pt-2 border-t border-zinc-800/80">
-        {/* Active Color Display Swatch with Revert Button */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div
-            title={`Active Color: ${activeColor}`}
-            className="w-10 h-8 rounded-lg overflow-hidden border border-zinc-700 shadow-inner bg-zinc-950 flex items-center justify-center shrink-0"
-          >
-            <canvas
-              ref={miniSwatchCanvasRef}
-              width={40}
-              height={32}
-              className="w-full h-full block"
+          {/* Hex Input Badge (95x38px, rounded-[4.8px]) */}
+          <div className="w-[95px] h-[38px] rounded-[4.8px] bg-[#252527]/50 border border-white/10 flex items-center px-2.5 focus-within:border-amber-400/80 transition-colors">
+            <span className="text-[14px] font-mono text-zinc-500 mr-1 select-none">#</span>
+            <input
+              type="text"
+              value={hexInput}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+                setHexInput(val);
+                if (val.length === 6 || val.length === 3) {
+                  handleSelectExternalColor("#" + val);
+                }
+              }}
+              onBlur={() => {
+                setHexInput(activeColor.replace(/^#/, "").toUpperCase());
+              }}
+              className="w-full bg-transparent text-[16px] text-zinc-100 font-mono font-medium tracking-wider focus:outline-none uppercase"
+              maxLength={6}
             />
           </div>
-          {initialColor.toUpperCase() !== activeColor.toUpperCase() && (
-            <button
-              type="button"
-              onClick={() => handleSelectExternalColor(initialColor)}
-              title={`Revert to previous color (${initialColor})`}
-              className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
-
-        {/* Hex Input */}
-        <div className="flex-1 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 focus-within:border-amber-400/80 transition-colors">
-          <span className="text-[11px] font-mono text-zinc-400">#</span>
-          <input
-            type="text"
-            value={hexInput}
-            onChange={(e) => {
-              const val = e.target.value.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
-              setHexInput(val);
-              if (val.length === 6 || val.length === 3) {
-                handleSelectExternalColor("#" + val);
-              }
-            }}
-            onBlur={() => {
-              setHexInput(activeColor.replace(/^#/, "").toUpperCase());
-            }}
-            className="w-full bg-transparent text-xs text-zinc-100 font-mono focus:outline-none"
-            maxLength={6}
-          />
-        </div>
-      </div>
-    </div>
+      </motion.div>
+    </AnimatePresence>
   );
 };
