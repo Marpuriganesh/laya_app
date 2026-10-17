@@ -30,7 +30,11 @@ export function nodeToSvgPath(tag, attrs) {
   if (!attrs) return '';
 
   if (tag === 'path') {
-    return attrs.d || '';
+    let d = attrs.d || '';
+    if (d.startsWith('m')) {
+      d = 'M' + d.slice(1);
+    }
+    return d;
   }
 
   if (tag === 'line') {
