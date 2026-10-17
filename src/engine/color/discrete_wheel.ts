@@ -60,7 +60,8 @@ export function quantizeSaturation(
   // Map remaining range [centerThreshold..1.0] across rings
   const ringRatio = (clampedSat - centerThreshold) / (1 - centerThreshold);
   const ringIndex = Math.min(rings - 1, Math.max(0, Math.floor(ringRatio * rings)));
-  const quantizedSat = (ringIndex + 1) / rings;
+  // Use ring radial centroid (midpoint between inner and outer ring boundaries)
+  const quantizedSat = (ringIndex + 0.5) / rings;
 
   return { ringIndex, quantizedSat, isCenterGray: false };
 }

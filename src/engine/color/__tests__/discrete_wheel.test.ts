@@ -32,11 +32,18 @@ describe("Discrete Wheel Mathematics (Krita Artistic Color Selector)", () => {
       expect(res.ringIndex).toBe(-1);
     });
 
-    it("quantizes into discrete rings for values outside center core", () => {
+    it("quantizes into discrete rings for values outside center core with centroid value", () => {
       const res = quantizeSaturation(0.95, 4);
       expect(res.isCenterGray).toBe(false);
-      expect(res.ringIndex).toBe(3); // Outermost ring
-      expect(res.quantizedSat).toBe(1.0);
+      expect(res.ringIndex).toBe(3); // Outermost ring (index 3 of 4)
+      // Centroid of ring 3: (3 + 0.5) / 4 = 0.875
+      expect(res.quantizedSat).toBeCloseTo(0.875);
+
+      const resInner = quantizeSaturation(0.20, 4);
+      expect(resInner.isCenterGray).toBe(false);
+      expect(resInner.ringIndex).toBe(0); // Innermost ring (index 0 of 4)
+      // Centroid of ring 0: (0 + 0.5) / 4 = 0.125
+      expect(resInner.quantizedSat).toBeCloseTo(0.125);
     });
   });
 
