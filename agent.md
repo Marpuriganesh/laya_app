@@ -213,6 +213,16 @@ To guarantee that multiple agents can work in parallel without integration failu
   - Do not introduce alternative icon packages (e.g. Heroicons, FontAwesome, Material Icons) or inline raw SVG paths.
   - Consistent icon sizing and accessible labels: Always provide accessible `aria-label` or tooltip text for icon-only buttons.
 
+- **FigCraft Canvas Vector Icons (`lucide-figcraft` skill)**:
+  - When designing or creating mockups/components in FigCraft, use the **`lucide-figcraft`** skill (`.agents/skills/lucide-figcraft/SKILL.md`).
+  - **Zero-Dependency CLI Tool**: `scripts/figcraft-lucide.mjs` allows querying, converting, and inspecting any of the 1,600+ icons:
+    - Search: `node scripts/figcraft-lucide.mjs list <filter>`
+    - Payload/Path: `node scripts/figcraft-lucide.mjs get <icon-name>`
+    - Rebuild/Sync: `node scripts/figcraft-lucide.mjs build`
+  - **Asset Bundle**: Pre-built vector definitions are stored at `src/figcraft/assets/lucide-vectors.js` (`export const LucideVectors = ...`) and `src/figcraft/assets/lucide-paths.json`.
+  - **MCP Tool Usage**: Call `create_node` on MCP server `figcraft` with `type: "vector"`, `path: <svgPath>`, `props: { fills: [], stroke: "#hex", strokeWeight: 2 }`.
+
+
 ---
 
 ## 5. Coding Standards & Implementation Patterns
