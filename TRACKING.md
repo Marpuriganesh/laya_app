@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **Step 1** | **Creative UI Shell & Canvas Setup** | **Completed** | Procreate minimalist interface + Photoshop document dialog |
 | **Step 2** | **Core Brush Engine & Krita/ABR Science** | **Next Up** | Multi-engine core (Pixel, Smudge, MyPaint WASM), smoothing & parsers |
-| **Step 3** | **Non-Destructive Layers & Tile History** | **Queued** | Composite stack, blend modes, OPFS persistence & undo/redo |
+| **Step 3** | **Non-Destructive Layers & Tile History** | **In Progress** | Layer stack contracts, store actions & floating UI panel completed; OPFS tile caching & history next |
 
 ---
 
@@ -48,15 +48,19 @@
 - [x] **Pure Color Space Conversions**
   - [`src/engine/color/color_conversions.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/color/color_conversions.ts) — `hsvToRgb`, `rgbToHsv`, `rgbToHex`, `hexToRgb`.
 - [x] **Automated Headless Test Suite (Vitest)**
-  - 65 unit tests across `harmonies.test.ts`, `hsy.test.ts`, `ryb.test.ts`, `soft_proofing.test.ts`, `color_conversions.test.ts`, `useDocumentStore.test.ts`, `barycentric_triangle.test.ts`, `discrete_wheel.test.ts`, and `canvas_transform.test.ts` passing in <140ms.
+  - 96 unit tests across `harmonies.test.ts`, `hsy.test.ts`, `ryb.test.ts`, `soft_proofing.test.ts`, `color_conversions.test.ts`, `useDocumentStore.test.ts`, `barycentric_triangle.test.ts`, `discrete_wheel.test.ts`, `gamut_mask.test.ts`, `canvas_transform.test.ts`, and `useDraggableWindow.test.ts` passing in <180ms.
 - [x] **Brush Library Popover**
-  - [`src/ui/components/BrushLibraryPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/BrushLibraryPopover.tsx) — Categories, presets list tagged by engine, and import buttons.
+  - [`src/ui/components/BrushLibraryPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/BrushLibraryPopover.tsx) — Categories, presets list tagged by engine, import buttons, wrapped in `<FloatingWindowPanel>` with dragging, snapping, and secondary monitor tear-off.
 - [x] **Procreate & Photoshop-Grade Canvas Viewport Navigation**
   - [`src/ui/components/CanvasViewport.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/CanvasViewport.tsx) — Zero-latency 1:1 hardware feel (removed CSS transition delay); Spacebar-drag pan navigation with grab/grabbing cursor; Middle-click drag pan; Backdrop drag pan; Non-passive native wheel/trackpad pan & exponential focal-point zoom; 2-finger multi-touch pinch-to-zoom and pan (with stroke cancel); Cmd/Ctrl + 0 / 1 / + / - shortcuts; double-click auto-fit.
   - [`src/engine/math/canvas_transform.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/engine/math/canvas_transform.ts) — Pure mathematical transformations for focal zoom, fit-to-screen, and two-finger pinch.
 - [x] **App Shell Assembly**
-  - [`src/App.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/App.tsx) — Integrated workspace shell.
-- [ ] **Color Picker UI/UX Redesign** (Queued: rethink visual hierarchy, compact floating layout, cleaner harmony controls without clutter).
+  - [`src/App.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/App.tsx) — Integrated workspace shell wiring TopNavBar, SidebarRail, CanvasViewport, ColorPickerPopover, LayersPopover, and BrushLibraryPopover.
+- [x] **Unified Floating Window & Physics-Based Snapping Framework**
+  - [`src/ui/hooks/useDraggableWindow.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/hooks/useDraggableWindow.ts) — Reusable headless window physics hook with strict navbar barrier protection ($\text{minY} = 0$, guaranteeing popovers never overlap the 56px navbar), soft magnetic drag resistance ($24\text{px}$ band with $0.4\times$ damping), smooth release-to-snap (`transition: translate 0.36s cubic-bezier(0.16, 1, 0.3, 1)`), double-click header reset to home dock, and Tier 1 multi-monitor resolution adaptation (`window.resize`).
+  - [`src/ui/components/FloatingWindowPanel.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/FloatingWindowPanel.tsx) — Standardized floating window shell with grab handles, accessibility labels, and Tier 2 multi-monitor tear-off portal (`ExternalLink` button opening a native secondary window with zero-latency live state via React `createPortal`).
+- [x] **Color Picker UI/UX Redesign & Rotatable Gamut Mask System**
+  - [`src/ui/components/ColorPickerPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/ColorPickerPopover.tsx) — Streamlined 5-layer hierarchy; sub-pixel anti-aliased barycentric triangle picker with signed distance edge clamping; James Gurney rotatable vector color gamut masks (Triad, Complementary, Square, Atmospheric Dominance) with degree badge indicator; Procreate-style single harmony cycle button; 100% persistent HSV sliders with dedicated quick-pick harmony swatch layer.
 - [ ] **Dedicated Color Palette Docker / Panel** (Queued: custom palettes, GIMP `.gpl` / Photoshop `.aco` palette import/export).
 
 ---
@@ -103,9 +107,13 @@
 
 ---
 
-### 🚀 Step 3: Non-Destructive Layers & Tile History (Future Phase)
-- [ ] Layer node hierarchy, grouping, and opacity tree (`src/types/layer.ts`).
-- [ ] Layer blending modes (Normal, Multiply, Screen, Overlay, etc.).
+### 🚀 Step 3: Non-Destructive Layers & Tile History
+- [x] **Layer Contracts & Composite Stack Architecture**
+  - [`src/types/layer.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/types/layer.ts) — Clean POD data structures for `LayerItem`, `LayerStack`, `LayerBlendMode` (`normal`, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`, `color-burn`), and `createDefaultLayerStack()`.
+- [x] **Layer Stack State & Immutable Store Actions**
+  - [`src/ui/hooks/useDocumentStore.ts`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/hooks/useDocumentStore.ts) — Reactive layer management (`addLayer`, `deleteLayer`, `duplicateLayer`, `toggleLayerVisibility`, `toggleLayerLock`, `setLayerOpacity`, `setLayerBlendMode`, `renameLayer`) with full Vitest unit test coverage.
+- [x] **Procreate-Style Floating Layers Panel**
+  - [`src/ui/components/LayersPopover.tsx`](file:///Users/ganeshmarpuri/development/sketch_app/src/ui/components/LayersPopover.tsx) — Draggable and snappable floating panel with thumbnail previews, inline double-click rename, opacity slider ($0\%-100\%$), blend mode selector, lock/visibility toggles, and secondary monitor tear-off.
 - [ ] Tile-based non-destructive undo/redo history.
 - [ ] Origin Private File System (OPFS) tile caching for multi-gigabyte document support.
 
@@ -118,4 +126,4 @@
   - **Isoluminant Desaturation**: Desaturating radially inward leads to the exact neutral gray of that same luminance.
   - **Dedicated Companion Value Slider**: Linear value scale beside the wheel.
   - **Harmonic Chords**: Interactive complementary and triadic indicators.
-  - *Future Enhancements*: James Gurney rotatable vector gamut masks (`.kgm` format).
+  - **James Gurney Vector Gamut Masks**: Rotatable polygons (Triad, Complementary, Square, Atmospheric Dominance) with barycentric radial boundary clamping, auto-color clamping, and live degree badge.
