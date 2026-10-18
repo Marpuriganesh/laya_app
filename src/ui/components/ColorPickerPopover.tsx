@@ -1511,15 +1511,14 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         <button
                           type="button"
                           onClick={() => setIsGamutDrawerOpen((prev) => !prev)}
-                          className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
+                          className={`px-1.5 py-0.5 text-[9px] font-mono rounded font-medium transition-colors flex items-center justify-center ${
                             isGamutDrawerOpen
                               ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
                               : "text-zinc-300 bg-zinc-800/60 hover:bg-zinc-700/60"
                           }`}
-                          title="Configure Gamut Mask Presets & Rotation"
+                          title={`Gamut Mask: ${gamutMaskType.replace("-", " ")} (${gamutMaskRotation}°) - Click to open sub-window`}
                         >
-                          <span className="capitalize">{gamutMaskType.replace("-", " ")}</span>
-                          <span className="text-[8px] text-amber-400/80 font-mono">({gamutMaskRotation}°)</span>
+                          <span>{gamutMaskRotation}°</span>
                         </button>
                       )}
                     </div>
