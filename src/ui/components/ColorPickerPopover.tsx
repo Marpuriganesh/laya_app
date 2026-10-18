@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Shapes,
   GripVertical,
+  Palette,
 } from "lucide-react";
 import {
   hsvToRgb,
@@ -121,6 +122,102 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
   const handleHeaderPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     isDraggingHeaderRef.current = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  // Draggable Gamut Mask sub-window position state
+  const [gamutWindowPos, setGamutWindowPos] = useState<{ x: number; y: number } | null>(null);
+  const isDraggingGamutRef = useRef(false);
+  const dragStartGamutRef = useRef({ pointerX: 0, pointerY: 0, startX: 0, startY: 0 });
+
+  const handleGamutHeaderPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (
+      (e.target as HTMLElement).closest("button") ||
+      (e.target as HTMLElement).closest("select") ||
+      (e.target as HTMLElement).closest("input")
+    )
+      return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isDraggingGamutRef.current = true;
+    const currentPos = gamutWindowPos ?? { x: popupPosition.x - 262, y: popupPosition.y + 40 };
+    dragStartGamutRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startX: currentPos.x,
+      startY: currentPos.y,
+    };
+  };
+
+  const handleGamutHeaderPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingGamutRef.current) return;
+    const dx = e.clientX - dragStartGamutRef.current.pointerX;
+    const dy = e.clientY - dragStartGamutRef.current.pointerY;
+    const newX = dragStartGamutRef.current.startX + dx;
+    const newY = dragStartGamutRef.current.startY + dy;
+
+    const minX = -(window.innerWidth - 270);
+    const maxX = 10;
+    const minY = -50;
+    const maxY = window.innerHeight - 100;
+
+    setGamutWindowPos({
+      x: Math.max(minX, Math.min(maxX, newX)),
+      y: Math.max(minY, Math.min(maxY, newY)),
+    });
+  };
+
+  const handleGamutHeaderPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    isDraggingGamutRef.current = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  // Draggable Grid Levels sub-window position state
+  const [gridWindowPos, setGridWindowPos] = useState<{ x: number; y: number } | null>(null);
+  const isDraggingGridRef = useRef(false);
+  const dragStartGridRef = useRef({ pointerX: 0, pointerY: 0, startX: 0, startY: 0 });
+
+  const handleGridHeaderPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (
+      (e.target as HTMLElement).closest("button") ||
+      (e.target as HTMLElement).closest("select") ||
+      (e.target as HTMLElement).closest("input")
+    )
+      return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isDraggingGridRef.current = true;
+    const currentPos = gridWindowPos ?? { x: popupPosition.x - 262, y: popupPosition.y + 60 };
+    dragStartGridRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startX: currentPos.x,
+      startY: currentPos.y,
+    };
+  };
+
+  const handleGridHeaderPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingGridRef.current) return;
+    const dx = e.clientX - dragStartGridRef.current.pointerX;
+    const dy = e.clientY - dragStartGridRef.current.pointerY;
+    const newX = dragStartGridRef.current.startX + dx;
+    const newY = dragStartGridRef.current.startY + dy;
+
+    const minX = -(window.innerWidth - 270);
+    const maxX = 10;
+    const minY = -50;
+    const maxY = window.innerHeight - 100;
+
+    setGridWindowPos({
+      x: Math.max(minX, Math.min(maxX, newX)),
+      y: Math.max(minY, Math.min(maxY, newY)),
+    });
+  };
+
+  const handleGridHeaderPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    isDraggingGridRef.current = false;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
@@ -1079,7 +1176,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
+        <>
+          <motion.div
           key="color-picker-popover-panel"
           role="dialog"
           aria-label="Color Picker"
@@ -1090,7 +1188,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           style={{
             translate: `${popupPosition.x}px ${popupPosition.y}px`,
           }}
-          className="fixed right-4 top-16 z-50 w-[320px] h-[520px] rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
+          className="fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
         >
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
           <div
@@ -1170,30 +1268,50 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               </button>
             </div>
 
-            {/* Right Contextual Switcher Button (Visible ONLY in Circle Mode) */}
-            <AnimatePresence>
-              {shapeMode === "circle" && (
-                <motion.button
-                  key="circle-mode-toggle"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ duration: 0.15 }}
+            {/* Right Contextual Controls Group (Visible in Circle Mode) */}
+            <div className="flex items-center gap-2">
+              {/* Color Harmony Cycle Icon Button (Only in Classic Circle Mode) */}
+              {shapeMode === "circle" && !isArtisticWheel && (
+                <button
                   type="button"
-                  onClick={() => setIsArtisticWheel((prev) => !prev)}
-                  title={isArtisticWheel ? "Switch to Classic Disc Picker" : "Switch to Artistic RYB Wheel"}
-                  className="w-[22px] h-[22px] flex items-center justify-center cursor-pointer transition-colors"
+                  onClick={cycleClassicHarmony}
+                  title={`Color Harmony: ${classicHarmonyType === "none" ? "Off" : classicHarmonyType} (Click to cycle)`}
+                  aria-label="Cycle color harmony"
+                  className={`w-[26px] h-[26px] rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                    classicHarmonyType !== "none"
+                      ? "bg-amber-400/20 text-amber-300 border border-amber-400/40 shadow-[0_0_8px_rgba(251,191,36,0.25)]"
+                      : "text-[#605F5F] hover:text-zinc-200 hover:bg-zinc-800/60"
+                  }`}
                 >
-                  <SwatchBook
-                    className={`w-4.5 h-4.5 transition-colors ${
-                      isArtisticWheel
-                        ? "stroke-white fill-white/20"
-                        : "stroke-[#3F3F46] hover:stroke-zinc-200"
-                    }`}
-                  />
-                </motion.button>
+                  <Palette className="w-4 h-4" />
+                </button>
               )}
-            </AnimatePresence>
+
+              {/* Contextual Switcher Button (Classic Disc vs Artistic RYB Wheel) */}
+              <AnimatePresence>
+                {shapeMode === "circle" && (
+                  <motion.button
+                    key="circle-mode-toggle"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.15 }}
+                    type="button"
+                    onClick={() => setIsArtisticWheel((prev) => !prev)}
+                    title={isArtisticWheel ? "Switch to Classic Disc Picker" : "Switch to Artistic RYB Wheel"}
+                    className="w-[22px] h-[22px] flex items-center justify-center cursor-pointer transition-colors"
+                  >
+                    <SwatchBook
+                      className={`w-4.5 h-4.5 transition-colors ${
+                        isArtisticWheel
+                          ? "stroke-white fill-white/20"
+                          : "stroke-[#3F3F46] hover:stroke-zinc-200"
+                      }`}
+                    />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
           {/* Layer 3: Center Stage (h: 354px) */}
@@ -1309,283 +1427,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   className="w-full h-full cursor-crosshair rounded-full touch-none select-none"
                 />
               )}
-
-              {/* Artistic Discrete Levels Drawer / Overlay Card */}
-              <AnimatePresence>
-                {isArtisticSettingsOpen && shapeMode === "circle" && isArtisticWheel && (
-                  <motion.div
-                    key="artistic-grid-drawer"
-                    initial={{ opacity: 0, scale: 0.92, y: 6 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.92, y: 6 }}
-                    transition={{ type: "spring", duration: 0.2, bounce: 0 }}
-                    className="absolute inset-0 bg-[#18181B]/95 backdrop-blur-md rounded-2xl border border-zinc-700/60 p-3 z-30 flex flex-col justify-between shadow-2xl text-zinc-200"
-                  >
-                    {/* Drawer Header */}
-                    <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
-                        <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Artistic Grid Levels</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsArtisticSettingsOpen(false)}
-                        className="text-zinc-400 hover:text-white p-0.5 rounded transition-colors"
-                        aria-label="Close discrete settings"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {/* Drawer Level Sliders */}
-                    <div className="flex flex-col gap-2 py-0.5">
-                      {/* Hue Sectors */}
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex justify-between text-[10px] font-mono text-zinc-400">
-                          <span>Hue Sectors</span>
-                          <span className="text-amber-400 font-semibold">{wheelConfig.hueSectors}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="6"
-                          max="36"
-                          step="2"
-                          value={wheelConfig.hueSectors}
-                          onChange={(e) =>
-                            setWheelConfig((prev) => ({ ...prev, hueSectors: Number(e.target.value) }))
-                          }
-                          className="w-full accent-amber-400 h-1 bg-zinc-800 rounded-lg cursor-pointer"
-                        />
-                      </div>
-
-                      {/* Saturation Rings */}
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex justify-between text-[10px] font-mono text-zinc-400">
-                          <span>Saturation Rings</span>
-                          <span className="text-amber-400 font-semibold">{wheelConfig.saturationRings}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="2"
-                          max="10"
-                          step="1"
-                          value={wheelConfig.saturationRings}
-                          onChange={(e) =>
-                            setWheelConfig((prev) => ({ ...prev, saturationRings: Number(e.target.value) }))
-                          }
-                          className="w-full accent-amber-400 h-1 bg-zinc-800 rounded-lg cursor-pointer"
-                        />
-                      </div>
-
-                      {/* Value Steps */}
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex justify-between text-[10px] font-mono text-zinc-400">
-                          <span>Value Steps</span>
-                          <span className="text-amber-400 font-semibold">{wheelConfig.valueSteps}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="4"
-                          max="20"
-                          step="1"
-                          value={wheelConfig.valueSteps}
-                          onChange={(e) =>
-                            setWheelConfig((prev) => ({ ...prev, valueSteps: Number(e.target.value) }))
-                          }
-                          className="w-full accent-amber-400 h-1 bg-zinc-800 rounded-lg cursor-pointer"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Drawer Presets Footer */}
-                    <div className="flex items-center justify-between pt-1.5 border-t border-white/10 text-[9px]">
-                      <span className="text-zinc-500 font-medium">Presets:</span>
-                      <div className="flex gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setWheelConfig((prev) => ({ ...prev, hueSectors: 12, saturationRings: 4, valueSteps: 8 }))
-                          }
-                          className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
-                        >
-                          12/4/8
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setWheelConfig((prev) => ({ ...prev, hueSectors: 24, saturationRings: 6, valueSteps: 12 }))
-                          }
-                          className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
-                        >
-                          24/6/12
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setWheelConfig((prev) => ({ ...prev, hueSectors: 6, saturationRings: 2, valueSteps: 5 }))
-                          }
-                          className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
-                        >
-                          6/2/5
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Gamut Mask Drawer / Overlay Card */}
-              <AnimatePresence>
-                {isGamutDrawerOpen && shapeMode === "circle" && isArtisticWheel && (
-                  <motion.div
-                    key="gamut-mask-drawer"
-                    initial={{ opacity: 0, scale: 0.92, y: 6 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.92, y: 6 }}
-                    transition={{ type: "spring", duration: 0.2, bounce: 0 }}
-                    className="absolute inset-0 bg-[#18181B]/95 backdrop-blur-md rounded-2xl border border-zinc-700/60 p-3 z-30 flex flex-col justify-between shadow-2xl text-zinc-200"
-                  >
-                    {/* Drawer Header */}
-                    <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
-                        <Shapes className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Color Gamut Mask</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsGamutDrawerOpen(false)}
-                        className="text-zinc-400 hover:text-white p-0.5 rounded transition-colors"
-                        aria-label="Close gamut mask drawer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {/* Mask Presets Submenu */}
-                    <div className="flex flex-col gap-1 py-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-medium text-zinc-400">Palette Sub-Menu</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = !isGamutMaskEnabled;
-                            setIsGamutMaskEnabled(next);
-                            if (next) clampActiveColorToMask(gamutMaskType, gamutMaskRotation);
-                          }}
-                          className={`px-1.5 py-0.5 text-[9px] rounded font-semibold transition-colors cursor-pointer ${
-                            isGamutMaskEnabled
-                              ? "bg-amber-400/25 text-amber-300 border border-amber-400/40"
-                              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                          }`}
-                        >
-                          {isGamutMaskEnabled ? "Enabled" : "Disabled"}
-                        </button>
-                      </div>
-                      <select
-                        value={gamutMaskType}
-                        onChange={(e) => {
-                          const newType = e.target.value as GamutMaskType;
-                          setGamutMaskType(newType);
-                          if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
-                          clampActiveColorToMask(newType, gamutMaskRotation);
-                        }}
-                        className="w-full bg-zinc-800/90 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-amber-400/80 cursor-pointer"
-                      >
-                        {GAMUT_MASK_PRESETS.map((preset) => (
-                          <option key={preset.id} value={preset.id} className="bg-zinc-900 text-zinc-200">
-                            {preset.name}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-[9px] text-zinc-400 italic">
-                        {GAMUT_MASK_PRESETS.find((p) => p.id === gamutMaskType)?.description}
-                      </span>
-                    </div>
-
-                    {/* Rotation Slider */}
-                    <div className="flex flex-col gap-0.5 py-0.5 border-t border-white/5">
-                      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                        <span>Mask Rotation</span>
-                        <span className="text-amber-400 font-semibold">{gamutMaskRotation}°</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="355"
-                        step="5"
-                        value={gamutMaskRotation}
-                        onChange={(e) => {
-                          const rot = Number(e.target.value);
-                          setGamutMaskRotation(rot);
-                          if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
-                          clampActiveColorToMask(gamutMaskType, rot);
-                        }}
-                        className="w-full accent-amber-400 h-1 bg-zinc-800 rounded-lg cursor-pointer"
-                      />
-                    </div>
-
-                    {/* Drawer Footer: Quick angle resets */}
-                    <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[9px]">
-                      <span className="text-zinc-500 font-medium">Quick Turn:</span>
-                      <div className="flex gap-1">
-                        {[0, 90, 180, 270].map((deg) => (
-                          <button
-                            key={deg}
-                            type="button"
-                            onClick={() => {
-                              setGamutMaskRotation(deg);
-                              if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
-                              clampActiveColorToMask(gamutMaskType, deg);
-                            }}
-                            className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
-                          >
-                            {deg}°
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
-
-            {/* Single Harmony Cycle Button in front of / below the Classic Wheel */}
-            {shapeMode === "circle" && !isArtisticWheel && (
-              <button
-                type="button"
-                onClick={cycleClassicHarmony}
-                className={`-mt-1 mb-1 px-3 py-1 rounded-full border text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
-                  classicHarmonyType !== "none"
-                    ? "bg-amber-400/20 text-amber-300 border-amber-400/40 hover:bg-amber-400/30"
-                    : "bg-zinc-800/80 text-zinc-400 border-white/10 hover:text-zinc-200 hover:bg-zinc-700/80"
-                }`}
-                title="Click to cycle harmony mode"
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    classicHarmonyType !== "none"
-                      ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
-                      : "bg-zinc-500"
-                  }`}
-                />
-                <span>
-                  Harmony:{" "}
-                  <strong className={classicHarmonyType !== "none" ? "text-amber-200" : "text-zinc-400"}>
-                    {classicHarmonyType === "none"
-                      ? "Off"
-                      : classicHarmonyType === "complementary"
-                      ? "Complementary"
-                      : classicHarmonyType === "split-complementary"
-                      ? "Split-Comp"
-                      : classicHarmonyType === "triadic"
-                      ? "Triadic"
-                      : classicHarmonyType === "tetradic"
-                      ? "Tetradic"
-                      : "Analogous"}
-                  </strong>
-                </span>
-              </button>
-            )}
 
             {/* Contextual Sliders Band (h: 92px, w: 288px) */}
             <div className="w-[288px] h-[92px] rounded-xl bg-[#252527]/50 border border-white/5 px-3 py-2 flex flex-col justify-between shrink-0">
@@ -1714,122 +1556,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                     </div>
                   </div>
                 </>
-              ) : shapeMode === "circle" && classicHarmonyType !== "none" ? (
-                /* Classic Circular Mode with Active Harmonies: Swatches + Brightness + Saturation */
-                <div className="flex flex-col justify-between h-full py-0.5">
-                  {/* Harmonic Palette Swatches Row */}
-                  <div className="flex items-center gap-1.5">
-                    {classicHarmonyItems.map((item) => {
-                      const isSelected = item.hex.toUpperCase() === activeColor.toUpperCase();
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => commitClassicHsv(item.hue, item.saturation, item.value)}
-                          className={`flex-1 h-6 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
-                            isSelected
-                              ? "border-white shadow-md ring-1 ring-white/70 scale-105"
-                              : "border-white/20 hover:border-white/50"
-                          }`}
-                          style={{ backgroundColor: item.hex }}
-                          title={`${item.label}: ${item.hex}`}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  {/* Brightness Slider */}
-                  <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
-                      <span>Brightness</span>
-                      <span>{Math.round(value * 100)}%</span>
-                    </div>
-                    <div
-                      ref={valueSliderRef}
-                      onPointerDown={(e) => {
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        draggingSliderRef.current = "val";
-                        setIsDraggingSlider("val");
-                        handleValueSliderPointer(e);
-                      }}
-                      onPointerMove={(e) => {
-                        if (draggingSliderRef.current === "val" || isDraggingSlider === "val") {
-                          handleValueSliderPointer(e);
-                        }
-                      }}
-                      onPointerUp={(e) => {
-                        draggingSliderRef.current = null;
-                        setIsDraggingSlider(null);
-                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
-                        }
-                      }}
-                      onPointerCancel={(e) => {
-                        draggingSliderRef.current = null;
-                        setIsDraggingSlider(null);
-                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
-                        }
-                      }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
-                      }}
-                    >
-                      <div
-                        className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                        style={{ left: `${value * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Saturation Slider */}
-                  <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
-                      <span>Saturation</span>
-                      <span>{Math.round(saturation * 100)}%</span>
-                    </div>
-                    <div
-                      ref={satSliderRef}
-                      onPointerDown={(e) => {
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        draggingSliderRef.current = "sat";
-                        setIsDraggingSlider("sat");
-                        handleSatSliderPointer(e);
-                      }}
-                      onPointerMove={(e) => {
-                        if (draggingSliderRef.current === "sat" || isDraggingSlider === "sat") {
-                          handleSatSliderPointer(e);
-                        }
-                      }}
-                      onPointerUp={(e) => {
-                        draggingSliderRef.current = null;
-                        setIsDraggingSlider(null);
-                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
-                        }
-                      }}
-                      onPointerCancel={(e) => {
-                        draggingSliderRef.current = null;
-                        setIsDraggingSlider(null);
-                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
-                        }
-                      }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
-                      }}
-                    >
-                      <div
-                        className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                        style={{ left: `${saturation * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
               ) : (
-                /* Classic Modes (Circle with Harmony Off, Square, Triangle): 3 Dedicated Fine Sliders (H, S, V) */
+                /* Classic Modes (Circle, Square, Triangle): 3 Dedicated Fine Sliders (H, S, V) All The Time */
                 <>
                   {/* 1. Hue Slider */}
                   <div className="flex flex-col gap-0.5">
@@ -2013,8 +1741,310 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               />
             </div>
           </div>
+
+          {/* Layer 5: Dedicated Harmonic Quick-Pick Swatches Panel at Bottom */}
+          <AnimatePresence>
+            {shapeMode === "circle" && !isArtisticWheel && classicHarmonyType !== "none" && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 40, opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                className="overflow-hidden border-t border-white/10 bg-[#121214] px-4 flex items-center justify-between shrink-0"
+              >
+                <div className="flex items-center gap-1.5 w-full py-1">
+                  {classicHarmonyItems.map((item) => {
+                    const isSelected = item.hex.toUpperCase() === activeColor.toUpperCase();
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => commitClassicHsv(item.hue, item.saturation, item.value)}
+                        className={`flex-1 h-6 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-white shadow-md ring-1.5 ring-white scale-105"
+                            : "border-white/15 hover:border-white/50"
+                        }`}
+                        style={{ backgroundColor: item.hex }}
+                        title={`${item.label}: ${item.hex}`}
+                      />
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
-      )}
-    </AnimatePresence>
+
+        {/* Floating Draggable Sub-Window 1: Gamut Mask */}
+        {shapeMode === "circle" && isArtisticWheel && isGamutDrawerOpen && (
+          <motion.div
+            key="gamut-mask-subwindow"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            style={{
+              translate: `${gamutWindowPos ? gamutWindowPos.x : popupPosition.x - 262}px ${
+                gamutWindowPos ? gamutWindowPos.y : popupPosition.y + 40
+              }px`,
+            }}
+            className="fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
+          >
+            {/* Draggable Header */}
+            <div
+              onPointerDown={handleGamutHeaderPointerDown}
+              onPointerMove={handleGamutHeaderPointerMove}
+              onPointerUp={handleGamutHeaderPointerUp}
+              onPointerCancel={handleGamutHeaderPointerUp}
+              onDoubleClick={(e) => {
+                if (!(e.target as HTMLElement).closest("button")) {
+                  setGamutWindowPos({ x: popupPosition.x - 262, y: popupPosition.y + 40 });
+                }
+              }}
+              className="flex items-center justify-between pb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
+              title="Drag header to move sub-window, double-click to snap next to picker"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
+                <GripVertical className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300" />
+                <span>Color Gamut Mask</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !isGamutMaskEnabled;
+                    setIsGamutMaskEnabled(next);
+                    if (next) clampActiveColorToMask(gamutMaskType, gamutMaskRotation);
+                  }}
+                  className={`px-1.5 py-0.5 text-[9px] rounded font-semibold transition-colors cursor-pointer ${
+                    isGamutMaskEnabled
+                      ? "bg-amber-400/25 text-amber-300 border border-amber-400/40"
+                      : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  {isGamutMaskEnabled ? "ON" : "OFF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsGamutDrawerOpen(false)}
+                  className="text-zinc-400 hover:text-white p-0.5 rounded transition-colors"
+                  aria-label="Close gamut mask settings"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Gamut Preset Select */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-zinc-400 font-medium">Harmonic Mask Shape</span>
+              <select
+                value={gamutMaskType}
+                onChange={(e) => {
+                  const newType = e.target.value as GamutMaskType;
+                  setGamutMaskType(newType);
+                  if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
+                  clampActiveColorToMask(newType, gamutMaskRotation);
+                }}
+                className="w-full bg-zinc-800/90 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-amber-400/80 cursor-pointer"
+              >
+                {GAMUT_MASK_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id} className="bg-zinc-900 text-zinc-200">
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[9px] text-zinc-400 italic">
+                {GAMUT_MASK_PRESETS.find((p) => p.id === gamutMaskType)?.description}
+              </span>
+            </div>
+
+            {/* Mask Rotation Slider */}
+            <div className="flex flex-col gap-1 py-0.5 border-t border-white/5">
+              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                <span>Mask Rotation</span>
+                <span className="text-amber-400 font-semibold">{gamutMaskRotation}°</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="355"
+                step="5"
+                value={gamutMaskRotation}
+                onChange={(e) => {
+                  const rot = Number(e.target.value);
+                  setGamutMaskRotation(rot);
+                  if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
+                  clampActiveColorToMask(gamutMaskType, rot);
+                }}
+                className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+              />
+            </div>
+
+            {/* Quick Turn Buttons */}
+            <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[9px]">
+              <span className="text-zinc-500 font-medium">Quick Turn:</span>
+              <div className="flex gap-1">
+                {[0, 90, 180, 270].map((deg) => (
+                  <button
+                    key={deg}
+                    type="button"
+                    onClick={() => {
+                      setGamutMaskRotation(deg);
+                      if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
+                      clampActiveColorToMask(gamutMaskType, deg);
+                    }}
+                    className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                  >
+                    {deg}°
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Floating Draggable Sub-Window 2: Artistic Grid Levels */}
+        {shapeMode === "circle" && isArtisticWheel && isArtisticSettingsOpen && (
+          <motion.div
+            key="artistic-grid-subwindow"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            style={{
+              translate: `${gridWindowPos ? gridWindowPos.x : popupPosition.x - 262}px ${
+                gridWindowPos ? gridWindowPos.y : popupPosition.y + 60
+              }px`,
+            }}
+            className="fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
+          >
+            {/* Draggable Header */}
+            <div
+              onPointerDown={handleGridHeaderPointerDown}
+              onPointerMove={handleGridHeaderPointerMove}
+              onPointerUp={handleGridHeaderPointerUp}
+              onPointerCancel={handleGridHeaderPointerUp}
+              onDoubleClick={(e) => {
+                if (!(e.target as HTMLElement).closest("button")) {
+                  setGridWindowPos({ x: popupPosition.x - 262, y: popupPosition.y + 60 });
+                }
+              }}
+              className="flex items-center justify-between pb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
+              title="Drag header to move sub-window, double-click to snap next to picker"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
+                <GripVertical className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300" />
+                <span>Discrete Grid Levels</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsArtisticSettingsOpen(false)}
+                className="text-zinc-400 hover:text-white p-0.5 rounded transition-colors"
+                aria-label="Close discrete settings"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Level Sliders */}
+            <div className="flex flex-col gap-2">
+              {/* Hue Sectors */}
+              <div className="flex flex-col gap-0.5">
+                <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                  <span>Hue Sectors</span>
+                  <span className="text-amber-400 font-semibold">{wheelConfig.hueSectors}</span>
+                </div>
+                <input
+                  type="range"
+                  min="6"
+                  max="36"
+                  step="2"
+                  value={wheelConfig.hueSectors}
+                  onChange={(e) =>
+                    setWheelConfig((prev) => ({ ...prev, hueSectors: Number(e.target.value) }))
+                  }
+                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                />
+              </div>
+
+              {/* Saturation Rings */}
+              <div className="flex flex-col gap-0.5">
+                <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                  <span>Saturation Rings</span>
+                  <span className="text-amber-400 font-semibold">{wheelConfig.saturationRings}</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="10"
+                  step="1"
+                  value={wheelConfig.saturationRings}
+                  onChange={(e) =>
+                    setWheelConfig((prev) => ({ ...prev, saturationRings: Number(e.target.value) }))
+                  }
+                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                />
+              </div>
+
+              {/* Value Steps */}
+              <div className="flex flex-col gap-0.5">
+                <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                  <span>Value Steps</span>
+                  <span className="text-amber-400 font-semibold">{wheelConfig.valueSteps}</span>
+                </div>
+                <input
+                  type="range"
+                  min="4"
+                  max="20"
+                  step="1"
+                  value={wheelConfig.valueSteps}
+                  onChange={(e) =>
+                    setWheelConfig((prev) => ({ ...prev, valueSteps: Number(e.target.value) }))
+                  }
+                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[9px]">
+              <span className="text-zinc-500 font-medium">Presets:</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setWheelConfig((prev) => ({ ...prev, hueSectors: 12, saturationRings: 4, valueSteps: 8 }))
+                  }
+                  className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                >
+                  12/4/8
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setWheelConfig((prev) => ({ ...prev, hueSectors: 24, saturationRings: 6, valueSteps: 12 }))
+                  }
+                  className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                >
+                  24/6/12
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setWheelConfig((prev) => ({ ...prev, hueSectors: 6, saturationRings: 2, valueSteps: 5 }))
+                  }
+                  className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                >
+                  6/2/5
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </>
+    )}
+  </AnimatePresence>
   );
 };
