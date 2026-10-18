@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Infinity as InfinityIcon,
   SlidersHorizontal,
+  Shapes,
 } from "lucide-react";
 import {
   hsvToRgb,
@@ -23,8 +24,16 @@ import {
 import { hsyToRgb, calculateLuma } from "@/engine/color/hsy";
 import {
   calculateHarmonyAngles,
+  calculateProcreateHarmonyItems,
   type HarmonyType,
 } from "@/engine/color/harmonies";
+import {
+  getGamutMaskVertices,
+  clampPointToGamutMask,
+  isPointInPolygon,
+  GAMUT_MASK_PRESETS,
+  type GamutMaskType,
+} from "@/engine/color/gamut_mask";
 import {
   pointToSaturationValue,
   saturationValueToPoint,
@@ -50,7 +59,7 @@ interface ColorPickerPopoverProps {
 type ShapeMode = "circle" | "square" | "triangle";
 type ClassicPointerTarget = "hue" | "shape" | null;
 
-const HARMONY_OPTIONS: { id: HarmonyType; label: string }[] = [
+const PROCREATE_HARMONY_OPTIONS: { id: HarmonyType; label: string }[] = [
   { id: "none", label: "None" },
   { id: "complementary", label: "Comp" },
   { id: "split-complementary", label: "Split" },
@@ -71,8 +80,14 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   // In circle mode: false = Classic Disc Picker (Default), true = Artistic RYB Wheel
   const [isArtisticWheel, setIsArtisticWheel] = useState(false);
 
-  // Artistic harmonies & discrete configuration
-  const [harmonyType, setHarmonyType] = useState<HarmonyType>("none");
+  // Classic Procreate Harmonies (circle mode)
+  const [classicHarmonyType, setClassicHarmonyType] = useState<HarmonyType>("none");
+
+  // Artistic Gamut Mask & Discrete configuration
+  const [isGamutMaskEnabled, setIsGamutMaskEnabled] = useState(false);
+  const [gamutMaskType, setGamutMaskType] = useState<GamutMaskType>("triad");
+  const [gamutMaskRotation, setGamutMaskRotation] = useState<number>(0);
+  const [isGamutDrawerOpen, setIsGamutDrawerOpen] = useState(false);
   const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
   const [isArtisticSettingsOpen, setIsArtisticSettingsOpen] = useState(false);
 
@@ -286,6 +301,41 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     [onSelectColor]
   );
 
+  // Helper to clamp artistic active color inside the gamut mask
+  const clampActiveColorToMask = useCallback(
+    (presetId: GamutMaskType, rotationDeg: number) => {
+      const center = 117;
+      const outerRadius = 113;
+      const innerRadius = 16;
+      const maskPoly = getGamutMaskVertices(presetId, rotationDeg, outerRadius, center);
+
+      const blipAngleRad = (artisticAngle * Math.PI) / 180 - Math.PI / 2;
+      const blipDist = innerRadius + artisticSat * (outerRadius - innerRadius);
+      const currPt = {
+        x: center + Math.cos(blipAngleRad) * blipDist,
+        y: center + Math.sin(blipAngleRad) * blipDist,
+      };
+
+      if (!isPointInPolygon(currPt, maskPoly)) {
+        const clamped = clampPointToGamutMask(currPt, maskPoly);
+        const cx = clamped.x - center;
+        const cy = clamped.y - center;
+        let ang = (Math.atan2(cy, cx) * 180) / Math.PI + 90;
+        if (ang < 0) ang += 360;
+        const cdist = Math.hypot(cx, cy);
+        const sat = Math.max(0, Math.min(1, (cdist - innerRadius) / (outerRadius - innerRadius)));
+        commitArtisticWheel(Math.round(ang), sat, cdist <= innerRadius);
+      }
+    },
+    [artisticAngle, artisticSat, commitArtisticWheel]
+  );
+
+  // Procreate harmony items memo
+  const classicHarmonyItems = useMemo(
+    () => calculateProcreateHarmonyItems(hue, saturation, value, classicHarmonyType),
+    [hue, saturation, value, classicHarmonyType]
+  );
+
   // 1. Draw Artistic RYB Isoluminant Wheel (234x234px)
   useEffect(() => {
     if (!isOpen || shapeMode !== "circle" || !isArtisticWheel) return;
@@ -366,44 +416,49 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.lineWidth = artisticSat < 0.15 ? 2.5 : 1;
     ctx.stroke();
 
-    // Harmonic Chord Overlay
-    if (harmonyType !== "none") {
-      const chords = calculateHarmonyAngles(artisticAngle, harmonyType, "ryb");
-      const activeAngleRad = (artisticAngle * Math.PI) / 180 - Math.PI / 2;
+    // Color Gamut Mask Overlay (James Gurney / Krita Atmospheric Palettes)
+    if (isGamutMaskEnabled) {
+      const maskVertices = getGamutMaskVertices(
+        gamutMaskType,
+        gamutMaskRotation,
+        outerRadius,
+        center
+      );
 
-      ctx.save();
-      ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = "rgba(255,255,255,0.6)";
-      ctx.lineWidth = 1;
-
-      for (const chord of chords) {
-        const chordAngleRad = (chord.angleDeg * Math.PI) / 180 - Math.PI / 2;
+      if (maskVertices.length >= 3) {
+        ctx.save();
+        // 1. Dark translucent scrim covering wheel area outside the mask aperture
         ctx.beginPath();
-        ctx.moveTo(
-          center + Math.cos(activeAngleRad) * outerRadius,
-          center + Math.sin(activeAngleRad) * outerRadius
-        );
-        ctx.lineTo(
-          center + Math.cos(chordAngleRad) * outerRadius,
-          center + Math.sin(chordAngleRad) * outerRadius
-        );
+        ctx.arc(center, center, outerRadius, 0, Math.PI * 2);
+        ctx.moveTo(maskVertices[0].x, maskVertices[0].y);
+        for (let i = 1; i < maskVertices.length; i++) {
+          ctx.lineTo(maskVertices[i].x, maskVertices[i].y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(18, 18, 22, 0.78)";
+        ctx.fill("evenodd");
+
+        // 2. Crisp aperture boundary stroke
+        ctx.beginPath();
+        ctx.moveTo(maskVertices[0].x, maskVertices[0].y);
+        for (let i = 1; i < maskVertices.length; i++) {
+          ctx.lineTo(maskVertices[i].x, maskVertices[i].y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
+        // 3. Apex rotation indicator (amber dot at vertex 0)
         ctx.beginPath();
-        ctx.arc(
-          center + Math.cos(chordAngleRad) * (outerRadius - 4),
-          center + Math.sin(chordAngleRad) * (outerRadius - 4),
-          3.5,
-          0,
-          Math.PI * 2
-        );
-        ctx.fillStyle = "#ffffff";
-        ctx.strokeStyle = "#000000";
+        ctx.arc(maskVertices[0].x, maskVertices[0].y, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#f59e0b";
+        ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 1;
         ctx.fill();
         ctx.stroke();
+        ctx.restore();
       }
-      ctx.restore();
     }
 
     // Active Selection Blip - Centroid-Snapped in Discrete Mode
@@ -448,7 +503,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     artisticAngle,
     artisticSat,
     artisticLuma,
-    harmonyType,
+    isGamutMaskEnabled,
+    gamutMaskType,
+    gamutMaskRotation,
     activeColor,
     wheelConfig,
   ]);
@@ -622,12 +679,66 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // 3. Draw Hue Reticle Handle on Outer Ring
+    // 3. Procreate Harmony Chords (Lines & Companion Reticles) for Circle Mode
     const hueAngleRad = (hue * Math.PI) / 180;
     const ringMidDist = (outerRadius + innerRadius) / 2;
     const hueBlipX = center + Math.cos(hueAngleRad) * ringMidDist;
     const hueBlipY = center + Math.sin(hueAngleRad) * ringMidDist;
 
+    if (shapeMode === "circle" && classicHarmonyType !== "none") {
+      const chords = calculateHarmonyAngles(hue, classicHarmonyType, "rgb");
+
+      // Draw connecting chord lines across the wheel
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.lineWidth = 1.2;
+
+      if (classicHarmonyType === "complementary" && chords.length === 1) {
+        const compRad = (chords[0].rgbHueDeg * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(hueBlipX, hueBlipY);
+        ctx.lineTo(center + Math.cos(compRad) * ringMidDist, center + Math.sin(compRad) * ringMidDist);
+        ctx.stroke();
+      } else if (classicHarmonyType === "triadic" || classicHarmonyType === "tetradic") {
+        ctx.beginPath();
+        ctx.moveTo(hueBlipX, hueBlipY);
+        for (const chord of chords) {
+          const chordRad = (chord.rgbHueDeg * Math.PI) / 180;
+          ctx.lineTo(center + Math.cos(chordRad) * ringMidDist, center + Math.sin(chordRad) * ringMidDist);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      } else {
+        // split-complementary and analogous
+        for (const chord of chords) {
+          const chordRad = (chord.rgbHueDeg * Math.PI) / 180;
+          ctx.beginPath();
+          ctx.moveTo(hueBlipX, hueBlipY);
+          ctx.lineTo(center + Math.cos(chordRad) * ringMidDist, center + Math.sin(chordRad) * ringMidDist);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      // Companion Reticles on Hue Ring
+      for (const chord of chords) {
+        const chordRad = (chord.rgbHueDeg * Math.PI) / 180;
+        const [cr, cg, cb] = hsvToRgb(chord.rgbHueDeg, 1, 1);
+        const cx = center + Math.cos(chordRad) * ringMidDist;
+        const cy = center + Math.sin(chordRad) * ringMidDist;
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // 4. Draw Primary Hue Reticle Handle on Outer Ring
     ctx.beginPath();
     ctx.arc(hueBlipX, hueBlipY, 6, 0, Math.PI * 2);
     ctx.fillStyle = `rgb(${pureR},${pureG},${pureB})`;
@@ -635,7 +746,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.lineWidth = 2.5;
     ctx.fill();
     ctx.stroke();
-  }, [isOpen, shapeMode, isArtisticWheel, hue, saturation, value, activeColor]);
+  }, [isOpen, shapeMode, isArtisticWheel, hue, saturation, value, activeColor, classicHarmonyType]);
 
   // 3. Draw Full Square Saturation-Value Matrix (234x234px)
   useEffect(() => {
@@ -683,14 +794,30 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     const canvas = artisticWheelCanvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left - canvas.width / 2;
-    const y = e.clientY - rect.top - canvas.height / 2;
+    const rawCanvasX = e.clientX - rect.left;
+    const rawCanvasY = e.clientY - rect.top;
+    const size = canvas.width;
+    const center = size / 2;
+    const outerRadius = size / 2 - 4;
+    const innerRadius = 16;
+
+    let targetCanvasX = rawCanvasX;
+    let targetCanvasY = rawCanvasY;
+
+    // Gamut Mask Clamping: User CANNOT select outside the mask!
+    if (isGamutMaskEnabled) {
+      const maskPoly = getGamutMaskVertices(gamutMaskType, gamutMaskRotation, outerRadius, center);
+      const clamped = clampPointToGamutMask({ x: rawCanvasX, y: rawCanvasY }, maskPoly);
+      targetCanvasX = clamped.x;
+      targetCanvasY = clamped.y;
+    }
+
+    const x = targetCanvasX - center;
+    const y = targetCanvasY - center;
 
     let angleDeg = (Math.atan2(y, x) * 180) / Math.PI + 90;
     if (angleDeg < 0) angleDeg += 360;
 
-    const outerRadius = canvas.width / 2 - 4;
-    const innerRadius = 16;
     const dist = Math.hypot(x, y);
 
     if (dist <= innerRadius) {
@@ -783,7 +910,26 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     setClassicPointerTarget(target);
 
     if (target === "hue") {
-      updateClassicHue(x, y);
+      if (shapeMode === "circle" && classicHarmonyType !== "none") {
+        const chords = calculateHarmonyAngles(hue, classicHarmonyType, "rgb");
+        const ringMidDist = 102.5;
+        let clickedCompanion = false;
+        for (const chord of chords) {
+          const chordRad = (chord.rgbHueDeg * Math.PI) / 180;
+          const cx = Math.cos(chordRad) * ringMidDist;
+          const cy = Math.sin(chordRad) * ringMidDist;
+          if (Math.hypot(x - cx, y - cy) <= 14) {
+            commitClassicHsv(chord.rgbHueDeg, saturation, value);
+            clickedCompanion = true;
+            break;
+          }
+        }
+        if (!clickedCompanion) {
+          updateClassicHue(x, y);
+        }
+      } else {
+        updateClassicHue(x, y);
+      }
     } else {
       updateClassicShape(e.clientX - rect.left, e.clientY - rect.top, x, y, dist);
     }
@@ -1245,12 +1391,128 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* Gamut Mask Drawer / Overlay Card */}
+              <AnimatePresence>
+                {isGamutDrawerOpen && shapeMode === "circle" && isArtisticWheel && (
+                  <motion.div
+                    key="gamut-mask-drawer"
+                    initial={{ opacity: 0, scale: 0.92, y: 6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.92, y: 6 }}
+                    transition={{ type: "spring", duration: 0.2, bounce: 0 }}
+                    className="absolute inset-0 bg-[#18181B]/95 backdrop-blur-md rounded-2xl border border-zinc-700/60 p-3 z-30 flex flex-col justify-between shadow-2xl text-zinc-200"
+                  >
+                    {/* Drawer Header */}
+                    <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
+                        <Shapes className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Color Gamut Mask</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsGamutDrawerOpen(false)}
+                        className="text-zinc-400 hover:text-white p-0.5 rounded transition-colors"
+                        aria-label="Close gamut mask drawer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Mask Presets Selection */}
+                    <div className="flex flex-col gap-1.5 py-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-zinc-400">Palette Presets</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !isGamutMaskEnabled;
+                            setIsGamutMaskEnabled(next);
+                            if (next) clampActiveColorToMask(gamutMaskType, gamutMaskRotation);
+                          }}
+                          className={`px-1.5 py-0.5 text-[9px] rounded font-semibold transition-colors ${
+                            isGamutMaskEnabled
+                              ? "bg-amber-400/25 text-amber-300 border border-amber-400/40"
+                              : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                          }`}
+                        >
+                          {isGamutMaskEnabled ? "Enabled" : "Disabled"}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1">
+                        {GAMUT_MASK_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              setGamutMaskType(preset.id);
+                              if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
+                              clampActiveColorToMask(preset.id, gamutMaskRotation);
+                            }}
+                            className={`px-2 py-1 text-[10px] rounded font-medium text-left truncate transition-colors ${
+                              gamutMaskType === preset.id
+                                ? "bg-amber-400/25 text-amber-300 border border-amber-400/50"
+                                : "bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60 border border-transparent"
+                            }`}
+                            title={preset.description}
+                          >
+                            {preset.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Rotation Slider */}
+                    <div className="flex flex-col gap-0.5 py-0.5 border-t border-white/5">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                        <span>Mask Rotation</span>
+                        <span className="text-amber-400 font-semibold">{gamutMaskRotation}°</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="355"
+                        step="5"
+                        value={gamutMaskRotation}
+                        onChange={(e) => {
+                          const rot = Number(e.target.value);
+                          setGamutMaskRotation(rot);
+                          if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
+                          clampActiveColorToMask(gamutMaskType, rot);
+                        }}
+                        className="w-full accent-amber-400 h-1 bg-zinc-800 rounded-lg cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Drawer Footer: Quick angle resets */}
+                    <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[9px]">
+                      <span className="text-zinc-500 font-medium">Quick Turn:</span>
+                      <div className="flex gap-1">
+                        {[0, 90, 180, 270].map((deg) => (
+                          <button
+                            key={deg}
+                            type="button"
+                            onClick={() => {
+                              setGamutMaskRotation(deg);
+                              if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
+                              clampActiveColorToMask(gamutMaskType, deg);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                          >
+                            {deg}°
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Contextual Sliders Band (h: 92px, w: 288px) */}
             <div className="w-[288px] h-[92px] rounded-xl bg-[#252527]/50 border border-white/5 px-3 py-2 flex flex-col justify-between shrink-0">
               {shapeMode === "circle" && isArtisticWheel ? (
-                /* Artistic Controls: Tone Ladder + Harmony Pills + Level Settings */
+                /* Artistic Controls: Tone Ladder + Gamut Mask + Level Settings */
                 <>
                   <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 leading-none">
                     <span>Tone Value</span>
@@ -1304,23 +1566,42 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                     />
                   </div>
 
-                  {/* Sub-row: Harmonies, Discrete/Continuous Toggle, and Grid Settings Drawer */}
+                  {/* Sub-row: Gamut Mask, Discrete/Continuous Toggle, and Grid Settings Drawer */}
                   <div className="flex items-center justify-between pt-0.5">
-                    <div className="flex items-center gap-1">
-                      {HARMONY_OPTIONS.slice(0, 4).map((opt) => (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !isGamutMaskEnabled;
+                          setIsGamutMaskEnabled(next);
+                          if (next) clampActiveColorToMask(gamutMaskType, gamutMaskRotation);
+                        }}
+                        className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
+                          isGamutMaskEnabled
+                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                            : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                        }`}
+                        title={isGamutMaskEnabled ? "Disable Gamut Mask" : "Enable Gamut Mask (James Gurney / Krita)"}
+                      >
+                        <Shapes className="w-2.5 h-2.5" />
+                        <span>Mask {isGamutMaskEnabled ? "ON" : "OFF"}</span>
+                      </button>
+
+                      {isGamutMaskEnabled && (
                         <button
-                          key={opt.id}
                           type="button"
-                          onClick={() => setHarmonyType(opt.id)}
-                          className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors ${
-                            harmonyType === opt.id
+                          onClick={() => setIsGamutDrawerOpen((prev) => !prev)}
+                          className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
+                            isGamutDrawerOpen
                               ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
-                              : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                              : "text-zinc-300 bg-zinc-800/60 hover:bg-zinc-700/60"
                           }`}
+                          title="Configure Gamut Mask Presets & Rotation"
                         >
-                          {opt.label}
+                          <span className="capitalize">{gamutMaskType.replace("-", " ")}</span>
+                          <span className="text-[8px] text-amber-400/80 font-mono">({gamutMaskRotation}°)</span>
                         </button>
-                      ))}
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -1355,8 +1636,243 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                     </div>
                   </div>
                 </>
+              ) : shapeMode === "circle" ? (
+                /* Classic Circular Mode: Procreate Harmonies & Sliders */
+                <>
+                  {/* Harmony Selector Header */}
+                  <div className="flex items-center justify-between pb-0.5 border-b border-white/5">
+                    <span className="text-[9px] font-mono text-zinc-400">Harmony</span>
+                    <div className="flex items-center gap-1">
+                      {PROCREATE_HARMONY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setClassicHarmonyType(opt.id)}
+                          className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors ${
+                            classicHarmonyType === opt.id
+                              ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                              : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {classicHarmonyType !== "none" ? (
+                    /* Procreate Active Harmonic Swatches & Sliders */
+                    <div className="flex flex-col gap-1 pt-0.5">
+                      {/* Harmonic Palette Swatches Row */}
+                      <div className="flex items-center gap-1.5">
+                        {classicHarmonyItems.map((item) => {
+                          const isSelected = item.hex.toUpperCase() === activeColor.toUpperCase();
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => commitClassicHsv(item.hue, item.saturation, item.value)}
+                              className={`flex-1 h-5 rounded border flex items-center justify-center transition-all cursor-pointer ${
+                                isSelected
+                                  ? "border-white shadow-md ring-1 ring-white/70 scale-105"
+                                  : "border-white/20 hover:border-white/50"
+                              }`}
+                              style={{ backgroundColor: item.hex }}
+                              title={`${item.label}: ${item.hex}`}
+                            />
+                          );
+                        })}
+                      </div>
+
+                      {/* Brightness Slider */}
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                          <span>Brightness</span>
+                          <span>{Math.round(value * 100)}%</span>
+                        </div>
+                        <div
+                          ref={valueSliderRef}
+                          onPointerDown={(e) => {
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            draggingSliderRef.current = "val";
+                            setIsDraggingSlider("val");
+                            handleValueSliderPointer(e);
+                          }}
+                          onPointerMove={(e) => {
+                            if (draggingSliderRef.current === "val" || isDraggingSlider === "val") {
+                              handleValueSliderPointer(e);
+                            }
+                          }}
+                          onPointerUp={(e) => {
+                            draggingSliderRef.current = null;
+                            setIsDraggingSlider(null);
+                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                            }
+                          }}
+                          onPointerCancel={(e) => {
+                            draggingSliderRef.current = null;
+                            setIsDraggingSlider(null);
+                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                            }
+                          }}
+                          className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                          style={{
+                            background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
+                          }}
+                        >
+                          <div
+                            className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                            style={{ left: `${value * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Classic 3 Sliders when Harmony is None */
+                    <div className="flex flex-col gap-1">
+                      {/* Hue Slider */}
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                          <span>Hue</span>
+                          <span>{hue}°</span>
+                        </div>
+                        <div
+                          ref={hueSliderRef}
+                          onPointerDown={(e) => {
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            draggingSliderRef.current = "hue";
+                            setIsDraggingSlider("hue");
+                            handleHueSliderPointer(e);
+                          }}
+                          onPointerMove={(e) => {
+                            if (draggingSliderRef.current === "hue" || isDraggingSlider === "hue") {
+                              handleHueSliderPointer(e);
+                            }
+                          }}
+                          onPointerUp={(e) => {
+                            draggingSliderRef.current = null;
+                            setIsDraggingSlider(null);
+                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                            }
+                          }}
+                          onPointerCancel={(e) => {
+                            draggingSliderRef.current = null;
+                            setIsDraggingSlider(null);
+                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                            }
+                          }}
+                          className="relative w-full h-1.5 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                          style={{
+                            background:
+                              "linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)",
+                          }}
+                        >
+                          <div
+                            className="absolute top-1/2 w-3 h-3 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                            style={{ left: `${(hue / 360) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Saturation & Brightness compact twin-sliders */}
+                      <div className="flex gap-2">
+                        <div className="flex-1 flex flex-col gap-0.5">
+                          <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                            <span>Sat</span>
+                            <span>{Math.round(saturation * 100)}%</span>
+                          </div>
+                          <div
+                            ref={satSliderRef}
+                            onPointerDown={(e) => {
+                              e.currentTarget.setPointerCapture(e.pointerId);
+                              draggingSliderRef.current = "sat";
+                              setIsDraggingSlider("sat");
+                              handleSatSliderPointer(e);
+                            }}
+                            onPointerMove={(e) => {
+                              if (draggingSliderRef.current === "sat" || isDraggingSlider === "sat") {
+                                handleSatSliderPointer(e);
+                              }
+                            }}
+                            onPointerUp={(e) => {
+                              draggingSliderRef.current = null;
+                              setIsDraggingSlider(null);
+                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                                e.currentTarget.releasePointerCapture(e.pointerId);
+                              }
+                            }}
+                            onPointerCancel={(e) => {
+                              draggingSliderRef.current = null;
+                              setIsDraggingSlider(null);
+                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                                e.currentTarget.releasePointerCapture(e.pointerId);
+                              }
+                            }}
+                            className="relative w-full h-1.5 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                            style={{
+                              background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
+                            }}
+                          >
+                            <div
+                              className="absolute top-1/2 w-3 h-3 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                              style={{ left: `${saturation * 100}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex-1 flex flex-col gap-0.5">
+                          <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                            <span>Bri</span>
+                            <span>{Math.round(value * 100)}%</span>
+                          </div>
+                          <div
+                            ref={valueSliderRef}
+                            onPointerDown={(e) => {
+                              e.currentTarget.setPointerCapture(e.pointerId);
+                              draggingSliderRef.current = "val";
+                              setIsDraggingSlider("val");
+                              handleValueSliderPointer(e);
+                            }}
+                            onPointerMove={(e) => {
+                              if (draggingSliderRef.current === "val" || isDraggingSlider === "val") {
+                                handleValueSliderPointer(e);
+                              }
+                            }}
+                            onPointerUp={(e) => {
+                              draggingSliderRef.current = null;
+                              setIsDraggingSlider(null);
+                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                                e.currentTarget.releasePointerCapture(e.pointerId);
+                              }
+                            }}
+                            onPointerCancel={(e) => {
+                              draggingSliderRef.current = null;
+                              setIsDraggingSlider(null);
+                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                                e.currentTarget.releasePointerCapture(e.pointerId);
+                              }
+                            }}
+                            className="relative w-full h-1.5 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                            style={{
+                              background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
+                            }}
+                          >
+                            <div
+                              className="absolute top-1/2 w-3 h-3 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                              style={{ left: `${value * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                /* Classic Modes (Circle Disc, Square Matrix, Triangle Wheel): 3 Dedicated Fine Sliders (H, S, V) */
+                /* Square and Triangle Modes: 3 Full-Width Dedicated Fine Sliders (H, S, V) */
                 <>
                   {/* 1. Hue Slider */}
                   <div className="flex flex-col gap-0.5">

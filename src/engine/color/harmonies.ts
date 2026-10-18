@@ -130,3 +130,65 @@ export function generateHarmonySwatches(
 
   return result;
 }
+
+export interface ProcreateHarmonyItem {
+  readonly id: string;
+  readonly label: string;
+  readonly hue: number;
+  readonly saturation: number;
+  readonly value: number;
+  readonly hex: string;
+  readonly rgb: [number, number, number];
+  readonly isPrimary: boolean;
+}
+
+/**
+ * Calculates Procreate-style color harmony items (primary + companion chords)
+ * with complete HSV, RGB, and Hex coordinates.
+ */
+export function calculateProcreateHarmonyItems(
+  hue: number,
+  saturation: number,
+  value: number,
+  type: HarmonyType
+): readonly ProcreateHarmonyItem[] {
+  const [pr, pg, pb] = hsvToRgb(hue, saturation, value);
+  const rgbToHexStr = (r: number, g: number, b: number) =>
+    "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+
+  const primaryItem: ProcreateHarmonyItem = {
+    id: "primary",
+    label: "Primary",
+    hue,
+    saturation,
+    value,
+    hex: rgbToHexStr(pr, pg, pb),
+    rgb: [pr, pg, pb],
+    isPrimary: true,
+  };
+
+  if (type === "none") {
+    return [primaryItem];
+  }
+
+  const chords = calculateHarmonyAngles(hue, type, "rgb");
+  const items: ProcreateHarmonyItem[] = [primaryItem];
+
+  chords.forEach((chord, idx) => {
+    const chordHue = chord.rgbHueDeg;
+    const [r, g, b] = hsvToRgb(chordHue, saturation, value);
+    items.push({
+      id: `chord-${idx}`,
+      label: chord.label,
+      hue: chordHue,
+      saturation,
+      value,
+      hex: rgbToHexStr(r, g, b),
+      rgb: [r, g, b],
+      isPrimary: false,
+    });
+  });
+
+  return items;
+}
+
