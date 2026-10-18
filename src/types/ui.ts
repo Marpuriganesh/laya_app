@@ -4,7 +4,7 @@
 
 export type ActiveTool = "brush" | "smudge" | "eraser";
 
-export type PopoverType = "none" | "color" | "brushLibrary" | "newCanvas" | "actions";
+export type PopoverType = "none" | "color" | "brushLibrary" | "newCanvas" | "actions" | "layers";
 
 export type SoftProofMode = "none" | "grayscale-values" | "cmyk-print" | "gamut-warning";
 

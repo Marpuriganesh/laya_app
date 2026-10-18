@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type FC, type PointerEvent, type MouseEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { useDraggableWindow } from "@/ui/hooks/useDraggableWindow";
 import {
   X,
   Circle,
@@ -84,280 +85,44 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
   const [isArtisticSettingsOpen, setIsArtisticSettingsOpen] = useState(false);
 
-  // Draggable popover position state & dragging flag
-  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isDraggingHeader, setIsDraggingHeader] = useState(false);
-  const isDraggingHeaderRef = useRef(false);
-  const dragStartRef = useRef({ pointerX: 0, pointerY: 0, startX: 0, startY: 0 });
+  // 1. Draggable main popover position & physics
+  const {
+    headerProps: mainHeaderDragProps,
+    windowStyle: mainPopoverWindowStyle,
+  } = useDraggableWindow({
+    initialOffset: { x: 0, y: 0 },
+    windowWidth: 320,
+    windowHeight: () => (shapeMode === "circle" && !isArtisticWheel && classicHarmonyType !== "none" ? 562 : 520),
+    margin: 16,
+    magneticBand: 24,
+    snapDistance: 45,
+  });
 
-  const handleHeaderPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("button")) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    isDraggingHeaderRef.current = true;
-    setIsDraggingHeader(true);
-    dragStartRef.current = {
-      pointerX: e.clientX,
-      pointerY: e.clientY,
-      startX: popupPosition.x,
-      startY: popupPosition.y,
-    };
-  };
+  // 2. Draggable Gamut Mask sub-window position & physics
+  const {
+    headerProps: gamutHeaderDragProps,
+    windowStyle: gamutWindowStyle,
+  } = useDraggableWindow({
+    initialOffset: { x: -262, y: 40 },
+    windowWidth: 250,
+    windowHeight: 280,
+    margin: 16,
+    magneticBand: 24,
+    snapDistance: 45,
+  });
 
-  const handleHeaderPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingHeaderRef.current) return;
-    const dx = e.clientX - dragStartRef.current.pointerX;
-    const dy = e.clientY - dragStartRef.current.pointerY;
-
-    const rawX = dragStartRef.current.startX + dx;
-    const rawY = dragStartRef.current.startY + dy;
-
-    const currentHeight = shapeMode === "circle" && !isArtisticWheel && classicHarmonyType !== "none" ? 562 : 520;
-    const minX = -(window.innerWidth - 320 - 32);
-    const maxX = 0;
-    // Top-16 in Tailwind is 64px from the top. Navbar is 56px (h-14).
-    // minY = 0 ensures the top of the popover is AT LEAST 64px (strictly below the navbar, NEVER above it!).
-    const minY = 0;
-    const maxY = Math.max(0, window.innerHeight - 64 - currentHeight - 16);
-
-    // Soft magnetic pull near edges while dragging (not hard jumping)
-    const magneticBand = 24;
-    let softX = rawX;
-    let softY = rawY;
-
-    if (Math.abs(rawX) < magneticBand) {
-      softX = rawX * 0.4;
-    } else if (Math.abs(rawX - minX) < magneticBand) {
-      softX = minX + (rawX - minX) * 0.4;
-    }
-
-    if (rawY < magneticBand) {
-      softY = Math.max(0, rawY * 0.4);
-    } else if (Math.abs(rawY - maxY) < magneticBand) {
-      softY = maxY + (rawY - maxY) * 0.4;
-    }
-
-    setPopupPosition({
-      x: Math.max(minX, Math.min(maxX, softX)),
-      y: Math.max(minY, Math.min(maxY, softY)),
-    });
-  };
-
-  const handleHeaderPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    setIsDraggingHeader(false);
-    isDraggingHeaderRef.current = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-
-    // Soft snapping on release in a slow and nice manner
-    const currentHeight = shapeMode === "circle" && !isArtisticWheel && classicHarmonyType !== "none" ? 562 : 520;
-    const minX = -(window.innerWidth - 320 - 32);
-    const maxY = Math.max(0, window.innerHeight - 64 - currentHeight - 16);
-    const snapDistance = 45;
-
-    let targetX = popupPosition.x;
-    let targetY = popupPosition.y;
-
-    // 1. Home snap: if near default position (0, 0), softly glide to (0, 0)
-    if (Math.hypot(popupPosition.x, popupPosition.y) < snapDistance * 1.5) {
-      targetX = 0;
-      targetY = 0;
-    } else {
-      // 2. Right margin snap (x = 0)
-      if (Math.abs(popupPosition.x) < snapDistance) {
-        targetX = 0;
-      }
-      // 3. Left margin snap (x = minX)
-      else if (Math.abs(popupPosition.x - minX) < snapDistance) {
-        targetX = minX;
-      }
-
-      // 4. Top margin snap (just below top navbar, y = 0)
-      if (popupPosition.y < snapDistance) {
-        targetY = 0;
-      }
-      // 5. Bottom margin snap (y = maxY)
-      else if (Math.abs(popupPosition.y - maxY) < snapDistance) {
-        targetY = maxY;
-      }
-    }
-
-    if (targetX !== popupPosition.x || targetY !== popupPosition.y) {
-      setPopupPosition({ x: targetX, y: targetY });
-    }
-  };
-
-  // Draggable Gamut Mask sub-window position state
-  const [gamutWindowPos, setGamutWindowPos] = useState<{ x: number; y: number } | null>(null);
-  const [isDraggingGamut, setIsDraggingGamut] = useState(false);
-  const isDraggingGamutRef = useRef(false);
-  const dragStartGamutRef = useRef({ pointerX: 0, pointerY: 0, startX: 0, startY: 0 });
-
-  const handleGamutHeaderPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (
-      (e.target as HTMLElement).closest("button") ||
-      (e.target as HTMLElement).closest("select") ||
-      (e.target as HTMLElement).closest("input")
-    )
-      return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    isDraggingGamutRef.current = true;
-    setIsDraggingGamut(true);
-    const currentPos = gamutWindowPos ?? { x: popupPosition.x - 262, y: popupPosition.y + 40 };
-    dragStartGamutRef.current = {
-      pointerX: e.clientX,
-      pointerY: e.clientY,
-      startX: currentPos.x,
-      startY: currentPos.y,
-    };
-  };
-
-  const handleGamutHeaderPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingGamutRef.current) return;
-    const dx = e.clientX - dragStartGamutRef.current.pointerX;
-    const dy = e.clientY - dragStartGamutRef.current.pointerY;
-    const rawX = dragStartGamutRef.current.startX + dx;
-    const rawY = dragStartGamutRef.current.startY + dy;
-
-    const minX = -(window.innerWidth - 250 - 32);
-    const maxX = 0;
-    const minY = 0; // Strictly below navbar!
-    const maxY = Math.max(0, window.innerHeight - 64 - 280 - 16);
-
-    const magneticBand = 24;
-    let softX = rawX;
-    let softY = rawY;
-
-    if (Math.abs(rawX) < magneticBand) softX = rawX * 0.4;
-    else if (Math.abs(rawX - minX) < magneticBand) softX = minX + (rawX - minX) * 0.4;
-
-    if (rawY < magneticBand) softY = Math.max(0, rawY * 0.4);
-    else if (Math.abs(rawY - maxY) < magneticBand) softY = maxY + (rawY - maxY) * 0.4;
-
-    setGamutWindowPos({
-      x: Math.max(minX, Math.min(maxX, softX)),
-      y: Math.max(minY, Math.min(maxY, softY)),
-    });
-  };
-
-  const handleGamutHeaderPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    setIsDraggingGamut(false);
-    isDraggingGamutRef.current = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-
-    if (!gamutWindowPos) return;
-
-    const defaultX = popupPosition.x - 262;
-    const defaultY = popupPosition.y + 40;
-    const snapDistance = 45;
-
-    let targetX = gamutWindowPos.x;
-    let targetY = gamutWindowPos.y;
-
-    if (Math.hypot(gamutWindowPos.x - defaultX, gamutWindowPos.y - defaultY) < snapDistance * 1.5) {
-      targetX = defaultX;
-      targetY = defaultY;
-    } else {
-      const minX = -(window.innerWidth - 250 - 32);
-      const maxY = Math.max(0, window.innerHeight - 64 - 280 - 16);
-      if (Math.abs(gamutWindowPos.x) < snapDistance) targetX = 0;
-      else if (Math.abs(gamutWindowPos.x - minX) < snapDistance) targetX = minX;
-      if (gamutWindowPos.y < snapDistance) targetY = 0;
-      else if (Math.abs(gamutWindowPos.y - maxY) < snapDistance) targetY = maxY;
-    }
-
-    if (targetX !== gamutWindowPos.x || targetY !== gamutWindowPos.y) {
-      setGamutWindowPos({ x: targetX, y: targetY });
-    }
-  };
-
-  // Draggable Grid Levels sub-window position state
-  const [gridWindowPos, setGridWindowPos] = useState<{ x: number; y: number } | null>(null);
-  const [isDraggingGrid, setIsDraggingGrid] = useState(false);
-  const isDraggingGridRef = useRef(false);
-  const dragStartGridRef = useRef({ pointerX: 0, pointerY: 0, startX: 0, startY: 0 });
-
-  const handleGridHeaderPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (
-      (e.target as HTMLElement).closest("button") ||
-      (e.target as HTMLElement).closest("select") ||
-      (e.target as HTMLElement).closest("input")
-    )
-      return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    isDraggingGridRef.current = true;
-    setIsDraggingGrid(true);
-    const currentPos = gridWindowPos ?? { x: popupPosition.x - 262, y: popupPosition.y + 60 };
-    dragStartGridRef.current = {
-      pointerX: e.clientX,
-      pointerY: e.clientY,
-      startX: currentPos.x,
-      startY: currentPos.y,
-    };
-  };
-
-  const handleGridHeaderPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingGridRef.current) return;
-    const dx = e.clientX - dragStartGridRef.current.pointerX;
-    const dy = e.clientY - dragStartGridRef.current.pointerY;
-    const rawX = dragStartGridRef.current.startX + dx;
-    const rawY = dragStartGridRef.current.startY + dy;
-
-    const minX = -(window.innerWidth - 250 - 32);
-    const maxX = 0;
-    const minY = 0; // Strictly below navbar!
-    const maxY = Math.max(0, window.innerHeight - 64 - 260 - 16);
-
-    const magneticBand = 24;
-    let softX = rawX;
-    let softY = rawY;
-
-    if (Math.abs(rawX) < magneticBand) softX = rawX * 0.4;
-    else if (Math.abs(rawX - minX) < magneticBand) softX = minX + (rawX - minX) * 0.4;
-
-    if (rawY < magneticBand) softY = Math.max(0, rawY * 0.4);
-    else if (Math.abs(rawY - maxY) < magneticBand) softY = maxY + (rawY - maxY) * 0.4;
-
-    setGridWindowPos({
-      x: Math.max(minX, Math.min(maxX, softX)),
-      y: Math.max(minY, Math.min(maxY, softY)),
-    });
-  };
-
-  const handleGridHeaderPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    setIsDraggingGrid(false);
-    isDraggingGridRef.current = false;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-
-    if (!gridWindowPos) return;
-
-    const defaultX = popupPosition.x - 262;
-    const defaultY = popupPosition.y + 60;
-    const snapDistance = 45;
-
-    let targetX = gridWindowPos.x;
-    let targetY = gridWindowPos.y;
-
-    if (Math.hypot(gridWindowPos.x - defaultX, gridWindowPos.y - defaultY) < snapDistance * 1.5) {
-      targetX = defaultX;
-      targetY = defaultY;
-    } else {
-      const minX = -(window.innerWidth - 250 - 32);
-      const maxY = Math.max(0, window.innerHeight - 64 - 260 - 16);
-      if (Math.abs(gridWindowPos.x) < snapDistance) targetX = 0;
-      else if (Math.abs(gridWindowPos.x - minX) < snapDistance) targetX = minX;
-      if (gridWindowPos.y < snapDistance) targetY = 0;
-      else if (Math.abs(gridWindowPos.y - maxY) < snapDistance) targetY = maxY;
-    }
-
-    if (targetX !== gridWindowPos.x || targetY !== gridWindowPos.y) {
-      setGridWindowPos({ x: targetX, y: targetY });
-    }
-  };
+  // 3. Draggable Grid Levels sub-window position & physics
+  const {
+    headerProps: gridHeaderDragProps,
+    windowStyle: gridWindowStyle,
+  } = useDraggableWindow({
+    initialOffset: { x: -262, y: 60 },
+    windowWidth: 250,
+    windowHeight: 260,
+    margin: 16,
+    magneticBand: 24,
+    snapDistance: 45,
+  });
 
   // Helper to cycle through classic harmonies
   const cycleClassicHarmony = useCallback(() => {
@@ -1321,23 +1086,12 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.16, ease: "easeOut" }}
-          style={{
-            translate: `${popupPosition.x}px ${popupPosition.y}px`,
-            transition: isDraggingHeader ? "none" : "translate 0.36s cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
+          style={mainPopoverWindowStyle}
           className="fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
         >
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
           <div
-            onPointerDown={handleHeaderPointerDown}
-            onPointerMove={handleHeaderPointerMove}
-            onPointerUp={handleHeaderPointerUp}
-            onPointerCancel={handleHeaderPointerUp}
-            onDoubleClick={(e) => {
-              if (!(e.target as HTMLElement).closest("button")) {
-                setPopupPosition({ x: 0, y: 0 });
-              }
-            }}
+            {...mainHeaderDragProps}
             className="h-[46px] px-4.5 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/5 select-none"
             title="Drag header to move, double-click to reset position"
           >
@@ -1920,25 +1674,12 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
-            style={{
-              translate: `${gamutWindowPos ? gamutWindowPos.x : popupPosition.x - 262}px ${
-                gamutWindowPos ? gamutWindowPos.y : popupPosition.y + 40
-              }px`,
-              transition: isDraggingGamut ? "none" : "translate 0.36s cubic-bezier(0.16, 1, 0.3, 1)",
-            }}
+            style={gamutWindowStyle}
             className="fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
           >
             {/* Draggable Header */}
             <div
-              onPointerDown={handleGamutHeaderPointerDown}
-              onPointerMove={handleGamutHeaderPointerMove}
-              onPointerUp={handleGamutHeaderPointerUp}
-              onPointerCancel={handleGamutHeaderPointerUp}
-              onDoubleClick={(e) => {
-                if (!(e.target as HTMLElement).closest("button")) {
-                  setGamutWindowPos({ x: popupPosition.x - 262, y: popupPosition.y + 40 });
-                }
-              }}
+              {...gamutHeaderDragProps}
               className="flex items-center justify-between pb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
               title="Drag header to move sub-window, double-click to snap next to picker"
             >
@@ -2050,25 +1791,12 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
-            style={{
-              translate: `${gridWindowPos ? gridWindowPos.x : popupPosition.x - 262}px ${
-                gridWindowPos ? gridWindowPos.y : popupPosition.y + 60
-              }px`,
-              transition: isDraggingGrid ? "none" : "translate 0.36s cubic-bezier(0.16, 1, 0.3, 1)",
-            }}
+            style={gridWindowStyle}
             className="fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
           >
             {/* Draggable Header */}
             <div
-              onPointerDown={handleGridHeaderPointerDown}
-              onPointerMove={handleGridHeaderPointerMove}
-              onPointerUp={handleGridHeaderPointerUp}
-              onPointerCancel={handleGridHeaderPointerUp}
-              onDoubleClick={(e) => {
-                if (!(e.target as HTMLElement).closest("button")) {
-                  setGridWindowPos({ x: popupPosition.x - 262, y: popupPosition.y + 60 });
-                }
-              }}
+              {...gridHeaderDragProps}
               className="flex items-center justify-between pb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
               title="Drag header to move sub-window, double-click to snap next to picker"
             >

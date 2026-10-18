@@ -6,6 +6,7 @@ import { CanvasViewport } from "@/ui/components/CanvasViewport";
 import { NewCanvasModal } from "@/ui/components/NewCanvasModal";
 import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
+import { LayersPopover } from "@/ui/components/LayersPopover";
 
 export default function App() {
   const {
@@ -89,6 +90,11 @@ export default function App() {
         activeColor={activeColor}
         onClose={handleClosePopover}
         onSelectColor={setActiveColor}
+      />
+
+      <LayersPopover
+        isOpen={activePopover === "layers"}
+        onClose={handleClosePopover}
       />
 
       <BrushLibraryPopover

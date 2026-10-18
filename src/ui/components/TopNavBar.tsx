@@ -272,9 +272,14 @@ export const TopNavBar: FC<TopNavBarProps> = ({
         {/* Layers */}
         <button
           type="button"
+          onClick={() => onTogglePopover("layers")}
           aria-label="Layers Panel"
           title="Layers"
-          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+          className={`p-2 rounded-lg transition-colors ${
+            activePopover === "layers"
+              ? "bg-zinc-800 text-zinc-100 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+          }`}
         >
           <Layers className="w-4 h-4" />
         </button>

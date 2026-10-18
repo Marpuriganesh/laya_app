@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useDocumentStore } from "../useDocumentStore";
 import { createDefaultDocumentConfiguration } from "@/types/document";
+import { createDefaultLayerStack } from "@/types/layer";
 
 describe("useDocumentStore (Zustand)", () => {
   beforeEach(() => {
@@ -14,6 +15,7 @@ describe("useDocumentStore (Zustand)", () => {
       transform: { scale: 0.8, panX: 0, panY: 0 },
       activePopover: "none",
       softProofMode: "none",
+      layerStack: createDefaultLayerStack(),
     });
   });
 
@@ -81,5 +83,52 @@ describe("useDocumentStore (Zustand)", () => {
 
     setSoftProofMode("cmyk-print");
     expect(useDocumentStore.getState().softProofMode).toBe("cmyk-print");
+  });
+
+  it("manages layers correctly: add, duplicate, visibility, opacity, blendMode, delete", () => {
+    const {
+      addLayer,
+      duplicateLayer,
+      toggleLayerVisibility,
+      setLayerOpacity,
+      setLayerBlendMode,
+      deleteLayer,
+    } = useDocumentStore.getState();
+
+    // Initial stack has Layer 1 and Background
+    expect(useDocumentStore.getState().layerStack.layers.length).toBe(2);
+
+    // Add Layer
+    addLayer();
+    let currentLayers = useDocumentStore.getState().layerStack.layers;
+    expect(currentLayers.length).toBe(3);
+    const newLayerId = useDocumentStore.getState().layerStack.activeLayerId;
+    expect(currentLayers[0].id).toBe(newLayerId);
+
+    // Duplicate Layer
+    duplicateLayer(newLayerId);
+    currentLayers = useDocumentStore.getState().layerStack.layers;
+    expect(currentLayers.length).toBe(4);
+
+    // Toggle Visibility
+    toggleLayerVisibility(newLayerId);
+    let target = useDocumentStore.getState().layerStack.layers.find((l) => l.id === newLayerId);
+    expect(target?.visible).toBe(false);
+
+    // Set Opacity
+    setLayerOpacity(newLayerId, 0.75);
+    target = useDocumentStore.getState().layerStack.layers.find((l) => l.id === newLayerId);
+    expect(target?.opacity).toBe(0.75);
+
+    // Set Blend Mode
+    setLayerBlendMode(newLayerId, "multiply");
+    target = useDocumentStore.getState().layerStack.layers.find((l) => l.id === newLayerId);
+    expect(target?.blendMode).toBe("multiply");
+
+    // Delete Layer
+    deleteLayer(newLayerId);
+    currentLayers = useDocumentStore.getState().layerStack.layers;
+    expect(currentLayers.length).toBe(3);
+    expect(currentLayers.some((l) => l.id === newLayerId)).toBe(false);
   });
 });
