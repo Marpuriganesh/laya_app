@@ -69,6 +69,27 @@ export function calculateBarycentricWeights(
 }
 
 /**
+ * Calculates the signed perpendicular distance (in pixels) from a 2D point
+ * to the nearest boundary of an equilateral barycentric triangle.
+ * Positive = inside the triangle, Negative = outside the triangle.
+ *
+ * For an equilateral triangle inscribed in radius R:
+ * - Altitude h = 1.5 * R.
+ * - Distance to edge i is w_i * h.
+ * - Signed distance to boundary = min(w0, w1, w2) * h.
+ */
+export function calculateEquilateralTriangleSignedDistance(
+  point: Point2D,
+  vertices: TriangleVertices,
+  shapeRadius: number
+): number {
+  const [w0, w1, w2] = calculateBarycentricWeights(point, vertices);
+  const minWeight = Math.min(w0, w1, w2);
+  const altitude = 1.5 * shapeRadius;
+  return minWeight * altitude;
+}
+
+/**
  * Clamps a point to the inside or perimeter of a triangle.
  */
 export function clampPointToTriangle(

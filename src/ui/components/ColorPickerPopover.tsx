@@ -29,6 +29,7 @@ import {
   pointToSaturationValue,
   saturationValueToPoint,
   calculateBarycentricWeights,
+  calculateEquilateralTriangleSignedDistance,
   type TriangleVertices,
 } from "@/engine/color/barycentric_triangle";
 import {
@@ -523,7 +524,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         blackVertex: { x: center + shapeRadius * (Math.sqrt(3) / 2), y: center + shapeRadius * 0.5 },
       };
 
-      // Render barycentric pixels using an offscreen canvas and drawImage (does not wipe out surrounding canvas!)
+      // Render barycentric pixels with analytical subpixel anti-aliasing
       const offscreen = document.createElement("canvas");
       offscreen.width = size;
       offscreen.height = size;
@@ -532,34 +533,56 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         const imgData = offCtx.createImageData(size, size);
         const data32 = new Uint32Array(imgData.data.buffer);
 
-        const minY = Math.max(0, Math.floor(vertices.hueVertex.y));
-        const maxY = Math.min(size - 1, Math.ceil(vertices.blackVertex.y));
-        const minX = Math.max(0, Math.floor(vertices.whiteVertex.x));
-        const maxX = Math.min(size - 1, Math.ceil(vertices.blackVertex.x));
+        const minY = Math.max(0, Math.floor(vertices.hueVertex.y) - 2);
+        const maxY = Math.min(size - 1, Math.ceil(vertices.blackVertex.y) + 2);
+        const minX = Math.max(0, Math.floor(vertices.whiteVertex.x) - 2);
+        const maxX = Math.min(size - 1, Math.ceil(vertices.blackVertex.x) + 2);
 
         for (let py = minY; py <= maxY; py++) {
           for (let px = minX; px <= maxX; px++) {
-            const [w0, w1, w2] = calculateBarycentricWeights({ x: px, y: py }, vertices);
-            if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-              const r = Math.round(w0 * pureR + w1 * 255 + w2 * 0);
-              const g = Math.round(w0 * pureG + w1 * 255 + w2 * 0);
-              const b = Math.round(w0 * pureB + w1 * 255 + w2 * 0);
-              data32[py * size + px] = (255 << 24) | (b << 16) | (g << 8) | r;
-            }
+            // Sample at pixel center (px + 0.5, py + 0.5)
+            const distPixels = calculateEquilateralTriangleSignedDistance(
+              { x: px + 0.5, y: py + 0.5 },
+              vertices,
+              shapeRadius
+            );
+
+            // Outside anti-aliasing transition band
+            if (distPixels <= -0.5) continue;
+
+            // Smooth linear subpixel area coverage
+            const alpha = Math.max(0, Math.min(1, distPixels + 0.5));
+            const aByte = Math.round(alpha * 255);
+            if (aByte === 0) continue;
+
+            const [w0, w1, w2] = calculateBarycentricWeights(
+              { x: px + 0.5, y: py + 0.5 },
+              vertices
+            );
+            const w0Clamped = Math.max(0, w0);
+            const w1Clamped = Math.max(0, w1);
+            const w2Clamped = Math.max(0, w2);
+            const wSum = w0Clamped + w1Clamped + w2Clamped || 1;
+
+            const r = Math.round((w0Clamped / wSum) * pureR + (w1Clamped / wSum) * 255);
+            const g = Math.round((w0Clamped / wSum) * pureG + (w1Clamped / wSum) * 255);
+            const b = Math.round((w0Clamped / wSum) * pureB + (w1Clamped / wSum) * 255);
+
+            data32[py * size + px] = (aByte << 24) | (b << 16) | (g << 8) | r;
           }
         }
         offCtx.putImageData(imgData, 0, 0);
         ctx.drawImage(offscreen, 0, 0);
       }
 
-      // Triangle border stroke
+      // Triangle border stroke with anti-aliasing
       ctx.beginPath();
       ctx.moveTo(vertices.hueVertex.x, vertices.hueVertex.y);
       ctx.lineTo(vertices.whiteVertex.x, vertices.whiteVertex.y);
       ctx.lineTo(vertices.blackVertex.x, vertices.blackVertex.y);
       ctx.closePath();
-      ctx.strokeStyle = "rgba(255,255,255,0.25)";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth = 1.2;
       ctx.stroke();
 
       // Triangle Handle

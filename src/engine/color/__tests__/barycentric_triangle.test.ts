@@ -3,6 +3,7 @@ import {
   pointToSaturationValue,
   saturationValueToPoint,
   clampPointToTriangle,
+  calculateEquilateralTriangleSignedDistance,
   type TriangleVertices,
 } from "../barycentric_triangle";
 
@@ -58,5 +59,31 @@ describe("Barycentric Triangle Mathematics", () => {
     expect(s).toBeLessThanOrEqual(1.0);
     expect(v).toBeGreaterThanOrEqual(0.0);
     expect(v).toBeLessThanOrEqual(1.0);
+  });
+
+  it("calculates exact signed perpendicular distance for equilateral triangles", () => {
+    const center = 117;
+    const shapeRadius = 82;
+    const equilateralVertices: TriangleVertices = {
+      hueVertex: { x: center, y: center - shapeRadius }, // Apex at (117, 35)
+      whiteVertex: { x: center - shapeRadius * (Math.sqrt(3) / 2), y: center + shapeRadius * 0.5 }, // (46.01, 158)
+      blackVertex: { x: center + shapeRadius * (Math.sqrt(3) / 2), y: center + shapeRadius * 0.5 }, // (187.99, 158)
+    };
+
+    // Exactly on the bottom horizontal edge (y = 158): distance is 0
+    const onEdge = calculateEquilateralTriangleSignedDistance({ x: 117, y: 158 }, equilateralVertices, shapeRadius);
+    expect(onEdge).toBeCloseTo(0.0, 5);
+
+    // 1 pixel inside bottom edge (y = 157): distance is +1.0
+    const inside1px = calculateEquilateralTriangleSignedDistance({ x: 117, y: 157 }, equilateralVertices, shapeRadius);
+    expect(inside1px).toBeCloseTo(1.0, 5);
+
+    // 1 pixel outside bottom edge (y = 159): distance is -1.0
+    const outside1px = calculateEquilateralTriangleSignedDistance({ x: 117, y: 159 }, equilateralVertices, shapeRadius);
+    expect(outside1px).toBeCloseTo(-1.0, 5);
+
+    // Centroid of equilateral triangle: distance is inradius (shapeRadius / 2 = 41)
+    const centroidDist = calculateEquilateralTriangleSignedDistance({ x: center, y: center }, equilateralVertices, shapeRadius);
+    expect(centroidDist).toBeCloseTo(41.0, 5);
   });
 });
