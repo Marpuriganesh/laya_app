@@ -10,6 +10,7 @@ import {
   Infinity as InfinityIcon,
   SlidersHorizontal,
   Shapes,
+  GripVertical,
 } from "lucide-react";
 import {
   hsvToRgb,
@@ -59,15 +60,6 @@ interface ColorPickerPopoverProps {
 type ShapeMode = "circle" | "square" | "triangle";
 type ClassicPointerTarget = "hue" | "shape" | null;
 
-const PROCREATE_HARMONY_OPTIONS: { id: HarmonyType; label: string }[] = [
-  { id: "none", label: "None" },
-  { id: "complementary", label: "Comp" },
-  { id: "split-complementary", label: "Split" },
-  { id: "triadic", label: "Triad" },
-  { id: "tetradic", label: "Tetrad" },
-  { id: "analogous", label: "Analog" },
-];
-
 export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   isOpen,
   activeColor,
@@ -90,6 +82,64 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const [isGamutDrawerOpen, setIsGamutDrawerOpen] = useState(false);
   const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
   const [isArtisticSettingsOpen, setIsArtisticSettingsOpen] = useState(false);
+
+  // Draggable popover position state
+  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingHeaderRef = useRef(false);
+  const dragStartRef = useRef({ pointerX: 0, pointerY: 0, startX: 0, startY: 0 });
+
+  const handleHeaderPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isDraggingHeaderRef.current = true;
+    dragStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startX: popupPosition.x,
+      startY: popupPosition.y,
+    };
+  };
+
+  const handleHeaderPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingHeaderRef.current) return;
+    const dx = e.clientX - dragStartRef.current.pointerX;
+    const dy = e.clientY - dragStartRef.current.pointerY;
+
+    const newX = dragStartRef.current.startX + dx;
+    const newY = dragStartRef.current.startY + dy;
+
+    const minX = -(window.innerWidth - 340);
+    const maxX = 10;
+    const minY = -50;
+    const maxY = window.innerHeight - 100;
+
+    setPopupPosition({
+      x: Math.max(minX, Math.min(maxX, newX)),
+      y: Math.max(minY, Math.min(maxY, newY)),
+    });
+  };
+
+  const handleHeaderPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    isDraggingHeaderRef.current = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  // Helper to cycle through classic harmonies
+  const cycleClassicHarmony = useCallback(() => {
+    const order: HarmonyType[] = [
+      "none",
+      "complementary",
+      "split-complementary",
+      "triadic",
+      "tetradic",
+      "analogous",
+    ];
+    const currentIndex = order.indexOf(classicHarmonyType);
+    const nextIndex = (currentIndex + 1) % order.length;
+    setClassicHarmonyType(order[nextIndex]);
+  }, [classicHarmonyType]);
 
   // Track committed hex to distinguish internal interactions from external props
   const lastCommittedHexRef = useRef<string>(activeColor.toUpperCase());
@@ -679,7 +729,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // 3. Procreate Harmony Chords (Lines & Companion Reticles) for Circle Mode
+    // 3. Procreate Harmony Companion Reticles for Circle Mode (No dotted lines!)
     const hueAngleRad = (hue * Math.PI) / 180;
     const ringMidDist = (outerRadius + innerRadius) / 2;
     const hueBlipX = center + Math.cos(hueAngleRad) * ringMidDist;
@@ -688,40 +738,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     if (shapeMode === "circle" && classicHarmonyType !== "none") {
       const chords = calculateHarmonyAngles(hue, classicHarmonyType, "rgb");
 
-      // Draw connecting chord lines across the wheel
-      ctx.save();
-      ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-      ctx.lineWidth = 1.2;
-
-      if (classicHarmonyType === "complementary" && chords.length === 1) {
-        const compRad = (chords[0].rgbHueDeg * Math.PI) / 180;
-        ctx.beginPath();
-        ctx.moveTo(hueBlipX, hueBlipY);
-        ctx.lineTo(center + Math.cos(compRad) * ringMidDist, center + Math.sin(compRad) * ringMidDist);
-        ctx.stroke();
-      } else if (classicHarmonyType === "triadic" || classicHarmonyType === "tetradic") {
-        ctx.beginPath();
-        ctx.moveTo(hueBlipX, hueBlipY);
-        for (const chord of chords) {
-          const chordRad = (chord.rgbHueDeg * Math.PI) / 180;
-          ctx.lineTo(center + Math.cos(chordRad) * ringMidDist, center + Math.sin(chordRad) * ringMidDist);
-        }
-        ctx.closePath();
-        ctx.stroke();
-      } else {
-        // split-complementary and analogous
-        for (const chord of chords) {
-          const chordRad = (chord.rgbHueDeg * Math.PI) / 180;
-          ctx.beginPath();
-          ctx.moveTo(hueBlipX, hueBlipY);
-          ctx.lineTo(center + Math.cos(chordRad) * ringMidDist, center + Math.sin(chordRad) * ringMidDist);
-          ctx.stroke();
-        }
-      }
-      ctx.restore();
-
-      // Companion Reticles on Hue Ring
+      // Companion Reticles on Hue Ring (clean, normal size, no ugly dotted lines!)
       for (const chord of chords) {
         const chordRad = (chord.rgbHueDeg * Math.PI) / 180;
         const [cr, cg, cb] = hsvToRgb(chord.rgbHueDeg, 1, 1);
@@ -732,19 +749,26 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
         ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
         ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.8;
         ctx.fill();
         ctx.stroke();
       }
     }
 
-    // 4. Draw Primary Hue Reticle Handle on Outer Ring
+    // 4. Draw Primary Hue Reticle Handle on Outer Ring (Prominently Enlarged Selection Ring)
     ctx.beginPath();
-    ctx.arc(hueBlipX, hueBlipY, 6, 0, Math.PI * 2);
+    ctx.arc(hueBlipX, hueBlipY, 8.5, 0, Math.PI * 2);
     ctx.fillStyle = `rgb(${pureR},${pureG},${pureB})`;
     ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.8;
     ctx.fill();
+    ctx.stroke();
+
+    // Inner subtle definition ring for crisp high-contrast visibility
+    ctx.beginPath();
+    ctx.arc(hueBlipX, hueBlipY, 5.5, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = 1;
     ctx.stroke();
   }, [isOpen, shapeMode, isArtisticWheel, hue, saturation, value, activeColor, classicHarmonyType]);
 
@@ -1059,28 +1083,46 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           key="color-picker-popover-panel"
           role="dialog"
           aria-label="Color Picker"
-          initial={{ opacity: 0, scale: 0.95, y: -8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -8 }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.16, ease: "easeOut" }}
+          style={{
+            translate: `${popupPosition.x}px ${popupPosition.y}px`,
+          }}
           className="fixed right-4 top-16 z-50 w-[320px] h-[520px] rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
         >
-          {/* Layer 1: Top Bar (h: 46px) */}
-          <div className="h-[46px] px-4.5 flex items-center justify-between shrink-0">
-            <span className="text-xs font-medium text-zinc-400 tracking-wide">
-              {shapeMode === "circle"
-                ? isArtisticWheel
-                  ? "Artistic Wheel (RYB)"
-                  : "Disc Picker (Classic)"
-                : shapeMode === "square"
-                ? "Square Matrix (HSV)"
-                : "Triangle Wheel (Classic)"}
-            </span>
+          {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
+          <div
+            onPointerDown={handleHeaderPointerDown}
+            onPointerMove={handleHeaderPointerMove}
+            onPointerUp={handleHeaderPointerUp}
+            onPointerCancel={handleHeaderPointerUp}
+            onDoubleClick={(e) => {
+              if (!(e.target as HTMLElement).closest("button")) {
+                setPopupPosition({ x: 0, y: 0 });
+              }
+            }}
+            className="h-[46px] px-4.5 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/5 select-none"
+            title="Drag header to move, double-click to reset position"
+          >
+            <div className="flex items-center gap-2">
+              <GripVertical className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300 transition-colors" />
+              <span className="text-xs font-medium text-zinc-400 tracking-wide">
+                {shapeMode === "circle"
+                  ? isArtisticWheel
+                    ? "Artistic Wheel (RYB)"
+                    : "Disc Picker (Classic)"
+                  : shapeMode === "square"
+                  ? "Square Matrix (HSV)"
+                  : "Triangle Wheel (Classic)"}
+              </span>
+            </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close color picker"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -1419,10 +1461,10 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                       </button>
                     </div>
 
-                    {/* Mask Presets Selection */}
-                    <div className="flex flex-col gap-1.5 py-0.5">
+                    {/* Mask Presets Submenu */}
+                    <div className="flex flex-col gap-1 py-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-medium text-zinc-400">Palette Presets</span>
+                        <span className="text-[10px] font-medium text-zinc-400">Palette Sub-Menu</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -1430,7 +1472,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                             setIsGamutMaskEnabled(next);
                             if (next) clampActiveColorToMask(gamutMaskType, gamutMaskRotation);
                           }}
-                          className={`px-1.5 py-0.5 text-[9px] rounded font-semibold transition-colors ${
+                          className={`px-1.5 py-0.5 text-[9px] rounded font-semibold transition-colors cursor-pointer ${
                             isGamutMaskEnabled
                               ? "bg-amber-400/25 text-amber-300 border border-amber-400/40"
                               : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
@@ -1439,27 +1481,25 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           {isGamutMaskEnabled ? "Enabled" : "Disabled"}
                         </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-1">
+                      <select
+                        value={gamutMaskType}
+                        onChange={(e) => {
+                          const newType = e.target.value as GamutMaskType;
+                          setGamutMaskType(newType);
+                          if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
+                          clampActiveColorToMask(newType, gamutMaskRotation);
+                        }}
+                        className="w-full bg-zinc-800/90 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-amber-400/80 cursor-pointer"
+                      >
                         {GAMUT_MASK_PRESETS.map((preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            onClick={() => {
-                              setGamutMaskType(preset.id);
-                              if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
-                              clampActiveColorToMask(preset.id, gamutMaskRotation);
-                            }}
-                            className={`px-2 py-1 text-[10px] rounded font-medium text-left truncate transition-colors ${
-                              gamutMaskType === preset.id
-                                ? "bg-amber-400/25 text-amber-300 border border-amber-400/50"
-                                : "bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60 border border-transparent"
-                            }`}
-                            title={preset.description}
-                          >
+                          <option key={preset.id} value={preset.id} className="bg-zinc-900 text-zinc-200">
                             {preset.name}
-                          </button>
+                          </option>
                         ))}
-                      </div>
+                      </select>
+                      <span className="text-[9px] text-zinc-400 italic">
+                        {GAMUT_MASK_PRESETS.find((p) => p.id === gamutMaskType)?.description}
+                      </span>
                     </div>
 
                     {/* Rotation Slider */}
@@ -1508,6 +1548,44 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                 )}
               </AnimatePresence>
             </div>
+
+            {/* Single Harmony Cycle Button in front of / below the Classic Wheel */}
+            {shapeMode === "circle" && !isArtisticWheel && (
+              <button
+                type="button"
+                onClick={cycleClassicHarmony}
+                className={`-mt-1 mb-1 px-3 py-1 rounded-full border text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                  classicHarmonyType !== "none"
+                    ? "bg-amber-400/20 text-amber-300 border-amber-400/40 hover:bg-amber-400/30"
+                    : "bg-zinc-800/80 text-zinc-400 border-white/10 hover:text-zinc-200 hover:bg-zinc-700/80"
+                }`}
+                title="Click to cycle harmony mode"
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    classicHarmonyType !== "none"
+                      ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+                      : "bg-zinc-500"
+                  }`}
+                />
+                <span>
+                  Harmony:{" "}
+                  <strong className={classicHarmonyType !== "none" ? "text-amber-200" : "text-zinc-400"}>
+                    {classicHarmonyType === "none"
+                      ? "Off"
+                      : classicHarmonyType === "complementary"
+                      ? "Complementary"
+                      : classicHarmonyType === "split-complementary"
+                      ? "Split-Comp"
+                      : classicHarmonyType === "triadic"
+                      ? "Triadic"
+                      : classicHarmonyType === "tetradic"
+                      ? "Tetradic"
+                      : "Analogous"}
+                  </strong>
+                </span>
+              </button>
+            )}
 
             {/* Contextual Sliders Band (h: 92px, w: 288px) */}
             <div className="w-[288px] h-[92px] rounded-xl bg-[#252527]/50 border border-white/5 px-3 py-2 flex flex-col justify-between shrink-0">
@@ -1636,243 +1714,122 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                     </div>
                   </div>
                 </>
-              ) : shapeMode === "circle" ? (
-                /* Classic Circular Mode: Procreate Harmonies & Sliders */
-                <>
-                  {/* Harmony Selector Header */}
-                  <div className="flex items-center justify-between pb-0.5 border-b border-white/5">
-                    <span className="text-[9px] font-mono text-zinc-400">Harmony</span>
-                    <div className="flex items-center gap-1">
-                      {PROCREATE_HARMONY_OPTIONS.map((opt) => (
+              ) : shapeMode === "circle" && classicHarmonyType !== "none" ? (
+                /* Classic Circular Mode with Active Harmonies: Swatches + Brightness + Saturation */
+                <div className="flex flex-col justify-between h-full py-0.5">
+                  {/* Harmonic Palette Swatches Row */}
+                  <div className="flex items-center gap-1.5">
+                    {classicHarmonyItems.map((item) => {
+                      const isSelected = item.hex.toUpperCase() === activeColor.toUpperCase();
+                      return (
                         <button
-                          key={opt.id}
+                          key={item.id}
                           type="button"
-                          onClick={() => setClassicHarmonyType(opt.id)}
-                          className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors ${
-                            classicHarmonyType === opt.id
-                              ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
-                              : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                          onClick={() => commitClassicHsv(item.hue, item.saturation, item.value)}
+                          className={`flex-1 h-6 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected
+                              ? "border-white shadow-md ring-1 ring-white/70 scale-105"
+                              : "border-white/20 hover:border-white/50"
                           }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+                          style={{ backgroundColor: item.hex }}
+                          title={`${item.label}: ${item.hex}`}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* Brightness Slider */}
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                      <span>Brightness</span>
+                      <span>{Math.round(value * 100)}%</span>
+                    </div>
+                    <div
+                      ref={valueSliderRef}
+                      onPointerDown={(e) => {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        draggingSliderRef.current = "val";
+                        setIsDraggingSlider("val");
+                        handleValueSliderPointer(e);
+                      }}
+                      onPointerMove={(e) => {
+                        if (draggingSliderRef.current === "val" || isDraggingSlider === "val") {
+                          handleValueSliderPointer(e);
+                        }
+                      }}
+                      onPointerUp={(e) => {
+                        draggingSliderRef.current = null;
+                        setIsDraggingSlider(null);
+                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                          e.currentTarget.releasePointerCapture(e.pointerId);
+                        }
+                      }}
+                      onPointerCancel={(e) => {
+                        draggingSliderRef.current = null;
+                        setIsDraggingSlider(null);
+                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                          e.currentTarget.releasePointerCapture(e.pointerId);
+                        }
+                      }}
+                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                      style={{
+                        background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
+                      }}
+                    >
+                      <div
+                        className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                        style={{ left: `${value * 100}%` }}
+                      />
                     </div>
                   </div>
 
-                  {classicHarmonyType !== "none" ? (
-                    /* Procreate Active Harmonic Swatches & Sliders */
-                    <div className="flex flex-col gap-1 pt-0.5">
-                      {/* Harmonic Palette Swatches Row */}
-                      <div className="flex items-center gap-1.5">
-                        {classicHarmonyItems.map((item) => {
-                          const isSelected = item.hex.toUpperCase() === activeColor.toUpperCase();
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => commitClassicHsv(item.hue, item.saturation, item.value)}
-                              className={`flex-1 h-5 rounded border flex items-center justify-center transition-all cursor-pointer ${
-                                isSelected
-                                  ? "border-white shadow-md ring-1 ring-white/70 scale-105"
-                                  : "border-white/20 hover:border-white/50"
-                              }`}
-                              style={{ backgroundColor: item.hex }}
-                              title={`${item.label}: ${item.hex}`}
-                            />
-                          );
-                        })}
-                      </div>
-
-                      {/* Brightness Slider */}
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
-                          <span>Brightness</span>
-                          <span>{Math.round(value * 100)}%</span>
-                        </div>
-                        <div
-                          ref={valueSliderRef}
-                          onPointerDown={(e) => {
-                            e.currentTarget.setPointerCapture(e.pointerId);
-                            draggingSliderRef.current = "val";
-                            setIsDraggingSlider("val");
-                            handleValueSliderPointer(e);
-                          }}
-                          onPointerMove={(e) => {
-                            if (draggingSliderRef.current === "val" || isDraggingSlider === "val") {
-                              handleValueSliderPointer(e);
-                            }
-                          }}
-                          onPointerUp={(e) => {
-                            draggingSliderRef.current = null;
-                            setIsDraggingSlider(null);
-                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                              e.currentTarget.releasePointerCapture(e.pointerId);
-                            }
-                          }}
-                          onPointerCancel={(e) => {
-                            draggingSliderRef.current = null;
-                            setIsDraggingSlider(null);
-                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                              e.currentTarget.releasePointerCapture(e.pointerId);
-                            }
-                          }}
-                          className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                          style={{
-                            background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
-                          }}
-                        >
-                          <div
-                            className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                            style={{ left: `${value * 100}%` }}
-                          />
-                        </div>
-                      </div>
+                  {/* Saturation Slider */}
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                      <span>Saturation</span>
+                      <span>{Math.round(saturation * 100)}%</span>
                     </div>
-                  ) : (
-                    /* Classic 3 Sliders when Harmony is None */
-                    <div className="flex flex-col gap-1">
-                      {/* Hue Slider */}
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
-                          <span>Hue</span>
-                          <span>{hue}°</span>
-                        </div>
-                        <div
-                          ref={hueSliderRef}
-                          onPointerDown={(e) => {
-                            e.currentTarget.setPointerCapture(e.pointerId);
-                            draggingSliderRef.current = "hue";
-                            setIsDraggingSlider("hue");
-                            handleHueSliderPointer(e);
-                          }}
-                          onPointerMove={(e) => {
-                            if (draggingSliderRef.current === "hue" || isDraggingSlider === "hue") {
-                              handleHueSliderPointer(e);
-                            }
-                          }}
-                          onPointerUp={(e) => {
-                            draggingSliderRef.current = null;
-                            setIsDraggingSlider(null);
-                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                              e.currentTarget.releasePointerCapture(e.pointerId);
-                            }
-                          }}
-                          onPointerCancel={(e) => {
-                            draggingSliderRef.current = null;
-                            setIsDraggingSlider(null);
-                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                              e.currentTarget.releasePointerCapture(e.pointerId);
-                            }
-                          }}
-                          className="relative w-full h-1.5 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                          style={{
-                            background:
-                              "linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)",
-                          }}
-                        >
-                          <div
-                            className="absolute top-1/2 w-3 h-3 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                            style={{ left: `${(hue / 360) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Saturation & Brightness compact twin-sliders */}
-                      <div className="flex gap-2">
-                        <div className="flex-1 flex flex-col gap-0.5">
-                          <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
-                            <span>Sat</span>
-                            <span>{Math.round(saturation * 100)}%</span>
-                          </div>
-                          <div
-                            ref={satSliderRef}
-                            onPointerDown={(e) => {
-                              e.currentTarget.setPointerCapture(e.pointerId);
-                              draggingSliderRef.current = "sat";
-                              setIsDraggingSlider("sat");
-                              handleSatSliderPointer(e);
-                            }}
-                            onPointerMove={(e) => {
-                              if (draggingSliderRef.current === "sat" || isDraggingSlider === "sat") {
-                                handleSatSliderPointer(e);
-                              }
-                            }}
-                            onPointerUp={(e) => {
-                              draggingSliderRef.current = null;
-                              setIsDraggingSlider(null);
-                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                                e.currentTarget.releasePointerCapture(e.pointerId);
-                              }
-                            }}
-                            onPointerCancel={(e) => {
-                              draggingSliderRef.current = null;
-                              setIsDraggingSlider(null);
-                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                                e.currentTarget.releasePointerCapture(e.pointerId);
-                              }
-                            }}
-                            className="relative w-full h-1.5 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                            style={{
-                              background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
-                            }}
-                          >
-                            <div
-                              className="absolute top-1/2 w-3 h-3 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                              style={{ left: `${saturation * 100}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex-1 flex flex-col gap-0.5">
-                          <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
-                            <span>Bri</span>
-                            <span>{Math.round(value * 100)}%</span>
-                          </div>
-                          <div
-                            ref={valueSliderRef}
-                            onPointerDown={(e) => {
-                              e.currentTarget.setPointerCapture(e.pointerId);
-                              draggingSliderRef.current = "val";
-                              setIsDraggingSlider("val");
-                              handleValueSliderPointer(e);
-                            }}
-                            onPointerMove={(e) => {
-                              if (draggingSliderRef.current === "val" || isDraggingSlider === "val") {
-                                handleValueSliderPointer(e);
-                              }
-                            }}
-                            onPointerUp={(e) => {
-                              draggingSliderRef.current = null;
-                              setIsDraggingSlider(null);
-                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                                e.currentTarget.releasePointerCapture(e.pointerId);
-                              }
-                            }}
-                            onPointerCancel={(e) => {
-                              draggingSliderRef.current = null;
-                              setIsDraggingSlider(null);
-                              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                                e.currentTarget.releasePointerCapture(e.pointerId);
-                              }
-                            }}
-                            className="relative w-full h-1.5 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                            style={{
-                              background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
-                            }}
-                          >
-                            <div
-                              className="absolute top-1/2 w-3 h-3 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                              style={{ left: `${value * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
+                    <div
+                      ref={satSliderRef}
+                      onPointerDown={(e) => {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        draggingSliderRef.current = "sat";
+                        setIsDraggingSlider("sat");
+                        handleSatSliderPointer(e);
+                      }}
+                      onPointerMove={(e) => {
+                        if (draggingSliderRef.current === "sat" || isDraggingSlider === "sat") {
+                          handleSatSliderPointer(e);
+                        }
+                      }}
+                      onPointerUp={(e) => {
+                        draggingSliderRef.current = null;
+                        setIsDraggingSlider(null);
+                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                          e.currentTarget.releasePointerCapture(e.pointerId);
+                        }
+                      }}
+                      onPointerCancel={(e) => {
+                        draggingSliderRef.current = null;
+                        setIsDraggingSlider(null);
+                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                          e.currentTarget.releasePointerCapture(e.pointerId);
+                        }
+                      }}
+                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
+                      style={{
+                        background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
+                      }}
+                    >
+                      <div
+                        className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                        style={{ left: `${saturation * 100}%` }}
+                      />
                     </div>
-                  )}
-                </>
+                  </div>
+                </div>
               ) : (
-                /* Square and Triangle Modes: 3 Full-Width Dedicated Fine Sliders (H, S, V) */
+                /* Classic Modes (Circle with Harmony Off, Square, Triangle): 3 Dedicated Fine Sliders (H, S, V) */
                 <>
                   {/* 1. Hue Slider */}
                   <div className="flex flex-col gap-0.5">
