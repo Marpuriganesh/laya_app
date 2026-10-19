@@ -4,7 +4,7 @@
 
 export type ActiveTool = "brush" | "smudge" | "eraser";
 
-export type PopoverType = "none" | "color" | "brushLibrary" | "newCanvas" | "actions" | "layers";
+export type PopoverType = "none" | "color" | "brushLibrary" | "newCanvas" | "actions" | "layers" | "brushSettings";
 
 export type SoftProofMode = "none" | "grayscale-values" | "cmyk-print" | "gamut-warning";
 
@@ -12,4 +12,5 @@ export interface CanvasTransform {
   readonly scale: number;
   readonly panX: number;
   readonly panY: number;
+  readonly rotation?: number; // Canvas rotation in degrees (-180 to 180), default 0
 }

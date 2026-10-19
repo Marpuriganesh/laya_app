@@ -6,6 +6,7 @@ import { CanvasViewport } from "@/ui/components/CanvasViewport";
 import { NewCanvasModal } from "@/ui/components/NewCanvasModal";
 import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
+import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
 
 export default function App() {
@@ -100,6 +101,13 @@ export default function App() {
       <BrushLibraryPopover
         isOpen={activePopover === "brushLibrary"}
         onClose={handleClosePopover}
+        onOpenSettings={() => setActivePopover("brushSettings")}
+      />
+
+      <BrushSettingsPopover
+        isOpen={activePopover === "brushSettings"}
+        onClose={handleClosePopover}
+        activeColor={activeColor}
       />
 
       <NewCanvasModal

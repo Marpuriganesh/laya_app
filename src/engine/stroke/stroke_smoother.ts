@@ -33,12 +33,12 @@ export interface IStrokeSmoother {
  * Default smoothing configuration matching Procreate and Krita natural stylus feel.
  */
 export const DEFAULT_STROKE_SMOOTHING_CONFIG: StrokeSmoothingConfig = {
-  mode: "streamline",
-  streamlineStringRadiusPx: 20.0,
+  mode: "movingAverage",
+  streamlineStringRadiusPx: 4.0,
   streamlineBaseSmoothing: 0.15,
-  streamlineMaxSmoothing: 0.85,
-  streamlineVelocityThresholdPxPerSec: 400.0,
-  movingAverageWindowSize: 6,
+  streamlineMaxSmoothing: 0.5,
+  streamlineVelocityThresholdPxPerSec: 600.0,
+  movingAverageWindowSize: 3,
   predictiveLookAheadFrames: 2,
 };
 

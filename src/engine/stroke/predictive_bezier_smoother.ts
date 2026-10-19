@@ -120,6 +120,12 @@ export class PredictiveBezierSmoother implements IStrokeSmoother {
       endPressure: p2.pressure,
       startTimeMs: p1.timeMs,
       endTimeMs: p2.timeMs,
+      startTiltX: p1.tiltX,
+      endTiltX: p2.tiltX,
+      startTiltY: p1.tiltY,
+      endTiltY: p2.tiltY,
+      startSpeed: p1.speed,
+      endSpeed: p2.speed,
     };
   }
 

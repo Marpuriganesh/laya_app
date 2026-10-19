@@ -16,6 +16,8 @@ export interface TwoFingerGestureState {
   readonly initialScale: number;
   readonly initialCentroid: Point2D;
   readonly initialPan: Point2D;
+  readonly initialAngle?: number;
+  readonly initialRotation?: number;
 }
 
 /**
@@ -114,7 +116,37 @@ export function calculateFitToScreen(
 }
 
 /**
- * Calculates the new transform during a two-finger pinch-to-zoom and pan gesture.
+ * Snaps a canvas rotation angle (in degrees) to orthogonal angles (0°, 90°, 180°, 270°)
+ * if it falls within the specified magnetic snap threshold (default ±5°).
+ *
+ * @param angleDegrees Rotation angle in degrees
+ * @param snapThresholdDegrees Angular tolerance window in degrees (default 5.0°)
+ * @returns Snapped orthogonal angle, or original angle if outside the snap window
+ */
+export function snapRotationAngle(angleDegrees: number, snapThresholdDegrees = 5.0): number {
+  const normalized = ((angleDegrees % 360) + 360) % 360;
+
+  if (normalized <= snapThresholdDegrees || normalized >= 360 - snapThresholdDegrees) {
+    return 0;
+  }
+  if (Math.abs(normalized - 90) <= snapThresholdDegrees) {
+    return 90;
+  }
+  if (Math.abs(normalized - 180) <= snapThresholdDegrees) {
+    return 180;
+  }
+  if (Math.abs(normalized - 270) <= snapThresholdDegrees) {
+    return 270;
+  }
+
+  return angleDegrees;
+}
+
+/**
+ * Calculates the new transform during a two-finger pinch-to-zoom, pan, and rotation gesture.
+ *
+ * Angle delta formula:
+ * Δθ = atan2(touch2.y - touch1.y, touch2.x - touch1.x) - initialAngle
  *
  * @param gesture Initial touch state captured at gesture start
  * @param touch1 Current position of first finger in container coordinates
@@ -141,9 +173,24 @@ export function calculateTwoFingerTransform(
   const newPanX = currentCentroid.x - (gesture.initialCentroid.x - gesture.initialPan.x) * scaleRatio;
   const newPanY = currentCentroid.y - (gesture.initialCentroid.y - gesture.initialPan.y) * scaleRatio;
 
+  // Compute rotation delta: Δθ = atan2(p2.y - p1.y, p2.x - p1.x) - initialAngle
+  let rotation = gesture.initialRotation ?? 0;
+  if (gesture.initialAngle !== undefined) {
+    const currentAngle = Math.atan2(touch2.y - touch1.y, touch2.x - touch1.x);
+    let deltaAngle = currentAngle - gesture.initialAngle;
+    // Normalize delta angle to [-PI, PI] to prevent 360° discontinuities
+    while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+    while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+
+    const deltaDegrees = (deltaAngle * 180) / Math.PI;
+    const rawRotation = (gesture.initialRotation ?? 0) + deltaDegrees;
+    rotation = snapRotationAngle(rawRotation);
+  }
+
   return {
     scale: targetScale,
     panX: newPanX,
     panY: newPanY,
+    rotation,
   };
 }

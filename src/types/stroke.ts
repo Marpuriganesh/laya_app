@@ -48,6 +48,12 @@ export interface CubicBezierSegment {
   readonly endPressure: number;    // Pressure at p3 (0.0 - 1.0)
   readonly startTimeMs: number;    // Timestamp at start
   readonly endTimeMs: number;      // Timestamp at end
+  readonly startTiltX?: number;    // Horizontal tilt at p0 (-90 to +90)
+  readonly endTiltX?: number;      // Horizontal tilt at p3 (-90 to +90)
+  readonly startTiltY?: number;    // Vertical tilt at p0 (-90 to +90)
+  readonly endTiltY?: number;      // Vertical tilt at p3 (-90 to +90)
+  readonly startSpeed?: number;    // Velocity in px/sec at p0
+  readonly endSpeed?: number;      // Velocity in px/sec at p3
 }
 
 /**

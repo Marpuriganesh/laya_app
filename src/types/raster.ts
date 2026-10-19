@@ -88,4 +88,28 @@ export interface IRasterTarget {
    * Retrieves the raw backing RGBA8 buffer.
    */
   getPixelData(): Uint8ClampedArray;
+
+  /**
+   * Commits a rectangular sub-region from a source buffer/target onto this raster target.
+   * Only pixels within the specified dirtyRect are composited.
+   *
+   * @param source Source pixel buffer, raster target, or canvas
+   * @param dirtyRect Bounding box to commit
+   * @param blendMode Compositing blend mode
+   * @returns DirtyRect marking the affected area on the destination
+   */
+  commitSubRect?(
+    source: unknown,
+    dirtyRect: DirtyRect,
+    blendMode?: BlendMode
+  ): DirtyRect;
 }
+
+/**
+ * Valid source representations accepted by commitSubRect routines.
+ */
+export type CommitSource =
+  | Uint8ClampedArray
+  | PixelBufferDescriptor
+  | IRasterTarget
+  | unknown;

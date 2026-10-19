@@ -118,9 +118,14 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
         <button
           type="button"
-          aria-label="Adjustments"
-          title="Adjustments"
-          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+          onClick={() => onTogglePopover("brushSettings")}
+          aria-label="Brush Settings & Studio"
+          title="Brush Settings & Studio"
+          className={`p-2 rounded-lg transition-colors ${
+            activePopover === "brushSettings"
+              ? "bg-zinc-800 text-white"
+              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+          }`}
         >
           <SlidersHorizontal className="w-4 h-4" />
         </button>

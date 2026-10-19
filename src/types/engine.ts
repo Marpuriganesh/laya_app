@@ -32,6 +32,25 @@ export interface IDrawingEngine {
   setBrushOpacity(opacityNormalized: number): void;
   setBlendMode(blendMode: import("./raster").BlendMode): void;
   setSmoothingConfig(config: StrokeSmoothingConfig): void;
+  getSmoothingConfig?(): StrokeSmoothingConfig;
+
+  // --- Spline & Curve Settings ---
+  setSplineInterpolationMode?(mode: "catmullRom" | "midpoint"): void;
+  getSplineInterpolationMode?(): "catmullRom" | "midpoint";
+
+  // --- Brush Tip & Dynamics Adjustments ---
+  setBrushHardness?(hardness: number): void;
+  getBrushHardness?(): number;
+  setBrushSpacing?(spacingFraction: number): void;
+  getBrushSpacing?(): number;
+  setBrushFlow?(flow: number): void;
+  getBrushFlow?(): number;
+  setBrushAspectRatio?(aspectRatio: number): void;
+  getBrushAspectRatio?(): number;
+  setBrushAngle?(angleRadians: number): void;
+  getBrushAngle?(): number;
+  setSizeDynamicsEnabled?(enabled: boolean): void;
+  setOpacityDynamicsEnabled?(enabled: boolean): void;
 
   // --- Canvas Configuration ---
   setCanvasSize(widthPx: number, heightPx: number): void;

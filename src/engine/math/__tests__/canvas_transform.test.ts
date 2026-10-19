@@ -5,6 +5,7 @@ import {
   calculateFocalZoom,
   calculateFitToScreen,
   calculateTwoFingerTransform,
+  snapRotationAngle,
 } from "../canvas_transform";
 
 describe("Canvas Viewport Transform Math", () => {
@@ -85,5 +86,79 @@ describe("Canvas Viewport Transform Math", () => {
     // (350 - panY) / 2 = 250 => panY = -150
     expect(result.panX).toBeCloseTo(-100);
     expect(result.panY).toBeCloseTo(-150);
+  });
+
+  describe("Magnetic Snapping & Rotation", () => {
+    it("snaps rotation within ±5° of 0° (and 360° / negative 0°)", () => {
+      expect(snapRotationAngle(0)).toBe(0);
+      expect(snapRotationAngle(3)).toBe(0);
+      expect(snapRotationAngle(-3)).toBe(0);
+      expect(snapRotationAngle(358)).toBe(0);
+      expect(snapRotationAngle(362)).toBe(0);
+    });
+
+    it("snaps rotation within ±5° of 90°", () => {
+      expect(snapRotationAngle(90)).toBe(90);
+      expect(snapRotationAngle(88)).toBe(90);
+      expect(snapRotationAngle(93)).toBe(90);
+      expect(snapRotationAngle(450)).toBe(90); // 360 + 90
+    });
+
+    it("snaps rotation within ±5° of 180°", () => {
+      expect(snapRotationAngle(180)).toBe(180);
+      expect(snapRotationAngle(176)).toBe(180);
+      expect(snapRotationAngle(184)).toBe(180);
+      expect(snapRotationAngle(-182)).toBe(180);
+    });
+
+    it("snaps rotation within ±5° of 270°", () => {
+      expect(snapRotationAngle(270)).toBe(270);
+      expect(snapRotationAngle(268)).toBe(270);
+      expect(snapRotationAngle(274)).toBe(270);
+      expect(snapRotationAngle(-92)).toBe(270);
+    });
+
+    it("preserves continuous angles outside the snap threshold", () => {
+      expect(snapRotationAngle(45)).toBe(45);
+      expect(snapRotationAngle(60)).toBe(60);
+      expect(snapRotationAngle(120)).toBe(120);
+      expect(snapRotationAngle(210)).toBe(210);
+      expect(snapRotationAngle(315)).toBe(315);
+    });
+
+    it("respects custom snap threshold degrees", () => {
+      // 82° is not within default 5° of 90°, but is within 10°
+      expect(snapRotationAngle(82, 5.0)).toBe(82);
+      expect(snapRotationAngle(82, 10.0)).toBe(90);
+    });
+
+    it("calculates two-finger rotation delta and applies magnetic snapping", () => {
+      // Start with fingers horizontal (angle = 0 radians), rotation = 0°
+      const initialGesture = {
+        initialDistance: 200,
+        initialScale: 1.0,
+        initialCentroid: { x: 300, y: 300 },
+        initialPan: { x: 0, y: 0 },
+        initialAngle: 0,
+        initialRotation: 0,
+      };
+
+      // Rotate fingers by exactly 45 degrees: (cos(45°) * 100, sin(45°) * 100)
+      const cos45 = Math.SQRT1_2 * 100;
+      const sin45 = Math.SQRT1_2 * 100;
+      const touch1 = { x: 300 - cos45, y: 300 - sin45 };
+      const touch2 = { x: 300 + cos45, y: 300 + sin45 };
+
+      const result45 = calculateTwoFingerTransform(initialGesture, touch1, touch2);
+      expect(result45.rotation).toBeCloseTo(45, 1);
+
+      // Rotate fingers to 88 degrees (close to 90° -> should snap to 90°)
+      const rad88 = (88 * Math.PI) / 180;
+      const t1Near90 = { x: 300 - Math.cos(rad88) * 100, y: 300 - Math.sin(rad88) * 100 };
+      const t2Near90 = { x: 300 + Math.cos(rad88) * 100, y: 300 + Math.sin(rad88) * 100 };
+
+      const resultSnap90 = calculateTwoFingerTransform(initialGesture, t1Near90, t2Near90);
+      expect(resultSnap90.rotation).toBe(90);
+    });
   });
 });
