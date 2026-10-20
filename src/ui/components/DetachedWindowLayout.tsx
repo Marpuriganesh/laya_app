@@ -54,7 +54,7 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
   };
 
   return (
-    <div className="h-screen w-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden rounded-xl border border-zinc-200/90 dark:border-zinc-800/90 select-none transition-colors duration-150">
+    <div className="h-screen w-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden rounded-xl border border-transparent select-none transition-colors duration-150">
       {/* Draggable Title Bar */}
       <header
         data-tauri-drag-region

@@ -1163,7 +1163,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           style={isDetached ? undefined : mainPopoverWindowStyle}
           className={
             isDetached
-              ? "h-screen w-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border border-zinc-200/90 dark:border-zinc-800/90 rounded-xl flex flex-col overflow-y-auto overflow-x-hidden select-none transition-colors"
+              ? "h-screen w-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border border-transparent rounded-xl flex flex-col overflow-y-auto overflow-x-hidden select-none transition-colors"
               : "fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-xl bg-white/95 dark:bg-zinc-900/95 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden select-none backdrop-blur-md transition-colors"
           }
         >

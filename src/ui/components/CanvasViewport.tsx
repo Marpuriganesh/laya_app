@@ -6,7 +6,7 @@ import {
   type FC,
   type PointerEvent,
 } from "react";
-import { FolderDown, Plus, Minus } from "lucide-react";
+import { FolderDown, Plus, Minus, Maximize2 } from "lucide-react";
 import type { DocumentConfiguration } from "@/types/document";
 import type { ActiveTool, CanvasTransform, SoftProofMode } from "@/types/ui";
 import { getCssFilterForSoftProof } from "@/engine/color/soft_proofing";
@@ -144,9 +144,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         doc.height,
         paddingRatio
       );
+      transformRef.current = fitTransform;
+      applyTransformToDom(fitTransform);
       onTransformChange(fitTransform);
     },
-    [doc.width, doc.height, onTransformChange]
+    [doc.width, doc.height, applyTransformToDom, onTransformChange]
   );
 
   // Zoom to 100% (1:1 pixel scale) centered
@@ -157,8 +159,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const targetScale = 1.0;
     const panX = (clientWidth - doc.width * targetScale) * 0.5;
     const panY = (clientHeight - doc.height * targetScale) * 0.5;
-    onTransformChange({ scale: targetScale, panX, panY, rotation: 0 });
-  }, [doc.width, doc.height, onTransformChange]);
+    const targetTransform = { scale: targetScale, panX, panY, rotation: 0 };
+    transformRef.current = targetTransform;
+    applyTransformToDom(targetTransform);
+    onTransformChange(targetTransform);
+  }, [doc.width, doc.height, applyTransformToDom, onTransformChange]);
 
   // Zoom by a multiplicative factor relative to container center
   const zoomByFactor = useCallback(
@@ -175,9 +180,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         centerY,
         targetScale
       );
+      transformRef.current = nextTransform;
+      applyTransformToDom(nextTransform);
       onTransformChange(nextTransform);
     },
-    [onTransformChange]
+    [applyTransformToDom, onTransformChange]
   );
 
   // Mount Canvas to Drawing Engine & initialize background on document size or color change
@@ -306,14 +313,19 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           mouseY,
           targetScale
         );
+        transformRef.current = nextTransform;
+        applyTransformToDom(nextTransform);
         onTransformChange(nextTransform);
       } else {
-        onTransformChange({
+        const nextTransform: CanvasTransform = {
           scale: transformRef.current.scale,
           panX: transformRef.current.panX - e.deltaX,
           panY: transformRef.current.panY - e.deltaY,
           rotation: transformRef.current.rotation,
-        });
+        };
+        transformRef.current = nextTransform;
+        applyTransformToDom(nextTransform);
+        onTransformChange(nextTransform);
       }
     };
 
@@ -321,7 +333,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     return () => {
       container.removeEventListener("wheel", handleNativeWheel);
     };
-  }, [onTransformChange]);
+  }, [applyTransformToDom, onTransformChange]);
 
   // Computes screen-to-canvas coordinate unprojection accounting for container offset and zoom
   const getEffectiveTransform = useCallback((): CanvasTransform => {
@@ -737,21 +749,22 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         </div>
       </div>
 
-      {/* Floating Zoom Controls Pill (FigCraft Node 296 Frame 4) */}
+      {/* Floating Zoom Controls Pill (Zoom In, Zoom Out, Fit to Screen) */}
       <div
-        className="absolute top-3 left-3 z-20 flex items-center h-[31px] w-[78px] rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-700/80 shadow-md select-none overflow-hidden transition-colors"
-        title={`Zoom: ${Math.round(transform.scale * 100)}% (Double-click to reset 100%)`}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          zoomTo100();
-        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-3 left-3 z-20 flex items-center h-[31px] w-[114px] rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-700/80 shadow-md select-none overflow-hidden transition-colors"
+        title={`Zoom: ${Math.round(transform.scale * 100)}%`}
       >
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            zoomByFactor(1.2);
+            zoomByFactor(1.25);
           }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
           aria-label="Zoom In"
           title="Zoom In (+)"
           className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
@@ -759,19 +772,38 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           <Plus className="w-3.5 h-3.5" />
         </button>
 
-        <div className="w-px h-5 bg-zinc-200 dark:bg-zinc-700/80 shrink-0" />
+        <div className="w-px h-4.5 bg-zinc-200 dark:bg-zinc-700/80 shrink-0" />
 
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            zoomByFactor(1 / 1.2);
+            zoomByFactor(0.8);
           }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
           aria-label="Zoom Out"
           title="Zoom Out (-)"
           className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
         >
           <Minus className="w-3.5 h-3.5" />
+        </button>
+
+        <div className="w-px h-4.5 bg-zinc-200 dark:bg-zinc-700/80 shrink-0" />
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            fitToScreen();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          aria-label="Fit Canvas to Screen"
+          title="Fit Canvas to Screen (Cmd+0 / Ctrl+0)"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
         </button>
       </div>
     </main>
