@@ -15,7 +15,7 @@ export const DiscreteGridPanelContent: FC = () => {
           className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${
             wheelConfig.isContinuous
               ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-              : "bg-amber-400 text-zinc-950 shadow-sm"
+              : "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
           }`}
         >
           {wheelConfig.isContinuous ? "Smooth (Cont)" : "Stepped (Disc)"}
@@ -26,7 +26,7 @@ export const DiscreteGridPanelContent: FC = () => {
       <div className="flex flex-col gap-1">
         <div className="flex justify-between text-xs font-mono text-zinc-400">
           <span>Hue Sectors</span>
-          <span className="text-amber-400 font-semibold">{wheelConfig.hueSectors}</span>
+          <span className="text-blue-400 font-semibold">{wheelConfig.hueSectors}</span>
         </div>
         <input
           type="range"
@@ -36,7 +36,7 @@ export const DiscreteGridPanelContent: FC = () => {
           value={wheelConfig.hueSectors}
           onChange={(e) => setWheelConfig({ hueSectors: Number(e.target.value) })}
           aria-label="Wheel hue sectors"
-          className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+          className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
         />
       </div>
 
@@ -44,7 +44,7 @@ export const DiscreteGridPanelContent: FC = () => {
       <div className="flex flex-col gap-1 pt-1.5 border-t border-zinc-800/60">
         <div className="flex justify-between text-xs font-mono text-zinc-400">
           <span>Saturation Rings</span>
-          <span className="text-amber-400 font-semibold">{wheelConfig.saturationRings}</span>
+          <span className="text-blue-400 font-semibold">{wheelConfig.saturationRings}</span>
         </div>
         <input
           type="range"
@@ -54,7 +54,7 @@ export const DiscreteGridPanelContent: FC = () => {
           value={wheelConfig.saturationRings}
           onChange={(e) => setWheelConfig({ saturationRings: Number(e.target.value) })}
           aria-label="Wheel saturation rings"
-          className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+          className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
         />
       </div>
 
@@ -62,7 +62,7 @@ export const DiscreteGridPanelContent: FC = () => {
       <div className="flex flex-col gap-1 pt-1.5 border-t border-zinc-800/60">
         <div className="flex justify-between text-xs font-mono text-zinc-400">
           <span>Value Steps</span>
-          <span className="text-amber-400 font-semibold">{wheelConfig.valueSteps}</span>
+          <span className="text-blue-400 font-semibold">{wheelConfig.valueSteps}</span>
         </div>
         <input
           type="range"
@@ -72,7 +72,7 @@ export const DiscreteGridPanelContent: FC = () => {
           value={wheelConfig.valueSteps}
           onChange={(e) => setWheelConfig({ valueSteps: Number(e.target.value) })}
           aria-label="Value ladder steps"
-          className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+          className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
         />
       </div>
 

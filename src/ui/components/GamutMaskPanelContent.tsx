@@ -37,7 +37,7 @@ export const GamutMaskPanelContent: FC = () => {
           onClick={handleToggle}
           className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${
             gamutMask.enabled
-              ? "bg-amber-400 text-zinc-950 shadow-sm"
+              ? "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
               : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
           }`}
         >
@@ -51,7 +51,7 @@ export const GamutMaskPanelContent: FC = () => {
         <select
           value={gamutMask.type}
           onChange={handleTypeChange}
-          className="w-full bg-zinc-900 border border-zinc-700/80 rounded-lg px-2.5 py-2 text-xs text-zinc-100 font-medium focus:outline-none focus:border-amber-400/80 cursor-pointer"
+          className="w-full bg-zinc-900 border border-zinc-700/80 rounded-lg px-2.5 py-2 text-xs text-zinc-100 font-medium focus:outline-none focus:border-blue-400/80 cursor-pointer"
         >
           {GAMUT_MASK_PRESETS.map((preset) => (
             <option key={preset.id} value={preset.id} className="bg-zinc-900 text-zinc-200">
@@ -70,7 +70,7 @@ export const GamutMaskPanelContent: FC = () => {
       <div className="flex flex-col gap-1 pt-2 border-t border-zinc-800/60">
         <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
           <span>Mask Angle</span>
-          <span className="text-amber-400 font-semibold">{gamutMask.rotation}°</span>
+          <span className="text-blue-400 font-semibold">{gamutMask.rotation}°</span>
         </div>
         <input
           type="range"
@@ -80,7 +80,7 @@ export const GamutMaskPanelContent: FC = () => {
           value={gamutMask.rotation}
           onChange={handleRotationChange}
           aria-label="Gamut mask rotation angle"
-          className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+          className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
         />
 
         {/* Quick Cardinal Angles */}
@@ -94,7 +94,7 @@ export const GamutMaskPanelContent: FC = () => {
                 onClick={() => setGamutMask({ rotation: deg, enabled: true })}
                 className={`px-2 py-0.5 rounded font-medium transition-colors ${
                   gamutMask.rotation === deg
-                    ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                    ? "bg-blue-500/20 text-blue-300 border border-blue-400/40"
                     : "bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300"
                 }`}
               >
@@ -109,7 +109,7 @@ export const GamutMaskPanelContent: FC = () => {
       <div className="flex flex-col gap-1 pt-2 border-t border-zinc-800/60">
         <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
           <span>Boundary Opacity</span>
-          <span className="text-amber-400 font-semibold">
+          <span className="text-blue-400 font-semibold">
             {Math.round(gamutMask.opacity * 100)}%
           </span>
         </div>
@@ -121,7 +121,7 @@ export const GamutMaskPanelContent: FC = () => {
           value={gamutMask.opacity}
           onChange={handleOpacityChange}
           aria-label="Gamut mask boundary opacity"
-          className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+          className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
         />
       </div>
     </div>

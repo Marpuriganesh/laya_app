@@ -73,7 +73,7 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
             aria-label={isPinned ? "Unpin window" : "Pin window on top"}
             className={`p-1.5 rounded-md transition-colors ${
               isPinned
-                ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
                 : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80"
             }`}
           >

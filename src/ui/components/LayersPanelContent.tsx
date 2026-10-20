@@ -173,7 +173,7 @@ export const LayersPanelContent: FC = () => {
                     className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 transition-colors"
                   >
                     {layer.locked ? (
-                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      <Lock className="w-3.5 h-3.5 text-blue-400" />
                     ) : (
                       <Unlock className="w-3.5 h-3.5 text-zinc-500 opacity-60 hover:opacity-100" />
                     )}

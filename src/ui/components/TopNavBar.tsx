@@ -9,10 +9,9 @@ import {
   Hand,
   Eraser,
   Layers,
-  ZoomIn,
   Eye,
   Check,
-  ChevronDown,
+  ChevronRight,
   X,
   Minus,
   Square,
@@ -28,14 +27,14 @@ interface TopNavBarProps {
   document: DocumentConfiguration;
   activeTool: ActiveTool;
   activeColor: string;
-  zoomScale: number;
+  zoomScale?: number;
   activePopover: PopoverType;
   softProofMode: SoftProofMode;
   detachedPanels?: Record<DetachablePanelId, boolean>;
   onFocusDetached?: (panelId: DetachablePanelId) => void;
   onSelectTool: (tool: ActiveTool) => void;
   onTogglePopover: (popover: PopoverType) => void;
-  onResetZoom: () => void;
+  onResetZoom?: () => void;
   onSelectSoftProofMode: (mode: SoftProofMode) => void;
 }
 
@@ -50,21 +49,19 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   document,
   activeTool,
   activeColor,
-  zoomScale,
   activePopover,
   softProofMode,
   detachedPanels,
   onFocusDetached,
   onSelectTool,
   onTogglePopover,
-  onResetZoom,
   onSelectSoftProofMode,
 }) => {
-  const [isProofMenuOpen, setIsProofMenuOpen] = useState(false);
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [isProofSubmenuOpen, setIsProofSubmenuOpen] = useState(false);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme, toggleTheme } = useTheme();
-  const proofMenuRef = useRef<HTMLDivElement>(null);
   const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
-  const zoomPercent = Math.round(zoomScale * 100);
 
   useEffect(() => {
     const canvas = navSwatchCanvasRef.current;
@@ -79,15 +76,15 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (proofMenuRef.current && !proofMenuRef.current.contains(e.target as Node)) {
-        setIsProofMenuOpen(false);
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target as Node)) {
+        setIsActionsMenuOpen(false);
       }
     };
-    if (isProofMenuOpen) {
+    if (isActionsMenuOpen) {
       window.addEventListener("mousedown", handleClickOutside);
       return () => window.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [isProofMenuOpen]);
+  }, [isActionsMenuOpen]);
 
   const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -215,19 +212,113 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
         <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
 
-        <button
-          type="button"
-          onClick={() => onTogglePopover("actions")}
-          aria-label="Actions and Canvas settings"
-          title="Actions"
-          className={`p-2 rounded-lg transition-colors ${
-            activePopover === "actions"
-              ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-white"
-              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
-          }`}
-        >
-          <Wrench className="w-4 h-4" />
-        </button>
+        {/* Actions & App Settings Menu */}
+        <div className="relative" ref={actionsMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsActionsMenuOpen((prev) => !prev)}
+            aria-label="Actions and Canvas settings"
+            title="Actions / Settings"
+            className={`p-2 rounded-lg transition-colors ${
+              isActionsMenuOpen
+                ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40 shadow-xs"
+                : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+          </button>
+
+          {isActionsMenuOpen && (
+            <div className="absolute top-full mt-2 left-0 w-64 p-1.5 rounded-xl bg-white/95 dark:bg-zinc-950/95 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
+              {/* Document Summary */}
+              <div className="px-2.5 py-1.5 border-b border-zinc-100 dark:border-zinc-800/80 mb-0.5">
+                <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+                  {document.title}
+                </div>
+                <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">
+                  {document.width} × {document.height} px • {document.dpi} DPI
+                </div>
+              </div>
+
+              {/* Action items */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionsMenuOpen(false);
+                  onTogglePopover("newCanvas");
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/70 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left cursor-pointer"
+              >
+                <FilePlus2 className="w-3.5 h-3.5 text-zinc-400" />
+                <span>New Canvas...</span>
+              </button>
+
+              <div className="h-px bg-zinc-100 dark:bg-zinc-800/80 my-0.5" />
+
+              {/* Soft Proofing Submenu */}
+              <div className="flex flex-col">
+                <button
+                  type="button"
+                  onClick={() => setIsProofSubmenuOpen((prev) => !prev)}
+                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/70 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Soft Proofing</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-blue-500 dark:text-blue-400 font-mono font-medium">
+                      {softProofMode === "none"
+                        ? "Off"
+                        : softProofMode === "grayscale-values"
+                        ? "B&W"
+                        : softProofMode === "cmyk-print"
+                        ? "CMYK"
+                        : "Gamut"}
+                    </span>
+                    <ChevronRight
+                      className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${
+                        isProofSubmenuOpen ? "rotate-90" : ""
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {isProofSubmenuOpen && (
+                  <div className="pl-3 pr-1 py-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-lg mt-0.5 border border-zinc-100 dark:border-zinc-800/60">
+                    {SOFT_PROOF_OPTIONS.map((opt) => {
+                      const isSelected = softProofMode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectSoftProofMode(opt.id);
+                          }}
+                          className={`w-full flex items-start justify-between p-1.5 rounded-md text-left transition-colors cursor-pointer ${
+                            isSelected
+                              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium"
+                              : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200"
+                          }`}
+                        >
+                          <div>
+                            <div className="text-[11px] font-medium leading-tight">{opt.label}</div>
+                            <div className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-0.5 leading-snug">
+                              {opt.description}
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5 ml-1.5" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         <button
           type="button"
@@ -236,7 +327,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Brush Settings & Studio"
           className={`p-2 rounded-lg transition-colors ${
             activePopover === "brushSettings"
-              ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-white"
+              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40"
               : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
@@ -262,80 +353,29 @@ export const TopNavBar: FC<TopNavBarProps> = ({
         </button>
       </div>
 
-      {/* Center Document Title, Zoom, & Soft Proofing */}
+      {/* Center Document Title & Theme Switcher */}
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[140px] sm:max-w-xs truncate hidden sm:inline">
+        <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[160px] sm:max-w-xs truncate hidden sm:inline">
           {document.title}
         </span>
+
+        {/* Subtle Divider */}
+        <div className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 hidden sm:block" />
+
+        {/* Theme Toggle (Light / Dark Mode) with Filled Monochrome Icon */}
         <button
           type="button"
-          onClick={onResetZoom}
-          aria-label="Reset zoom to 100%"
-          title="Click to reset zoom"
-          className="flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+          onClick={toggleTheme}
+          aria-label={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          className="p-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         >
-          <ZoomIn className="w-3 h-3" />
-          <span>{zoomPercent}%</span>
-        </button>
-
-        {/* Soft Proofing View Mode Selector */}
-        <div className="relative" ref={proofMenuRef}>
-          <button
-            type="button"
-            onClick={() => setIsProofMenuOpen((prev) => !prev)}
-            aria-label="Soft proofing view mode"
-            title="Soft Proofing / Tonal Value Check"
-            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border ${
-              softProofMode !== "none"
-                ? "bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40 shadow-xs"
-                : "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-            }`}
-          >
-            <Eye className="w-3 h-3" />
-            <span className="hidden sm:inline">
-              {softProofMode === "none"
-                ? "Proof"
-                : softProofMode === "grayscale-values"
-                ? "Values (B&W)"
-                : softProofMode === "cmyk-print"
-                ? "CMYK Print"
-                : "Gamut"}
-            </span>
-            <ChevronDown className="w-3 h-3 opacity-60" />
-          </button>
-
-          {isProofMenuOpen && (
-            <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 w-64 p-1.5 rounded-xl bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-300">
-                Non-Destructive Soft Proofing
-              </div>
-              {SOFT_PROOF_OPTIONS.map((opt) => {
-                const isSelected = softProofMode === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectSoftProofMode(opt.id);
-                      setIsProofMenuOpen(false);
-                    }}
-                    className={`flex items-start justify-between p-2 rounded-lg text-left transition-colors ${
-                      isSelected
-                        ? "bg-zinc-800/90 text-white"
-                        : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
-                    }`}
-                  >
-                    <div>
-                      <div className="text-xs font-medium text-zinc-200">{opt.label}</div>
-                      <div className="text-[10px] text-zinc-300">{opt.description}</div>
-                    </div>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />}
-                  </button>
-                );
-              })}
-            </div>
+          {resolvedTheme === "dark" ? (
+            <Sun className="w-3.5 h-3.5 fill-current" />
+          ) : (
+            <Moon className="w-3.5 h-3.5 fill-current" />
           )}
-        </div>
+        </button>
       </div>
 
       {/* Right Tool Cluster */}
@@ -348,7 +388,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Brush (Paint)"
           className={`p-2 rounded-lg transition-colors relative ${
             activeTool === "brush"
-              ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-950 shadow-md"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
               : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
@@ -363,7 +403,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Smudge"
           className={`p-2 rounded-lg transition-colors ${
             activeTool === "smudge"
-              ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-950 shadow-md"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
               : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
@@ -378,7 +418,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Eraser"
           className={`p-2 rounded-lg transition-colors ${
             activeTool === "eraser"
-              ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-950 shadow-md"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
               : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
@@ -386,21 +426,6 @@ export const TopNavBar: FC<TopNavBarProps> = ({
         </button>
 
         <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
-
-        {/* Theme Toggle (Light / Dark Mode) */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          className="p-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-        >
-          {resolvedTheme === "dark" ? (
-            <Sun className="w-4 h-4 text-amber-400" />
-          ) : (
-            <Moon className="w-4 h-4 text-sky-500" />
-          )}
-        </button>
 
         {/* Layers */}
         <button
@@ -410,7 +435,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title={detachedPanels?.layers ? "Layers (Detached - click to focus)" : "Layers"}
           className={`p-2 rounded-lg transition-colors relative ${
             activePopover === "layers"
-              ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 shadow-sm"
+              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40 shadow-sm"
               : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
@@ -433,7 +458,9 @@ export const TopNavBar: FC<TopNavBarProps> = ({
         >
           <span
             className={`block w-6 h-6 rounded-full overflow-hidden shadow-inner bg-zinc-950 flex items-center justify-center transition-all ${
-              detachedPanels?.color ? "border-2 border-blue-400 ring-2 ring-blue-500/30" : "border-2 border-zinc-700"
+              activePopover === "color" || detachedPanels?.color
+                ? "border-2 border-blue-500 ring-2 ring-blue-500/30"
+                : "border-2 border-zinc-700"
             }`}
           >
             <canvas

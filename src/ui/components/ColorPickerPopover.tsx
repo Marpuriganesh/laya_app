@@ -1189,7 +1189,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   aria-label={isPinned ? "Unpin window" : "Pin window on top"}
                   className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
                     isPinned
-                      ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                      ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
                       : "text-[#605F5F] hover:text-white hover:bg-zinc-800/60"
                   }`}
                 >
@@ -1288,7 +1288,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   aria-label="Cycle color harmony"
                   className={`w-[26px] h-[26px] rounded-lg flex items-center justify-center transition-all cursor-pointer ${
                     classicHarmonyType !== "none"
-                      ? "bg-amber-400/20 text-amber-300 border border-amber-400/40 shadow-[0_0_8px_rgba(251,191,36,0.25)]"
+                      ? "bg-blue-500/20 text-blue-300 border border-blue-400/40 shadow-[0_0_8px_rgba(59,130,246,0.25)]"
                       : "text-[#605F5F] hover:text-zinc-200 hover:bg-zinc-800/60"
                   }`}
                 >
@@ -1513,7 +1513,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         }}
                         className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
                           isGamutMaskEnabled
-                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                            ? "bg-blue-500/20 text-blue-300 border border-blue-400/40"
                             : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
                         }`}
                         title={isGamutMaskEnabled ? "Disable Gamut Mask" : "Enable Gamut Mask (James Gurney / Krita)"}
@@ -1534,7 +1534,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           }}
                           className={`px-1.5 py-0.5 text-[9px] font-mono rounded font-medium transition-colors flex items-center justify-center relative ${
                             isGamutDrawerOpen || detachedPanels.colorGamut
-                              ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                              ? "bg-blue-500/20 text-blue-300 border border-blue-400/40"
                               : "text-zinc-300 bg-zinc-800/60 hover:bg-zinc-700/60"
                           }`}
                           title={
@@ -1560,7 +1560,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         title={wheelConfig.isContinuous ? "Switch to Discrete Steps" : "Switch to Continuous Wheel"}
                         className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
                           wheelConfig.isContinuous
-                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                            ? "bg-blue-500/20 text-blue-300 border border-blue-400/40"
                             : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
                         }`}
                       >
@@ -1584,7 +1584,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         }
                         className={`p-1 rounded transition-colors relative ${
                           isArtisticSettingsOpen || detachedPanels.colorGrid
-                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
+                            ? "bg-blue-500/20 text-blue-300 border border-blue-400/40"
                             : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
                         }`}
                       >
@@ -1773,7 +1773,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             </div>
 
             {/* Hex Input Badge (95x38px, rounded-[4.8px]) */}
-            <div className="w-[95px] h-[38px] rounded-[4.8px] bg-[#252527]/50 border border-white/10 flex items-center px-2.5 focus-within:border-amber-400/80 transition-colors">
+            <div className="w-[95px] h-[38px] rounded-[4.8px] bg-[#252527]/50 border border-white/10 flex items-center px-2.5 focus-within:border-blue-400/80 transition-colors">
               <span className="text-[14px] font-mono text-zinc-500 mr-1 select-none">#</span>
               <input
                 type="text"
@@ -1839,7 +1839,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             style={isDetached ? undefined : gamutWindowStyle}
             className={
               isDetached
-                ? "absolute inset-x-3 top-20 z-[55] rounded-2xl bg-[#18181B] border border-amber-400/40 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
+                ? "absolute inset-x-3 top-20 z-[55] rounded-2xl bg-[#18181B] border border-blue-400/40 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
                 : "fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
             }
           >
@@ -1863,7 +1863,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   }}
                   className={`px-1.5 py-0.5 text-[9px] rounded font-semibold transition-colors cursor-pointer ${
                     isGamutMaskEnabled
-                      ? "bg-amber-400/25 text-amber-300 border border-amber-400/40"
+                      ? "bg-blue-500/25 text-blue-300 border border-blue-400/40"
                       : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
@@ -1900,7 +1900,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
                   clampActiveColorToMask(newType, gamutMaskRotation);
                 }}
-                className="w-full bg-zinc-800/90 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-amber-400/80 cursor-pointer"
+                className="w-full bg-zinc-800/90 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-blue-400/80 cursor-pointer"
               >
                 {GAMUT_MASK_PRESETS.map((preset) => (
                   <option key={preset.id} value={preset.id} className="bg-zinc-900 text-zinc-200">
@@ -1917,7 +1917,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             <div className="flex flex-col gap-1 py-0.5 border-t border-white/5">
               <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
                 <span>Mask Rotation</span>
-                <span className="text-amber-400 font-semibold">{gamutMaskRotation}°</span>
+                <span className="text-blue-400 font-semibold">{gamutMaskRotation}°</span>
               </div>
               <input
                 type="range"
@@ -1931,7 +1931,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
                   clampActiveColorToMask(gamutMaskType, rot);
                 }}
-                className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
               />
             </div>
 
@@ -1969,7 +1969,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             style={isDetached ? undefined : gridWindowStyle}
             className={
               isDetached
-                ? "absolute inset-x-3 top-20 z-[55] rounded-2xl bg-[#18181B] border border-amber-400/40 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
+                ? "absolute inset-x-3 top-20 z-[55] rounded-2xl bg-[#18181B] border border-blue-400/40 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
                 : "fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
             }
           >
@@ -2010,7 +2010,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               <div className="flex flex-col gap-0.5">
                 <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                   <span>Hue Sectors</span>
-                  <span className="text-amber-400 font-semibold">{wheelConfig.hueSectors}</span>
+                  <span className="text-blue-400 font-semibold">{wheelConfig.hueSectors}</span>
                 </div>
                 <input
                   type="range"
@@ -2021,7 +2021,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   onChange={(e) =>
                     setWheelConfig({ hueSectors: Number(e.target.value) })
                   }
-                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                  className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
                 />
               </div>
 
@@ -2029,7 +2029,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               <div className="flex flex-col gap-0.5">
                 <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                   <span>Saturation Rings</span>
-                  <span className="text-amber-400 font-semibold">{wheelConfig.saturationRings}</span>
+                  <span className="text-blue-400 font-semibold">{wheelConfig.saturationRings}</span>
                 </div>
                 <input
                   type="range"
@@ -2040,7 +2040,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   onChange={(e) =>
                     setWheelConfig({ saturationRings: Number(e.target.value) })
                   }
-                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                  className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
                 />
               </div>
 
@@ -2048,7 +2048,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               <div className="flex flex-col gap-0.5">
                 <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                   <span>Value Steps</span>
-                  <span className="text-amber-400 font-semibold">{wheelConfig.valueSteps}</span>
+                  <span className="text-blue-400 font-semibold">{wheelConfig.valueSteps}</span>
                 </div>
                 <input
                   type="range"
@@ -2059,7 +2059,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   onChange={(e) =>
                     setWheelConfig({ valueSteps: Number(e.target.value) })
                   }
-                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                  className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
                 />
               </div>
             </div>

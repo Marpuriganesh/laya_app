@@ -37,7 +37,7 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Gamut Mask"
-        icon={<Shapes className="w-4 h-4 text-amber-400" />}
+        icon={<Shapes className="w-4 h-4 text-blue-400" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >
@@ -50,7 +50,7 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Discrete Grid Levels"
-        icon={<Sliders className="w-4 h-4 text-amber-400" />}
+        icon={<Sliders className="w-4 h-4 text-blue-400" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >

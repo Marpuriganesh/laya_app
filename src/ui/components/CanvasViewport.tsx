@@ -6,7 +6,7 @@ import {
   type FC,
   type PointerEvent,
 } from "react";
-import { PenTool, FolderDown } from "lucide-react";
+import { PenTool, FolderDown, Plus, Minus } from "lucide-react";
 import type { DocumentConfiguration } from "@/types/document";
 import type { ActiveTool, CanvasTransform, SoftProofMode } from "@/types/ui";
 import { getCssFilterForSoftProof } from "@/engine/color/soft_proofing";
@@ -14,7 +14,6 @@ import {
   calculateFocalZoom,
   calculateFitToScreen,
   calculateTwoFingerTransform,
-  snapRotationAngle,
   type TwoFingerGestureState,
   type Point2D,
 } from "@/engine/math/canvas_transform";
@@ -72,7 +71,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   // Interaction States
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
-  const [isRKeyDown, setIsRKeyDown] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
@@ -80,16 +78,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   const transformRef = useRef<CanvasTransform>(transform);
   const isPanningRef = useRef(false);
   const isSpaceDownRef = useRef(false);
-  const isRKeyDownRef = useRef(false);
-  const isRotatingRef = useRef(false);
-  const rotateStartAngleRef = useRef(0);
-  const rotateInitialAngleRef = useRef(0);
   const isDrawingRef = useRef(false);
   const drawingPointerIdRef = useRef<number | null>(null);
   const drawingPointerTypeRef = useRef<string | null>(null);
   const lastStrokePointRef = useRef<StrokePoint | null>(null);
 
-  // Multi-Touch tracking for two-finger gestures (pinch-to-zoom, pan, rotate)
+  // Multi-Touch tracking for two-finger gestures (pinch-to-zoom & pan)
   const activePointersRef = useRef<
     Map<number, { clientX: number; clientY: number; pointerType: string }>
   >(new Map());
@@ -105,10 +99,8 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       rafIdRef.current = requestAnimationFrame(() => {
         rafIdRef.current = null;
         if (pendingDomTransformRef.current && wrapperRef.current) {
-          const { panX, panY, scale, rotation } = pendingDomTransformRef.current;
-          wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale}) rotate(${
-            rotation ?? 0
-          }deg)`;
+          const { panX, panY, scale } = pendingDomTransformRef.current;
+          wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
         }
       });
     }
@@ -120,10 +112,8 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       rafIdRef.current = null;
     }
     if (wrapperRef.current) {
-      const { panX, panY, scale, rotation } = transformRef.current;
-      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale}) rotate(${
-        rotation ?? 0
-      }deg)`;
+      const { panX, panY, scale } = transformRef.current;
+      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
     }
     onTransformChange(transformRef.current);
   }, [onTransformChange]);
@@ -133,13 +123,10 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     if (
       wrapperRef.current &&
       !isPanningRef.current &&
-      !isRotatingRef.current &&
       !gestureStateRef.current
     ) {
-      const { panX, panY, scale, rotation } = transform;
-      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale}) rotate(${
-        rotation ?? 0
-      }deg)`;
+      const { panX, panY, scale } = transform;
+      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
     }
   }, [transform]);
 
@@ -150,10 +137,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   useEffect(() => {
     isSpaceDownRef.current = isSpaceDown;
   }, [isSpaceDown]);
-
-  useEffect(() => {
-    isRKeyDownRef.current = isRKeyDown;
-  }, [isRKeyDown]);
 
   // Fit document into viewport
   const fitToScreen = useCallback(
@@ -181,7 +164,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const targetScale = 1.0;
     const panX = (clientWidth - doc.width * targetScale) * 0.5;
     const panY = (clientHeight - doc.height * targetScale) * 0.5;
-    onTransformChange({ scale: targetScale, panX, panY, rotation: transformRef.current.rotation });
+    onTransformChange({ scale: targetScale, panX, panY, rotation: 0 });
   }, [doc.width, doc.height, onTransformChange]);
 
   // Zoom by a multiplicative factor relative to container center
@@ -263,8 +246,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault();
         setIsSpaceDown(true);
-      } else if (e.code === "KeyR" && !e.repeat) {
-        setIsRKeyDown(true);
       }
 
       // Keyboard Zoom Shortcuts
@@ -288,20 +269,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         setIsSpaceDown(false);
-      } else if (e.code === "KeyR") {
-        setIsRKeyDown(false);
-        if (isRotatingRef.current) {
-          isRotatingRef.current = false;
-          commitDomTransform();
-        }
       }
     };
 
     const handleWindowBlur = () => {
       setIsSpaceDown(false);
-      setIsRKeyDown(false);
       setIsPanning(false);
-      isRotatingRef.current = false;
       activePointersRef.current.clear();
       gestureStateRef.current = null;
     };
@@ -357,14 +330,14 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     };
   }, [onTransformChange]);
 
-  // Computes screen-to-canvas coordinate unprojection accounting for container offset, zoom, and rotation
+  // Computes screen-to-canvas coordinate unprojection accounting for container offset and zoom
   const getEffectiveTransform = useCallback((): CanvasTransform => {
     const containerRect = containerRef.current?.getBoundingClientRect();
     return {
       scale: transformRef.current.scale,
       panX: (containerRect?.left ?? 0) + transformRef.current.panX,
       panY: (containerRect?.top ?? 0) + transformRef.current.panY,
-      rotation: transformRef.current.rotation ?? 0,
+      rotation: 0,
     };
   }, []);
 
@@ -400,30 +373,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     }
   };
 
-  const startRotating = (
-    clientX: number,
-    clientY: number,
-    pointerId: number,
-    targetElement: HTMLElement | HTMLCanvasElement
-  ) => {
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const centerX = rect.width * 0.5;
-    const centerY = rect.height * 0.5;
-    const mouseX = clientX - rect.left;
-    const mouseY = clientY - rect.top;
-
-    rotateStartAngleRef.current = Math.atan2(mouseY - centerY, mouseX - centerX);
-    rotateInitialAngleRef.current = transformRef.current.rotation ?? 0;
-    isRotatingRef.current = true;
-    try {
-      targetElement.setPointerCapture(pointerId);
-    } catch {
-      // Ignore
-    }
-  };
-
   // --- Pointer Event Handlers (Canvas & Container) ---
 
   const handleContainerPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -436,11 +385,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     });
 
     if (e.button === 0 || e.button === 1) {
-      if (isRKeyDownRef.current && e.pointerType === "mouse") {
-        startRotating(e.clientX, e.clientY, e.pointerId, e.currentTarget);
-      } else {
-        startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
-      }
+      startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
     }
   };
 
@@ -485,19 +430,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         initialScale: transformRef.current.scale,
         initialCentroid: { x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5 },
         initialPan: { x: transformRef.current.panX, y: transformRef.current.panY },
-        initialAngle: Math.atan2(p2.y - p1.y, p2.x - p1.x),
-        initialRotation: transformRef.current.rotation ?? 0,
       };
       return;
     }
 
-    // 2. Desktop Shortcut: 'R' key held + mouse drag to rotate canvas
-    if (isRKeyDownRef.current && e.pointerType === "mouse") {
-      startRotating(e.clientX, e.clientY, e.pointerId, e.currentTarget);
-      return;
-    }
-
-    // 3. Pan via Middle Click (button 1), Spacebar hold, or Alt key
+    // 2. Pan via Middle Click (button 1), Spacebar hold, or Alt key
     if (e.button === 1 || e.buttons === 4 || isSpaceDownRef.current || e.altKey) {
       startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
       return;
@@ -548,7 +485,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       });
     }
 
-    // 1. Two-Finger Pinch-to-Zoom, Pan, and Rotate Gesture
+    // 1. Two-Finger Pinch-to-Zoom & Pan Gesture (Rotation disabled per user request)
     const activeTouches = Array.from(activePointersRef.current.entries()).filter(
       ([, p]) => p.pointerType === "touch"
     );
@@ -563,47 +500,23 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         activeTouches[1][1].clientY
       );
 
-      const nextTransform = calculateTwoFingerTransform(gestureStateRef.current, p1, p2);
+      const rawTransform = calculateTwoFingerTransform(gestureStateRef.current, p1, p2);
+      const nextTransform: CanvasTransform = {
+        ...rawTransform,
+        rotation: 0,
+      };
       transformRef.current = nextTransform;
       applyTransformToDom(nextTransform);
       return;
     }
 
-    // 2. Desktop 'R' Key Rotation
-    if (isRotatingRef.current) {
-      const container = containerRef.current;
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const centerX = rect.width * 0.5;
-        const centerY = rect.height * 0.5;
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-
-        const currentAngle = Math.atan2(mouseY - centerY, mouseX - centerX);
-        let deltaAngle = currentAngle - rotateStartAngleRef.current;
-        while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-        while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-
-        const deltaDegrees = (deltaAngle * 180) / Math.PI;
-        const rawRotation = rotateInitialAngleRef.current + deltaDegrees;
-        const snappedRotation = snapRotationAngle(rawRotation);
-
-        const nextTransform: CanvasTransform = {
-          ...transformRef.current,
-          rotation: snappedRotation,
-        };
-        transformRef.current = nextTransform;
-        applyTransformToDom(nextTransform);
-      }
-      return;
-    }
-
-    // 3. Viewport Panning
+    // 2. Viewport Panning
     if (isPanningRef.current) {
       const nextTransform: CanvasTransform = {
         ...transformRef.current,
         panX: e.clientX - panStart.x,
         panY: e.clientY - panStart.y,
+        rotation: 0,
       };
       transformRef.current = nextTransform;
       applyTransformToDom(nextTransform);
@@ -646,19 +559,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     if (activeTouches.length < 2 && gestureStateRef.current) {
       gestureStateRef.current = null;
       commitDomTransform();
-    }
-
-    if (isRotatingRef.current) {
-      isRotatingRef.current = false;
-      try {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      } catch {
-        // Ignore
-      }
-      commitDomTransform();
-      return;
     }
 
     if (isPanningRef.current) {
@@ -744,14 +644,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
   // Cursor styling based on active mode
   const getContainerCursorClass = () => {
-    if (isRotatingRef.current || isRKeyDown) return "cursor-grab";
     if (isPanning) return "cursor-grabbing";
     if (isSpaceDown) return "cursor-grab";
     return "";
   };
 
   const getCanvasCursorClass = () => {
-    if (isRotatingRef.current || isRKeyDown) return "cursor-grab";
     if (isPanning) return "cursor-grabbing";
     if (isSpaceDown) return "cursor-grab";
     return "cursor-crosshair";
@@ -793,14 +691,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         </div>
       )}
 
-      {/* Pan, Zoom, and Rotation Container — direct DOM rAF transform for 120fps hardware feel */}
+      {/* Pan & Zoom Container — direct DOM rAF transform for 120fps hardware feel */}
       <div
         ref={wrapperRef}
         className="absolute origin-top-left will-change-transform"
         style={{
-          transform: `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale}) rotate(${
-            transform.rotation ?? 0
-          }deg)`,
+          transform: `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale})`,
         }}
       >
         {/* Document Artboard Paper Surface — crisp lightweight sub-pixel border, no heavy 60px blur shadow */}
@@ -846,6 +742,44 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
             style={{ width: doc.width, height: doc.height, imageRendering: "auto" }}
           />
         </div>
+      </div>
+
+      {/* Floating Zoom Controls Pill (FigCraft Node 296 Frame 4) */}
+      <div
+        className="absolute top-3 left-3 z-20 flex items-center h-[31px] w-[78px] rounded-full bg-white/90 dark:bg-[#0A0A0C]/90 backdrop-blur-md border border-zinc-200 dark:border-[#3F3F46] shadow-md select-none overflow-hidden transition-colors"
+        title={`Zoom: ${Math.round(transform.scale * 100)}% (Double-click to reset 100%)`}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          zoomTo100();
+        }}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            zoomByFactor(1.2);
+          }}
+          aria-label="Zoom In"
+          title="Zoom In (+)"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:scale-90 transition-all cursor-pointer"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+
+        <div className="w-px h-5 bg-zinc-200 dark:bg-[#27272A] shrink-0" />
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            zoomByFactor(1 / 1.2);
+          }}
+          aria-label="Zoom Out"
+          title="Zoom Out (-)"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:scale-90 transition-all cursor-pointer"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* Palm Rejection (Stylus-Only Mode) Quick Toggle Indicator */}

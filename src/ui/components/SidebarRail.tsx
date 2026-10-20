@@ -82,7 +82,7 @@ export const SidebarRail: FC<SidebarRailProps> = ({
       <div className="relative flex flex-col items-center">
         {/* Floating Tooltip to the right */}
         {(showSizeTooltip || isDraggingSize) && (
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-zinc-700/80 text-xs font-mono font-medium text-zinc-100 shadow-2xl whitespace-nowrap pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-100">
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-blue-500/40 text-xs font-mono font-medium text-blue-200 shadow-2xl whitespace-nowrap pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-100">
             {brushSize} px
           </div>
         )}
@@ -127,9 +127,9 @@ export const SidebarRail: FC<SidebarRailProps> = ({
           <div className="w-4 h-full rounded-full bg-zinc-200 dark:bg-zinc-850 ring-1 ring-inset ring-black/10 dark:ring-white/10 relative overflow-hidden flex flex-col justify-end shadow-inner">
             {/* Active Level Fill rising from the bottom */}
             <div
-              className={`w-full rounded-full ${
+              className={`w-full rounded-full transition-colors ${
                 isDraggingSize
-                  ? "bg-zinc-900 shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:bg-white dark:shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                  ? "bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)] dark:bg-blue-500 dark:shadow-[0_0_8px_rgba(59,130,246,0.6)]"
                   : "bg-zinc-700 dark:bg-zinc-200"
               }`}
               style={{
@@ -146,14 +146,14 @@ export const SidebarRail: FC<SidebarRailProps> = ({
         onClick={onModifierClick}
         aria-label="Menu / Modifier Button"
         title="QuickMenu / Sub-Menu"
-        className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900/80 dark:hover:bg-zinc-800/90 active:scale-95 border border-zinc-300 dark:border-white/25 hover:border-zinc-400 dark:hover:border-white/50 transition-all shadow-sm cursor-pointer"
+        className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900/80 dark:hover:bg-zinc-800/90 active:scale-95 border border-zinc-300 dark:border-white/25 hover:border-blue-500/60 dark:hover:border-blue-400/60 transition-all shadow-sm cursor-pointer"
       />
 
       {/* 3. Brush Opacity Vertical Capsule Slider (No circular thumb) */}
       <div className="relative flex flex-col items-center">
         {/* Floating Tooltip to the right */}
         {(showOpacityTooltip || isDraggingOpacity) && (
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-zinc-700/80 text-xs font-mono font-medium text-zinc-100 shadow-2xl whitespace-nowrap pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-100">
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-blue-500/40 text-xs font-mono font-medium text-blue-200 shadow-2xl whitespace-nowrap pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-100">
             {opacityPercentage}%
           </div>
         )}
@@ -198,9 +198,9 @@ export const SidebarRail: FC<SidebarRailProps> = ({
           <div className="w-4 h-full rounded-full bg-zinc-200 dark:bg-zinc-850 ring-1 ring-inset ring-black/10 dark:ring-white/10 relative overflow-hidden flex flex-col justify-end shadow-inner">
             {/* Active Level Fill rising from the bottom */}
             <div
-              className={`w-full rounded-full ${
+              className={`w-full rounded-full transition-colors ${
                 isDraggingOpacity
-                  ? "bg-zinc-900 shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:bg-white dark:shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                  ? "bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)] dark:bg-blue-500 dark:shadow-[0_0_8px_rgba(59,130,246,0.6)]"
                   : "bg-zinc-700 dark:bg-zinc-200"
               }`}
               style={{
