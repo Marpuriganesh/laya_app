@@ -148,10 +148,22 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     }
   };
 
+  const handleHeaderDoubleClick = (e: React.MouseEvent<HTMLElement>) => {
+    // Only toggle maximize when double clicking blank titlebar space,
+    // not when double clicking buttons, inputs, canvas, or dropdown menus
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, input, select, textarea, canvas, [role='menu']")) {
+      return;
+    }
+    handleToggleMaximize();
+  };
+
   return (
     <header
       data-tauri-drag-region
-      className="h-14 px-4 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0"
+      onDoubleClick={handleHeaderDoubleClick}
+      className="h-14 px-4 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
+      title="Double-click to toggle maximize • Drag to reposition"
     >
       {/* Left Control Cluster */}
       <div className="flex items-center gap-1 sm:gap-2">

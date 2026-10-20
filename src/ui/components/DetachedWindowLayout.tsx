@@ -30,13 +30,30 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
     setIsPinned(nextPinned);
   };
 
+  const handleHeaderDoubleClick = async (e: React.MouseEvent<HTMLElement>) => {
+    // Only toggle maximize when clicking blank header space, not buttons
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, input, select, textarea")) return;
+
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (isTauri) {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().toggleMaximize();
+      } catch (err) {
+        console.error("Failed to toggle maximize detached window:", err);
+      }
+    }
+  };
+
   return (
     <div className="dark h-screen w-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden rounded-2xl border border-zinc-800/80 shadow-2xl select-none">
       {/* Draggable Title Bar */}
       <header
         data-tauri-drag-region
+        onDoubleClick={handleHeaderDoubleClick}
         className="h-11 px-3.5 bg-zinc-900/90 border-b border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing backdrop-blur-md"
-        title="Drag header to move window across monitors"
+        title="Double-click to toggle maximize • Drag to move window across monitors"
       >
         <div className="flex items-center gap-2 pointer-events-none">
           <GripHorizontal className="w-3.5 h-3.5 text-zinc-500" />
