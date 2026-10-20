@@ -7,6 +7,8 @@ static float g_last_x = 0.0f;
 static float g_last_y = 0.0f;
 static BOOL g_is_drawing = NO;
 static BOOL g_is_tablet = NO;
+static BOOL g_flip_x = NO;
+static BOOL g_flip_y = NO;
 
 @interface SketchCanvasView : NSView
 @end
@@ -14,8 +16,6 @@ static BOOL g_is_tablet = NO;
 @implementation SketchCanvasView
 
 - (BOOL)isFlipped {
-    // Keep standard Cocoa coordinates (origin at bottom-left)
-    // We explicitly map Y coordinates to ensure perfect alignment without Cocoa context fighting.
     return NO;
 }
 
@@ -40,9 +40,14 @@ static BOOL g_is_tablet = NO;
     float scaleX = (self.bounds.size.width > 0 && bufW > 0) ? ((float)bufW / self.bounds.size.width) : 1.0f;
     float scaleY = (self.bounds.size.height > 0 && bufH > 0) ? ((float)bufH / self.bounds.size.height) : 1.0f;
 
-    // Convert from Cocoa bottom-left origin to Canvas top-left origin:
-    float x = (float)p.x * scaleX;
-    float y = (float)(self.bounds.size.height - p.y) * scaleY;
+    float rawX = (float)p.x * scaleX;
+    float rawY = (float)p.y * scaleY;
+    float invertedY = (float)(self.bounds.size.height - p.y) * scaleY;
+    float invertedX = (float)(self.bounds.size.width - p.x) * scaleX;
+
+    float x = g_flip_x ? invertedX : rawX;
+    float y = g_flip_y ? invertedY : rawY;
+
     return NSMakePoint(x, y);
 }
 
@@ -50,13 +55,11 @@ static BOOL g_is_tablet = NO;
     [self.window makeFirstResponder:self];
     NSPoint cp = [self canvasPointFromLocation:[event locationInWindow]];
     
-    // Check if event originated from a tablet/stylus digitizer
     g_is_tablet = ([event subtype] == NSEventSubtypeTabletPoint);
     
-    // Extract hardware analog pressure (0.0 .. 1.0)
     float pressure = (float)[event pressure];
     if (!g_is_tablet && pressure <= 0.001f) {
-        pressure = 1.0f; // Default full pressure for standard mouse click
+        pressure = 1.0f;
     }
     
     g_last_pressure = pressure;
@@ -94,26 +97,25 @@ static BOOL g_is_tablet = NO;
     [self setNeedsDisplay:YES];
 }
 
-- (void)tabletPoint:(NSEvent *)event {
-    // Explicit high-frequency tablet digitizer point event from macOS AppKit
-    g_is_tablet = YES;
-    NSPoint cp = [self canvasPointFromLocation:[event locationInWindow]];
-    float pressure = (float)[event pressure];
-    
-    g_last_pressure = pressure;
-    g_last_x = (float)cp.x;
-    g_last_y = (float)cp.y;
-
-    if (g_is_drawing) {
-        rust_native_paint_event((float)cp.x, (float)cp.y, pressure);
-        [self setNeedsDisplay:YES];
-    }
-}
+// Tablet events are already routed to mouseDragged: with accurate window coordinates.
+// We removed tabletPoint: to prevent duplicate out-of-order coordinate collisions.
 
 - (void)keyDown:(NSEvent *)event {
     NSString *characters = [event charactersIgnoringModifiers];
     if (characters.length > 0) {
         unichar ch = [characters characterAtIndex:0];
+        if (ch == 'x' || ch == 'X') {
+            g_flip_x = !g_flip_x;
+            printf("🔀 [COORDINATES] Flip X: %s\n", g_flip_x ? "ON" : "OFF");
+            [self setNeedsDisplay:YES];
+            return;
+        }
+        if (ch == 'y' || ch == 'Y') {
+            g_flip_y = !g_flip_y;
+            printf("🔀 [COORDINATES] Flip Y: %s\n", g_flip_y ? "ON" : "OFF");
+            [self setNeedsDisplay:YES];
+            return;
+        }
         rust_native_on_key((char)ch);
         [self setNeedsDisplay:YES];
     }
@@ -150,44 +152,59 @@ static BOOL g_is_tablet = NO;
         );
 
         if (image) {
-            // Draw image right-side up matching the (0,0) top-left canvas buffer:
-            CGContextSaveGState(ctx);
-            CGContextTranslateCTM(ctx, 0, self.bounds.size.height);
-            CGContextScaleCTM(ctx, 1.0, -1.0);
+            // Draw image matching canvas coordinates
             CGContextDrawImage(ctx, CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height), image);
-            CGContextRestoreGState(ctx);
             CGImageRelease(image);
         }
         CGDataProviderRelease(provider);
     }
     CGColorSpaceRelease(colorSpace);
 
-    // 2. Draw Sleek Semi-Transparent Status HUD at the top of the window
-    NSRect hudRect = NSMakeRect(16, self.bounds.size.height - 54, 460, 38);
+    // 2. Draw live crosshair under last known stylus position
+    if (g_last_x > 0 || g_last_y > 0) {
+        float viewX = g_flip_x ? (self.bounds.size.width - g_last_x) : g_last_x;
+        float viewY = g_flip_y ? (self.bounds.size.height - g_last_y) : g_last_y;
+
+        NSBezierPath *ring = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(viewX - 8, viewY - 8, 16, 16)];
+        [[NSColor colorWithCalibratedRed:1.0f green:0.2f blue:0.2f alpha:0.8f] setStroke];
+        [ring setLineWidth:1.5f];
+        [ring stroke];
+    }
+
+    // 3. Draw Sleek Semi-Transparent Status HUD at the top of the window
+    NSRect hudRect = NSMakeRect(16, self.bounds.size.height - 60, 560, 44);
     NSBezierPath *hudBackground = [NSBezierPath bezierPathWithRoundedRect:hudRect xRadius:8 yRadius:8];
-    [[NSColor colorWithCalibratedWhite:0.1f alpha:0.85f] setFill];
+    [[NSColor colorWithCalibratedWhite:0.1f alpha:0.90f] setFill];
     [hudBackground fill];
 
     // HUD Text: Input Type, Coordinates, and Pressure
     NSString *deviceTypeStr = g_is_tablet ? @"STYLUS (TABLET)" : @"MOUSE";
-    NSString *hudText = [NSString stringWithFormat:@"%@  |  Pos: (%.0f, %.0f)  |  Pressure: %.1f%%",
-                         deviceTypeStr, g_last_x, g_last_y, g_last_pressure * 100.0f];
+    NSString *hudText = [NSString stringWithFormat:@"%@ | (%.0f, %.0f) | Pressure: %.1f%% | [X-Flip:%@] [Y-Flip:%@]",
+                         deviceTypeStr, g_last_x, g_last_y, g_last_pressure * 100.0f,
+                         g_flip_x ? @"ON" : @"OFF", g_flip_y ? @"ON" : @"OFF"];
     
     NSDictionary *textAttributes = @{
-        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightMedium],
+        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightMedium],
         NSForegroundColorAttributeName: [NSColor whiteColor]
     };
-    [hudText drawAtPoint:NSMakePoint(28, self.bounds.size.height - 44) withAttributes:textAttributes];
+    [hudText drawAtPoint:NSMakePoint(26, self.bounds.size.height - 42) withAttributes:textAttributes];
+
+    NSString *hintText = @"Shortcuts: [X] Toggle Flip X | [Y] Toggle Flip Y | [C] Clear | [E] Eraser";
+    NSDictionary *hintAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:10 weight:NSFontWeightRegular],
+        NSForegroundColorAttributeName: [NSColor colorWithCalibratedWhite:0.75f alpha:1.0f]
+    };
+    [hintText drawAtPoint:NSMakePoint(26, self.bounds.size.height - 56) withAttributes:hintAttributes];
 
     // Pressure Gauge Bar
-    NSRect barBackgroundRect = NSMakeRect(350, self.bounds.size.height - 40, 110, 10);
+    float fillWidth = 80.0f * fmaxf(0.0f, fminf(1.0f, g_last_pressure));
+    NSRect barBackgroundRect = NSMakeRect(460, self.bounds.size.height - 44, 80, 10);
     NSBezierPath *barBg = [NSBezierPath bezierPathWithRoundedRect:barBackgroundRect xRadius:3 yRadius:3];
     [[NSColor colorWithCalibratedWhite:0.3f alpha:1.0f] setFill];
     [barBg fill];
 
-    float fillWidth = 110.0f * fmaxf(0.0f, fminf(1.0f, g_last_pressure));
     if (fillWidth > 0.0f) {
-        NSRect barFillRect = NSMakeRect(350, self.bounds.size.height - 40, fillWidth, 10);
+        NSRect barFillRect = NSMakeRect(460, self.bounds.size.height - 44, fillWidth, 10);
         NSBezierPath *barFill = [NSBezierPath bezierPathWithRoundedRect:barFillRect xRadius:3 yRadius:3];
         [[NSColor colorWithCalibratedRed:0.2f green:0.8f blue:0.4f alpha:1.0f] setFill];
         [barFill fill];
