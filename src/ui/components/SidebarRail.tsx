@@ -1,5 +1,12 @@
-import { useState, type FC } from "react";
-import { Undo2, Redo2 } from "lucide-react";
+import { useState, useRef, useCallback, type FC } from "react";
+import { motion } from "motion/react";
+import { Undo2, Redo2, Pipette } from "lucide-react";
+import {
+  ratioToBrushSize,
+  brushSizeToRatio,
+  ratioToOpacity,
+  opacityToRatio,
+} from "./slider_utils";
 
 interface SidebarRailProps {
   brushSize: number;
@@ -8,6 +15,7 @@ interface SidebarRailProps {
   onBrushOpacityChange: (opacity: number) => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  onModifierClick?: () => void;
 }
 
 export const SidebarRail: FC<SidebarRailProps> = ({
@@ -17,85 +25,201 @@ export const SidebarRail: FC<SidebarRailProps> = ({
   onBrushOpacityChange,
   onUndo,
   onRedo,
+  onModifierClick,
 }) => {
   const [showSizeTooltip, setShowSizeTooltip] = useState(false);
   const [showOpacityTooltip, setShowOpacityTooltip] = useState(false);
+  const [isDraggingSize, setIsDraggingSize] = useState(false);
+  const [isDraggingOpacity, setIsDraggingOpacity] = useState(false);
+
+  const sizeTrackRef = useRef<HTMLDivElement>(null);
+  const opacityTrackRef = useRef<HTMLDivElement>(null);
 
   const opacityPercentage = Math.round(brushOpacity * 100);
 
+  // Perceptual quadratic ratio for brush size (0 to 1)
+  const sizeRatio = brushSizeToRatio(brushSize);
+
+  // Linear ratio for opacity (0 to 1)
+  const opacityRatio = opacityToRatio(brushOpacity);
+
+  const handleSizePointer = useCallback(
+    (clientY: number) => {
+      const track = sizeTrackRef.current;
+      if (!track) return;
+      const rect = track.getBoundingClientRect();
+      const relativeY = clientY - rect.top;
+      // Invert Y so bottom is 0% (minimum) and top is 100% (maximum)
+      const ratio = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
+      const newSize = ratioToBrushSize(ratio);
+      onBrushSizeChange(newSize);
+    },
+    [onBrushSizeChange]
+  );
+
+  const handleOpacityPointer = useCallback(
+    (clientY: number) => {
+      const track = opacityTrackRef.current;
+      if (!track) return;
+      const rect = track.getBoundingClientRect();
+      const relativeY = clientY - rect.top;
+      const ratio = Math.max(0, Math.min(1, 1 - relativeY / rect.height));
+      const newOpacity = ratioToOpacity(ratio);
+      onBrushOpacityChange(newOpacity);
+    },
+    [onBrushOpacityChange]
+  );
+
   return (
-    <aside
+    <motion.aside
       aria-label="Brush dynamics and history rail"
-      className="fixed left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-6 p-2 rounded-2xl bg-zinc-950/80 backdrop-blur-md border border-zinc-800/80 shadow-2xl select-none"
+      initial={{ x: -80, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ type: "spring", damping: 25, stiffness: 220, delay: 0.15 }}
+      className="fixed left-0 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-4 py-4 px-2.5 rounded-r-2xl bg-zinc-950/90 backdrop-blur-md border-r border-y border-zinc-800/80 shadow-2xl select-none"
     >
-      {/* Brush Size Vertical Slider */}
-      <div className="relative flex flex-col items-center group">
-        {showSizeTooltip && (
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-700 text-xs font-semibold text-zinc-100 shadow-xl whitespace-nowrap pointer-events-none animate-in fade-in duration-100">
+      {/* 1. Brush Size Vertical Capsule Slider (No circular thumb) */}
+      <div className="relative flex flex-col items-center">
+        {/* Floating Tooltip to the right */}
+        {(showSizeTooltip || isDraggingSize) && (
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-zinc-700/80 text-xs font-mono font-medium text-zinc-100 shadow-2xl whitespace-nowrap pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-100">
             {brushSize} px
           </div>
         )}
-        <span className="text-[10px] font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">
-          Size
-        </span>
-        <div className="h-36 w-6 flex items-center justify-center relative">
-          <input
-            type="range"
-            min="1"
-            max="300"
-            value={brushSize}
-            aria-label="Brush Size Slider"
-            onMouseEnter={() => setShowSizeTooltip(true)}
-            onMouseLeave={() => setShowSizeTooltip(false)}
-            onTouchStart={() => setShowSizeTooltip(true)}
-            onTouchEnd={() => setShowSizeTooltip(false)}
-            onChange={(e) => onBrushSizeChange(Number(e.target.value))}
-            className="w-36 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer -rotate-90 origin-center accent-zinc-100"
-          />
+
+        <div
+          ref={sizeTrackRef}
+          role="slider"
+          aria-label="Brush Size"
+          aria-valuenow={brushSize}
+          aria-valuemin={1}
+          aria-valuemax={300}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setIsDraggingSize(true);
+            handleSizePointer(e.clientY);
+          }}
+          onPointerMove={(e) => {
+            if (isDraggingSize) {
+              handleSizePointer(e.clientY);
+            }
+          }}
+          onPointerUp={(e) => {
+            setIsDraggingSize(false);
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+          }}
+          onPointerCancel={(e) => {
+            setIsDraggingSize(false);
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+          }}
+          onPointerEnter={() => setShowSizeTooltip(true)}
+          onPointerLeave={() => {
+            if (!isDraggingSize) setShowSizeTooltip(false);
+          }}
+          className="relative w-9 h-28 flex items-center justify-center cursor-pointer touch-none"
+          title={`Brush Size: ${brushSize}px`}
+        >
+          {/* Visual Track Capsule (16px wide, 100px tall) */}
+          <div className="w-4 h-full rounded-full bg-zinc-850 ring-1 ring-inset ring-white/10 relative overflow-hidden flex flex-col justify-end shadow-inner">
+            {/* Active Level Fill rising from the bottom */}
+            <div
+              className={`w-full rounded-full ${
+                isDraggingSize ? "bg-white shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "bg-zinc-200"
+              }`}
+              style={{
+                height: `${Math.max(6, sizeRatio * 100)}%`,
+              }}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Separator */}
-      <div className="w-4 h-px bg-zinc-800" />
+      {/* 2. Middle Modifier / Eyedropper Button */}
+      <button
+        type="button"
+        onClick={onModifierClick}
+        aria-label="Eyedropper / Modifier Button"
+        title="Eyedropper / Modifier"
+        className="w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800/90 active:scale-95 border border-white/20 hover:border-white/50 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition-all shadow-sm cursor-pointer group"
+      >
+        <Pipette className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+      </button>
 
-      {/* Brush Opacity Vertical Slider */}
-      <div className="relative flex flex-col items-center group">
-        {showOpacityTooltip && (
-          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-700 text-xs font-semibold text-zinc-100 shadow-xl whitespace-nowrap pointer-events-none animate-in fade-in duration-100">
+      {/* 3. Brush Opacity Vertical Capsule Slider (No circular thumb) */}
+      <div className="relative flex flex-col items-center">
+        {/* Floating Tooltip to the right */}
+        {(showOpacityTooltip || isDraggingOpacity) && (
+          <div className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-zinc-700/80 text-xs font-mono font-medium text-zinc-100 shadow-2xl whitespace-nowrap pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-100">
             {opacityPercentage}%
           </div>
         )}
-        <span className="text-[10px] font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">
-          Opac
-        </span>
-        <div className="h-36 w-6 flex items-center justify-center relative">
-          <input
-            type="range"
-            min="1"
-            max="100"
-            value={opacityPercentage}
-            aria-label="Brush Opacity Slider"
-            onMouseEnter={() => setShowOpacityTooltip(true)}
-            onMouseLeave={() => setShowOpacityTooltip(false)}
-            onTouchStart={() => setShowOpacityTooltip(true)}
-            onTouchEnd={() => setShowOpacityTooltip(false)}
-            onChange={(e) => onBrushOpacityChange(Number(e.target.value) / 100)}
-            className="w-36 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer -rotate-90 origin-center accent-zinc-100"
-          />
+
+        <div
+          ref={opacityTrackRef}
+          role="slider"
+          aria-label="Brush Opacity"
+          aria-valuenow={opacityPercentage}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setIsDraggingOpacity(true);
+            handleOpacityPointer(e.clientY);
+          }}
+          onPointerMove={(e) => {
+            if (isDraggingOpacity) {
+              handleOpacityPointer(e.clientY);
+            }
+          }}
+          onPointerUp={(e) => {
+            setIsDraggingOpacity(false);
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+          }}
+          onPointerCancel={(e) => {
+            setIsDraggingOpacity(false);
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+          }}
+          onPointerEnter={() => setShowOpacityTooltip(true)}
+          onPointerLeave={() => {
+            if (!isDraggingOpacity) setShowOpacityTooltip(false);
+          }}
+          className="relative w-9 h-28 flex items-center justify-center cursor-pointer touch-none"
+          title={`Brush Opacity: ${opacityPercentage}%`}
+        >
+          {/* Visual Track Capsule (16px wide, 100px tall) */}
+          <div className="w-4 h-full rounded-full bg-zinc-850 ring-1 ring-inset ring-white/10 relative overflow-hidden flex flex-col justify-end shadow-inner">
+            {/* Active Level Fill rising from the bottom */}
+            <div
+              className={`w-full rounded-full ${
+                isDraggingOpacity ? "bg-white shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "bg-zinc-200"
+              }`}
+              style={{
+                height: `${Math.max(6, opacityRatio * 100)}%`,
+              }}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Separator */}
-      <div className="w-4 h-px bg-zinc-800" />
+      {/* Separator Line */}
+      <div className="w-5 h-px bg-zinc-800/80 my-0.5" />
 
-      {/* Undo & Redo Quick Buttons */}
-      <div className="flex flex-col gap-2">
+      {/* 4. Undo & Redo Quick Buttons */}
+      <div className="flex flex-col gap-1.5">
         <button
           type="button"
           onClick={onUndo}
           aria-label="Undo"
           title="Undo (Ctrl+Z)"
-          className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+          className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 active:scale-95 transition-all"
         >
           <Undo2 className="w-4 h-4" />
         </button>
@@ -104,11 +228,11 @@ export const SidebarRail: FC<SidebarRailProps> = ({
           onClick={onRedo}
           aria-label="Redo"
           title="Redo (Ctrl+Shift+Z)"
-          className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+          className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 active:scale-95 transition-all"
         >
           <Redo2 className="w-4 h-4" />
         </button>
       </div>
-    </aside>
+    </motion.aside>
   );
 };

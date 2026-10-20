@@ -206,7 +206,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
         >
           <FilePlus2 className="w-4 h-4 text-zinc-400" />
-          <span className="hidden md:inline">New Canvas</span>
+          {/* <span className="hidden md:inline">New Canvas</span> */}
         </button>
 
         <div className="h-4 w-px bg-zinc-800 mx-1 hidden sm:block" />
