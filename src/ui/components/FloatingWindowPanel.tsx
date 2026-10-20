@@ -63,7 +63,7 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
       <div
         {...headerProps}
         title="Drag to reposition • Double-click to reset"
-        className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800/80 cursor-grab active:cursor-grabbing bg-zinc-50/60 hover:bg-zinc-100/60 dark:bg-zinc-950/40 dark:hover:bg-zinc-950/60 transition-colors group"
+        className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800/80 cursor-grab active:cursor-grabbing bg-zinc-50/60 hover:bg-zinc-100/60 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/60 transition-colors group"
       >
         <div className="flex items-center gap-2 pointer-events-none">
           <GripHorizontal className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-400 transition-colors" />

@@ -25,6 +25,7 @@ export interface DocumentState {
   transform: CanvasTransform;
   activePopover: PopoverType;
   softProofMode: SoftProofMode;
+  palmRejection: boolean;
   layerStack: LayerStack;
   detachedPanels: Record<DetachablePanelId, boolean>;
   gamutMask: GamutMaskConfiguration;
@@ -39,6 +40,8 @@ export interface DocumentState {
   setActivePopover: (popover: PopoverType) => void;
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
+  setPalmRejection: (enabled: boolean) => void;
+  togglePalmRejection: () => void;
   resetTransform: () => void;
   setLayerStack: (layerStack: LayerStack) => void;
   setGamutMask: (mask: Partial<GamutMaskConfiguration>) => void;
@@ -80,6 +83,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   },
   activePopover: "none",
   softProofMode: "none",
+  palmRejection: true,
   layerStack: createDefaultLayerStack(),
   detachedPanels: {
     color: false,
@@ -109,6 +113,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       activePopover: state.activePopover === popover ? "none" : popover,
     })),
   setSoftProofMode: (softProofMode) => set({ softProofMode }),
+  setPalmRejection: (palmRejection) => set({ palmRejection }),
+  togglePalmRejection: () => set((state) => ({ palmRejection: !state.palmRejection })),
   resetTransform: () =>
     set({
       transform: { scale: 0.8, panX: 0, panY: 0 },

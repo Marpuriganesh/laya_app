@@ -1163,8 +1163,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           style={isDetached ? undefined : mainPopoverWindowStyle}
           className={
             isDetached
-              ? "h-screen w-screen bg-white dark:bg-[#18181B] text-zinc-900 dark:text-zinc-100 border border-zinc-200/90 dark:border-zinc-800/90 rounded-xl flex flex-col overflow-y-auto overflow-x-hidden select-none transition-colors"
-              : "fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-xl bg-white/95 dark:bg-[#18181B]/95 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none backdrop-blur-md transition-colors"
+              ? "h-screen w-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border border-zinc-200/90 dark:border-zinc-800/90 rounded-xl flex flex-col overflow-y-auto overflow-x-hidden select-none transition-colors"
+              : "fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-xl bg-white/95 dark:bg-zinc-900/95 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden select-none backdrop-blur-md transition-colors"
           }
         >
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
@@ -1452,7 +1452,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             </div>
 
             {/* Contextual Sliders Band (h: 92px, w: 288px) */}
-            <div className="w-[288px] h-[92px] rounded-xl bg-zinc-100/90 dark:bg-[#252527]/50 border border-zinc-200 dark:border-white/5 px-3 py-2 flex flex-col justify-between shrink-0">
+            <div className="w-[288px] h-[92px] rounded-xl bg-zinc-100/90 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 px-3 py-2 flex flex-col justify-between shrink-0">
               {shapeMode === "circle" && isArtisticWheel ? (
                 /* Artistic Controls: Tone Ladder + Gamut Mask + Level Settings */
                 <>
@@ -1815,7 +1815,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                 animate={{ height: 40, opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.16, ease: "easeOut" }}
-                className="overflow-hidden border-t border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-[#121214] px-4 flex items-center justify-between shrink-0"
+                className="overflow-hidden border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/80 px-4 flex items-center justify-between shrink-0"
               >
                 <div className="flex items-center gap-1.5 w-full py-1">
                   {classicHarmonyItems.map((item) => {
@@ -1852,8 +1852,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             style={isDetached ? undefined : gamutWindowStyle}
             className={
               isDetached
-                ? "absolute inset-x-3 top-20 z-[55] rounded-2xl bg-white/95 dark:bg-[#18181B] border border-blue-400/40 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
-                : "fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-white/95 dark:bg-[#18181B] border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
+                ? "absolute inset-x-3 top-20 z-[55] rounded-xl bg-white/95 dark:bg-zinc-900 border border-blue-400/40 shadow-xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
+                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
             }
           >
             {/* Draggable Header */}
@@ -1982,8 +1982,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             style={isDetached ? undefined : gridWindowStyle}
             className={
               isDetached
-                ? "absolute inset-x-3 top-20 z-[55] rounded-2xl bg-white/95 dark:bg-[#18181B] border border-blue-400/40 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
-                : "fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-white/95 dark:bg-[#18181B] border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
+                ? "absolute inset-x-3 top-20 z-[55] rounded-xl bg-white/95 dark:bg-zinc-900 border border-blue-400/40 shadow-xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
+                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
             }
           >
             {/* Draggable Header */}

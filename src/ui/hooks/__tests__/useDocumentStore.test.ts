@@ -15,6 +15,7 @@ describe("useDocumentStore (Zustand)", () => {
       transform: { scale: 0.8, panX: 0, panY: 0 },
       activePopover: "none",
       softProofMode: "none",
+      palmRejection: true,
       layerStack: createDefaultLayerStack(),
     });
   });
@@ -26,7 +27,18 @@ describe("useDocumentStore (Zustand)", () => {
     expect(state.brushSize).toBe(32);
     expect(state.brushOpacity).toBe(1.0);
     expect(state.softProofMode).toBe("none");
+    expect(state.palmRejection).toBe(true);
     expect(state.activePopover).toBe("none");
+  });
+
+  it("updates and toggles palm rejection state", () => {
+    const { setPalmRejection, togglePalmRejection } = useDocumentStore.getState();
+
+    setPalmRejection(false);
+    expect(useDocumentStore.getState().palmRejection).toBe(false);
+
+    togglePalmRejection();
+    expect(useDocumentStore.getState().palmRejection).toBe(true);
   });
 
   it("updates tool, size, and opacity", () => {

@@ -95,7 +95,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
         aria-label="New Document Configuration"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 text-zinc-800 dark:text-zinc-200">
               <FilePlus2 className="w-5 h-5" />
@@ -134,7 +134,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
                     className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
                       isSelected
                         ? "bg-blue-50 dark:bg-zinc-800 border-blue-500 dark:border-zinc-500 ring-1 ring-blue-500 dark:ring-zinc-500"
-                        : "bg-zinc-50/60 dark:bg-zinc-950/40 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40"
+                        : "bg-zinc-50/60 dark:bg-zinc-800/40 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/60"
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -159,7 +159,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-zinc-500 focus:ring-1 focus:ring-blue-500 dark:focus:ring-zinc-500"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400"
                 placeholder="Untitled Artwork"
               />
             </div>
@@ -173,7 +173,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
                 max="8192"
                 value={width}
                 onChange={(e) => setWidth(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-zinc-500"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
               />
             </div>
 
@@ -186,7 +186,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
                 max="8192"
                 value={height}
                 onChange={(e) => setHeight(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-zinc-500"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
               />
             </div>
 
@@ -196,7 +196,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
               <select
                 value={dpi}
                 onChange={(e) => setDpi(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-zinc-500 cursor-pointer"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 cursor-pointer"
               >
                 <option value={72} className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">72 DPI (Standard Web / Screen)</option>
                 <option value={144} className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">144 DPI (Retina Screen)</option>
@@ -210,7 +210,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
               <select
                 value={unit}
                 onChange={(e) => setUnit(e.target.value as CanvasUnit)}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-zinc-500 cursor-pointer"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 cursor-pointer"
               >
                 <option value="pixels" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">Pixels (px)</option>
                 <option value="inches" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">Inches (in)</option>
@@ -225,7 +225,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
               <select
                 value={colorSpace}
                 onChange={(e) => setColorSpace(e.target.value as ColorSpace)}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-zinc-500 cursor-pointer"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 cursor-pointer"
               >
                 <option value="srgb" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">sRGB IEC61966-2.1 (Standard)</option>
                 <option value="display-p3" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">Display P3 (Wide Color Gamut)</option>
@@ -238,7 +238,7 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
               <select
                 value={bitDepth}
                 onChange={(e) => setBitDepth(e.target.value as BitDepth)}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-zinc-500 cursor-pointer"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 cursor-pointer"
               >
                 <option value="8-bit" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">8-bit / Channel (Standard RGBA)</option>
                 <option value="16-bit-float" className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">16-bit Float / Channel (High Dynamic Range)</option>
@@ -260,8 +260,8 @@ export const NewCanvasModal: FC<NewCanvasModalProps> = ({
                     onClick={() => setBackgroundColor(item.color)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
                       backgroundColor === item.color
-                        ? "bg-blue-50 dark:bg-zinc-800 border-blue-500 dark:border-zinc-500 text-blue-900 dark:text-zinc-100"
-                        : "bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                        ? "bg-blue-50 dark:bg-zinc-800 border-blue-500 dark:border-blue-400 text-blue-900 dark:text-zinc-100"
+                        : "bg-zinc-50 dark:bg-zinc-800/70 border-zinc-200 dark:border-zinc-700/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
                     }`}
                   >
                     <span

@@ -28,7 +28,7 @@ export const GamutMaskPanelContent: FC = () => {
   const currentPreset = GAMUT_MASK_PRESETS.find((p) => p.id === gamutMask.type);
 
   return (
-    <div className="flex flex-col gap-3 p-3.5 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 select-none h-full transition-colors">
+    <div className="flex flex-col gap-3 p-3.5 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 select-none h-full transition-colors">
       {/* Top Toggle Switch */}
       <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800/80">
         <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Gamut Constraint</span>

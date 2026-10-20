@@ -54,12 +54,12 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
   };
 
   return (
-    <div className="h-screen w-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden rounded-xl border border-zinc-200/90 dark:border-zinc-800/90 select-none transition-colors duration-150">
+    <div className="h-screen w-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden rounded-xl border border-zinc-200/90 dark:border-zinc-800/90 select-none transition-colors duration-150">
       {/* Draggable Title Bar */}
       <header
         data-tauri-drag-region
         onDoubleClick={handleHeaderDoubleClick}
-        className="h-11 px-3.5 bg-zinc-50 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing"
+        className="h-11 px-3.5 bg-zinc-50 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing"
         title="Double-click to toggle maximize • Drag to move window across monitors"
       >
         <div className="flex items-center gap-2 pointer-events-none">
@@ -116,7 +116,7 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
       </header>
 
       {/* Detached Palette Content */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden bg-white/95 dark:bg-zinc-950/95 flex flex-col transition-colors">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden bg-white/95 dark:bg-zinc-900/95 flex flex-col transition-colors">
         {children}
       </main>
     </div>

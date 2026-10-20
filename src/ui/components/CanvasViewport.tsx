@@ -6,7 +6,7 @@ import {
   type FC,
   type PointerEvent,
 } from "react";
-import { PenTool, FolderDown, Plus, Minus } from "lucide-react";
+import { FolderDown, Plus, Minus } from "lucide-react";
 import type { DocumentConfiguration } from "@/types/document";
 import type { ActiveTool, CanvasTransform, SoftProofMode } from "@/types/ui";
 import { getCssFilterForSoftProof } from "@/engine/color/soft_proofing";
@@ -24,6 +24,7 @@ import {
 } from "@/input/pointer/pointer_event_normalizer";
 import { hexToRgb } from "@/engine/color/color_conversions";
 import type { StrokePoint } from "@/types/stroke";
+import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 
 interface CanvasViewportProps {
   document: DocumentConfiguration;
@@ -35,7 +36,6 @@ interface CanvasViewportProps {
   softProofMode: SoftProofMode;
   onTransformChange: (transform: CanvasTransform) => void;
   stylusOnlyMode?: boolean;
-  onStylusOnlyModeChange?: (enabled: boolean) => void;
 }
 
 export const CanvasViewport: FC<CanvasViewportProps> = ({
@@ -48,25 +48,18 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   softProofMode,
   onTransformChange,
   stylusOnlyMode: initialStylusOnlyMode,
-  onStylusOnlyModeChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Palm Rejection & Stylus-Only Mode (defaults to true for touch/pen ergonomics)
-  const [stylusOnlyMode, setStylusOnlyMode] = useState<boolean>(initialStylusOnlyMode ?? true);
+  const { palmRejection } = useDocumentStore();
+  const stylusOnlyMode = initialStylusOnlyMode ?? palmRejection;
   const stylusOnlyModeRef = useRef<boolean>(stylusOnlyMode);
 
   useEffect(() => {
     stylusOnlyModeRef.current = stylusOnlyMode;
   }, [stylusOnlyMode]);
-
-  useEffect(() => {
-    if (initialStylusOnlyMode !== undefined) {
-      setStylusOnlyMode(initialStylusOnlyMode);
-    }
-  }, [initialStylusOnlyMode]);
 
   // Interaction States
   const [isPanning, setIsPanning] = useState(false);
@@ -666,7 +659,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex-1 w-full h-full relative overflow-hidden bg-zinc-200 dark:bg-[#121214] select-none touch-none ${getContainerCursorClass()}`}
+      className={`flex-1 w-full h-full relative overflow-hidden bg-zinc-200 dark:bg-[#1e1e22] select-none touch-none ${getContainerCursorClass()}`}
     >
       {/* Hidden SVG Filter definition for 100% mathematically exact sRGB isoluminant soft proofing */}
       <svg className="absolute w-0 h-0 pointer-events-none opacity-0 overflow-hidden" aria-hidden="true">
@@ -746,7 +739,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
       {/* Floating Zoom Controls Pill (FigCraft Node 296 Frame 4) */}
       <div
-        className="absolute top-3 left-3 z-20 flex items-center h-[31px] w-[78px] rounded-full bg-white/90 dark:bg-[#0A0A0C]/90 backdrop-blur-md border border-zinc-200 dark:border-[#3F3F46] shadow-md select-none overflow-hidden transition-colors"
+        className="absolute top-3 left-3 z-20 flex items-center h-[31px] w-[78px] rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-700/80 shadow-md select-none overflow-hidden transition-colors"
         title={`Zoom: ${Math.round(transform.scale * 100)}% (Double-click to reset 100%)`}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -761,12 +754,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           }}
           aria-label="Zoom In"
           title="Zoom In (+)"
-          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:scale-90 transition-all cursor-pointer"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
 
-        <div className="w-px h-5 bg-zinc-200 dark:bg-[#27272A] shrink-0" />
+        <div className="w-px h-5 bg-zinc-200 dark:bg-zinc-700/80 shrink-0" />
 
         <button
           type="button"
@@ -776,38 +769,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           }}
           aria-label="Zoom Out"
           title="Zoom Out (-)"
-          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:scale-90 transition-all cursor-pointer"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
         >
           <Minus className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* Palm Rejection (Stylus-Only Mode) Quick Toggle Indicator */}
-      <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            const next = !stylusOnlyMode;
-            setStylusOnlyMode(next);
-            onStylusOnlyModeChange?.(next);
-          }}
-          aria-label={`Toggle Palm Rejection (Stylus Only Mode): currently ${
-            stylusOnlyMode ? "ON" : "OFF"
-          }`}
-          title={`Palm Rejection (Stylus Only): ${
-            stylusOnlyMode ? "ON (Pencil draws, finger pans)" : "OFF (Finger can draw)"
-          }`}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border backdrop-blur-md transition-colors ${
-            stylusOnlyMode
-              ? "bg-zinc-900/80 border-zinc-700/80 text-zinc-200 hover:bg-zinc-800"
-              : "bg-zinc-900/40 border-zinc-800/40 text-zinc-500 hover:text-zinc-300"
-          }`}
-        >
-          <PenTool className="w-3.5 h-3.5 text-sky-400" />
-          <span className="hidden sm:inline">Palm Rejection:</span>
-          <span className={stylusOnlyMode ? "text-emerald-400 font-semibold" : "text-zinc-400"}>
-            {stylusOnlyMode ? "ON" : "OFF"}
-          </span>
         </button>
       </div>
     </main>

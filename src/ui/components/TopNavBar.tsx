@@ -19,6 +19,7 @@ import {
   Moon,
 } from "lucide-react";
 import { useTheme } from "@/ui/theme/ThemeProvider";
+import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import type { ActiveTool, PopoverType, SoftProofMode } from "@/types/ui";
 import type { DocumentConfiguration } from "@/types/document";
 import type { DetachablePanelId } from "@/types/window";
@@ -61,6 +62,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   const [isProofSubmenuOpen, setIsProofSubmenuOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme, toggleTheme } = useTheme();
+  const { palmRejection, togglePalmRejection } = useDocumentStore();
   const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -163,7 +165,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     <header
       data-tauri-drag-region
       onDoubleClick={handleHeaderDoubleClick}
-      className="h-14 px-4 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
+      className="h-14 px-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
       title="Double-click to toggle maximize • Drag to reposition"
     >
       {/* Left Control Cluster */}
@@ -229,7 +231,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           </button>
 
           {isActionsMenuOpen && (
-            <div className="absolute top-full mt-2 left-0 w-64 p-1.5 rounded-xl bg-white/95 dark:bg-zinc-950/95 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute top-full mt-2 left-0 w-64 p-1.5 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
               {/* Document Summary */}
               <div className="px-2.5 py-1.5 border-b border-zinc-100 dark:border-zinc-800/80 mb-0.5">
                 <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">
@@ -285,7 +287,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
                 </button>
 
                 {isProofSubmenuOpen && (
-                  <div className="pl-3 pr-1 py-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-lg mt-0.5 border border-zinc-100 dark:border-zinc-800/60">
+                  <div className="pl-3 pr-1 py-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100 bg-zinc-50/80 dark:bg-zinc-800/60 rounded-lg mt-0.5 border border-zinc-100 dark:border-zinc-800/60">
                     {SOFT_PROOF_OPTIONS.map((opt) => {
                       const isSelected = softProofMode === opt.id;
                       return (
@@ -298,7 +300,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
                           className={`w-full flex items-start justify-between p-1.5 rounded-md text-left transition-colors cursor-pointer ${
                             isSelected
                               ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium"
-                              : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-200"
+                              : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-zinc-200"
                           }`}
                         >
                           <div>
@@ -316,6 +318,35 @@ export const TopNavBar: FC<TopNavBarProps> = ({
                   </div>
                 )}
               </div>
+
+              <div className="h-px bg-zinc-100 dark:bg-zinc-800/80 my-0.5" />
+
+              {/* Palm Rejection Setting */}
+              <button
+                type="button"
+                onClick={togglePalmRejection}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/70 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                title={`Palm Rejection (Stylus Only): currently ${palmRejection ? "ON" : "OFF"}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Hand className="w-3.5 h-3.5 text-zinc-400" />
+                  <div className="flex flex-col text-left">
+                    <span>Palm Rejection</span>
+                    <span className="text-[9px] text-zinc-400 dark:text-zinc-500 font-normal leading-tight">
+                      Pencil draws • Touch pans
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-md transition-colors ${
+                    palmRejection
+                      ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border border-transparent"
+                  }`}
+                >
+                  {palmRejection ? "ON" : "OFF"}
+                </div>
+              </button>
             </div>
           )}
         </div>
