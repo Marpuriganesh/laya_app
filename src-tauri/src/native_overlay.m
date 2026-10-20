@@ -53,7 +53,8 @@ static OverlaySketchCanvasView *g_active_canvas_view = nil;
     float scaleX = (self.bounds.size.width > 0 && bufW > 0) ? ((float)bufW / self.bounds.size.width) : 1.0f;
     float scaleY = (self.bounds.size.height > 0 && bufH > 0) ? ((float)bufH / self.bounds.size.height) : 1.0f;
 
-    // Convert Cocoa bottom-left origin to Canvas top-left origin (Invert Y):
+    // Cocoa Y=0 is at the bottom; our pixel buffer Y=0 is at the top.
+    // Invert Y so pen position maps correctly into canvas space.
     float x = (float)p.x * scaleX;
     float y = (float)(self.bounds.size.height - p.y) * scaleY;
 
@@ -143,12 +144,7 @@ static OverlaySketchCanvasView *g_active_canvas_view = nil;
         );
 
         if (image) {
-            // Draw image matching (0,0) top-left canvas coordinate space:
-            CGContextSaveGState(ctx);
-            CGContextTranslateCTM(ctx, 0, self.bounds.size.height);
-            CGContextScaleCTM(ctx, 1.0, -1.0);
             CGContextDrawImage(ctx, CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height), image);
-            CGContextRestoreGState(ctx);
             CGImageRelease(image);
         }
         CGDataProviderRelease(provider);
