@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
+import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
 import { detachPanelWindow, focusDetachedWindow } from "@/ui/window/window_manager";
 import { DETACHABLE_PANEL_CONFIGS, type DetachablePanelId } from "@/types/window";
 import { TopNavBar } from "@/ui/components/TopNavBar";
@@ -27,6 +28,7 @@ export default function App() {
 
 function MainWindow() {
   useDetachedWindowSync({ role: "main" });
+  useWindowKeyShortcuts({ enableMinimize: true });
 
   const {
     document,
@@ -78,7 +80,7 @@ function MainWindow() {
 
   return (
     <div
-      className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground font-sans select-none transition-colors duration-150 rounded-2xl border border-border shadow-2xl"
+      className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground font-sans select-none transition-colors duration-150 rounded-xl border border-border/80"
     >
       {/* Procreate-Style Top Navigation Bar */}
       <TopNavBar

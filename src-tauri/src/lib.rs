@@ -29,7 +29,7 @@ async fn detach_panel(
   .resizable(true)
   .decorations(false)
   .transparent(true)
-  .shadow(false);
+  .shadow(true);
 
   win_builder.build().map_err(|e| e.to_string())?;
   Ok(())
@@ -53,6 +53,11 @@ pub fn run() {
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+      }
+      #[cfg(desktop)]
+      {
+        let menu = tauri::menu::Menu::default(app.handle())?;
+        app.set_menu(menu)?;
       }
       Ok(())
     })

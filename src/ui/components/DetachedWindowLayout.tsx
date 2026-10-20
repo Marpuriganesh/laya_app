@@ -1,6 +1,7 @@
 import { useState, type FC, type ReactNode } from "react";
 import { Pin, PinOff, Minimize2, X, GripHorizontal } from "lucide-react";
 import { toggleWindowAlwaysOnTop } from "@/ui/window/window_manager";
+import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
 
 export interface DetachedWindowLayoutProps {
   title: string;
@@ -23,6 +24,12 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
   children,
 }) => {
   const [isPinned, setIsPinned] = useState(false);
+
+  // Keyboard window shortcuts (Cmd+M to minimize, Cmd+W to close)
+  useWindowKeyShortcuts({
+    onClose,
+    enableMinimize: true,
+  });
 
   const handleTogglePin = async () => {
     const nextPinned = !isPinned;
@@ -47,12 +54,12 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
   };
 
   return (
-    <div className="h-screen w-screen bg-white/95 dark:bg-zinc-950/95 text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800/80 shadow-2xl select-none backdrop-blur-md transition-colors duration-150">
+    <div className="h-screen w-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden rounded-xl border border-zinc-200/90 dark:border-zinc-800/90 select-none transition-colors duration-150">
       {/* Draggable Title Bar */}
       <header
         data-tauri-drag-region
         onDoubleClick={handleHeaderDoubleClick}
-        className="h-11 px-3.5 bg-zinc-100/90 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing backdrop-blur-md"
+        className="h-11 px-3.5 bg-zinc-50 dark:bg-zinc-900/80 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing"
         title="Double-click to toggle maximize • Drag to move window across monitors"
       >
         <div className="flex items-center gap-2 pointer-events-none">

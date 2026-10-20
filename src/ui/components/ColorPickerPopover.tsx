@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type FC, type PointerEvent, type MouseEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useDraggableWindow } from "@/ui/hooks/useDraggableWindow";
+import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
 import {
   X,
   Circle,
@@ -84,6 +85,12 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   onDock,
 }) => {
   const [isPinned, setIsPinned] = useState(false);
+
+  // Keyboard window shortcuts (Cmd+M to minimize, Cmd+W to close when detached)
+  useWindowKeyShortcuts({
+    onClose: isDetached ? onClose : undefined,
+    enableMinimize: isDetached,
+  });
 
   const handleTogglePin = async () => {
     const nextPinned = !isPinned;
@@ -1156,8 +1163,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           style={isDetached ? undefined : mainPopoverWindowStyle}
           className={
             isDetached
-              ? "h-screen w-screen bg-white/95 dark:bg-[#18181B]/95 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800/80 rounded-2xl shadow-2xl flex flex-col overflow-y-auto overflow-x-hidden select-none backdrop-blur-md transition-colors"
-              : "fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-2xl bg-white/95 dark:bg-[#18181B]/95 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none backdrop-blur-md transition-colors"
+              ? "h-screen w-screen bg-white dark:bg-[#18181B] text-zinc-900 dark:text-zinc-100 border border-zinc-200/90 dark:border-zinc-800/90 rounded-xl flex flex-col overflow-y-auto overflow-x-hidden select-none transition-colors"
+              : "fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-xl bg-white/95 dark:bg-[#18181B]/95 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none backdrop-blur-md transition-colors"
           }
         >
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}

@@ -59,7 +59,7 @@ export async function detachPanelWindow(config: DetachedWindowConfig): Promise<b
           resizable: true,
           decorations: false,
           transparent: true,
-          shadow: false,
+          shadow: true,
         });
 
         await new Promise<void>((resolve, reject) => {
