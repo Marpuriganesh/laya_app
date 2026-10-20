@@ -541,16 +541,23 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       lastStrokePointRef.current
     );
 
-    for (const point of points) {
-      if (lastStrokePointRef.current) {
-        const deltaX = point.canvasX - lastStrokePointRef.current.canvasX;
-        const deltaY = point.canvasY - lastStrokePointRef.current.canvasY;
-        if (deltaX * deltaX + deltaY * deltaY < 0.25) {
-          continue;
-        }
+    if (globalDrawingEngine.extendStrokeBatch) {
+      globalDrawingEngine.extendStrokeBatch(points);
+      if (points.length > 0) {
+        lastStrokePointRef.current = points[points.length - 1];
       }
-      globalDrawingEngine.extendStroke(point);
-      lastStrokePointRef.current = point;
+    } else {
+      for (const point of points) {
+        if (lastStrokePointRef.current) {
+          const deltaX = point.canvasX - lastStrokePointRef.current.canvasX;
+          const deltaY = point.canvasY - lastStrokePointRef.current.canvasY;
+          if (deltaX * deltaX + deltaY * deltaY < 0.25) {
+            continue;
+          }
+        }
+        globalDrawingEngine.extendStroke(point);
+        lastStrokePointRef.current = point;
+      }
     }
   };
 

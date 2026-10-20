@@ -13,6 +13,7 @@ import { Canvas2dRasterTarget } from "./raster/canvas2d_raster_target";
 import { MemoryRasterBuffer } from "./raster/memory_raster_buffer";
 import { parseKritaPreset } from "./brush/kpp_parser";
 import { parseKritaBundle } from "./brush/bundle_parser";
+import { globalRustBrushBridge } from "./brush/rust_brush_bridge";
 
 /**
  * Creates default brush preset configuration.
@@ -97,6 +98,7 @@ export class DrawingAppEngine implements IDrawingEngine {
     this.canvasElement = canvasElement;
     this.ctx = canvasElement.getContext("2d", { willReadFrequently: true });
     this.rasterTarget = new Canvas2dRasterTarget(canvasElement);
+    globalRustBrushBridge.init(canvasElement.width, canvasElement.height);
   }
 
   public unmount(): void {
@@ -156,6 +158,25 @@ export class DrawingAppEngine implements IDrawingEngine {
     this.lastPoint = point;
     if (!this.ctx) return;
 
+    if (globalRustBrushBridge.isEnabled) {
+      const config = {
+        diameter: this.brushSize,
+        spacing: 0.12,
+        softness: 0.5,
+        color: [this.brushColor.r, this.brushColor.g, this.brushColor.b, Math.round(this.brushColor.a * 255)] as [number, number, number, number],
+        opacity: this.brushOpacity,
+        flow: 1.0,
+        size_by_pressure: true,
+        opacity_by_pressure: false,
+      };
+      globalRustBrushBridge.beginStroke(point, config).then((update) => {
+        if (update && this.ctx) {
+          globalRustBrushBridge.blitDirtyUpdate(this.ctx, update);
+        }
+      });
+      return;
+    }
+
     const ctx = this.ctx;
     ctx.save();
     ctx.globalCompositeOperation = this.blendMode === "erase" ? "destination-out" : "source-over";
@@ -173,6 +194,11 @@ export class DrawingAppEngine implements IDrawingEngine {
   public extendStroke(point: StrokePoint): void {
     if (!this.lastPoint || !this.ctx) {
       this.beginStroke(point);
+      return;
+    }
+
+    if (globalRustBrushBridge.isEnabled) {
+      this.extendStrokeBatch([point]);
       return;
     }
 
@@ -197,8 +223,29 @@ export class DrawingAppEngine implements IDrawingEngine {
     this.lastPoint = point;
   }
 
+  public extendStrokeBatch(points: readonly StrokePoint[]): void {
+    if (!this.ctx || points.length === 0) return;
+
+    if (globalRustBrushBridge.isEnabled) {
+      globalRustBrushBridge.paintCoalesced([...points]).then((update) => {
+        if (update && this.ctx) {
+          globalRustBrushBridge.blitDirtyUpdate(this.ctx, update);
+        }
+      });
+      this.lastPoint = points[points.length - 1];
+      return;
+    }
+
+    for (const point of points) {
+      this.extendStroke(point);
+    }
+  }
+
   public endStroke(): void {
     this.lastPoint = null;
+    if (globalRustBrushBridge.isEnabled) {
+      globalRustBrushBridge.endStroke();
+    }
   }
 
   // --- Real-time Adjustments ---

@@ -24,6 +24,7 @@ export interface IDrawingEngine {
   // --- Active Stroke ---
   beginStroke(point: StrokePoint): void;
   extendStroke(point: StrokePoint): void;
+  extendStrokeBatch?(points: readonly StrokePoint[]): void;
   endStroke(): void;
 
   // --- Real-time Brush Adjustments ---

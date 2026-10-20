@@ -1,5 +1,11 @@
 use tauri::Manager;
 
+pub mod brush_commands;
+use brush_commands::{
+  rust_brush_clear, rust_brush_begin_stroke, rust_brush_end_stroke,
+  rust_brush_init, rust_brush_paint_coalesced, BrushEngineState,
+};
+
 #[tauri::command]
 async fn detach_panel(
   app: tauri::AppHandle,
@@ -54,6 +60,7 @@ async fn set_always_on_top(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .manage(BrushEngineState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -69,7 +76,15 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![detach_panel, set_always_on_top])
+    .invoke_handler(tauri::generate_handler![
+      detach_panel,
+      set_always_on_top,
+      rust_brush_init,
+      rust_brush_begin_stroke,
+      rust_brush_paint_coalesced,
+      rust_brush_end_stroke,
+      rust_brush_clear
+    ])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
 }
