@@ -121,8 +121,16 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html, body, #root {
+    background-color: transparent !important;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
   }
   html {
     @apply font-sans;

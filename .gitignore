@@ -1,4 +1,10 @@
-# Logs
+# Rust & Cargo build artifacts
+target/
+**/target/
+pkg/
+**/pkg/
+*.wasm
+
 logs
 *.log
 npm-debug.log*

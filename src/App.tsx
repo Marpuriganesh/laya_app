@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { TopNavBar } from "@/ui/components/TopNavBar";
 import { SidebarRail } from "@/ui/components/SidebarRail";
@@ -46,8 +46,37 @@ export default function App() {
     setTransform({ scale, panX, panY });
   }, [document.width, document.height, setTransform]);
 
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (!isTauri) return;
+
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const appWindow = getCurrentWindow();
+        setIsMaximized(await appWindow.isMaximized());
+        unlisten = await appWindow.onResized(async () => {
+          setIsMaximized(await appWindow.isMaximized());
+        });
+      } catch (err) {
+        console.error("Failed to query window maximized state:", err);
+      }
+    })();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
   return (
-    <div className="dark flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans select-none">
+    <div
+      className={`dark flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans select-none transition-all duration-150 ${
+        isMaximized ? "rounded-none border-0" : "rounded-2xl border border-zinc-800/80 shadow-2xl"
+      }`}
+    >
       {/* Procreate-Style Top Navigation Bar */}
       <TopNavBar
         document={document}

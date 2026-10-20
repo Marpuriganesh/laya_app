@@ -13,6 +13,9 @@ import {
   Eye,
   Check,
   ChevronDown,
+  X,
+  Minus,
+  Square,
 } from "lucide-react";
 import type { ActiveTool, PopoverType, SoftProofMode } from "@/types/ui";
 import type { DocumentConfiguration } from "@/types/document";
@@ -77,6 +80,41 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     }
   }, [isProofMenuOpen]);
 
+  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  const handleClose = async () => {
+    if (isTauri) {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().close();
+      } catch (err) {
+        console.error("Failed to close Tauri window:", err);
+      }
+    }
+  };
+
+  const handleMinimize = async () => {
+    if (isTauri) {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().minimize();
+      } catch (err) {
+        console.error("Failed to minimize Tauri window:", err);
+      }
+    }
+  };
+
+  const handleToggleMaximize = async () => {
+    if (isTauri) {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().toggleMaximize();
+      } catch (err) {
+        console.error("Failed to toggle maximize Tauri window:", err);
+      }
+    }
+  };
+
   const handleBrushClick = () => {
     if (activeTool === "brush") {
       onTogglePopover("brushLibrary");
@@ -86,9 +124,43 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   };
 
   return (
-    <header className="h-14 px-4 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0">
+    <header
+      data-tauri-drag-region
+      className="h-14 px-4 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0"
+    >
       {/* Left Control Cluster */}
       <div className="flex items-center gap-1 sm:gap-2">
+        {/* Custom Window Controls (Close, Minimize, Maximize) */}
+        <div className="flex items-center gap-1.5 mr-2">
+          <button
+            type="button"
+            onClick={handleClose}
+            title="Close Window"
+            aria-label="Close Window"
+            className="w-3.5 h-3.5 rounded-full bg-red-500/80 hover:bg-red-500 flex items-center justify-center text-zinc-950 opacity-80 hover:opacity-100 transition-all group"
+          >
+            <X className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 stroke-[2.5]" />
+          </button>
+          <button
+            type="button"
+            onClick={handleMinimize}
+            title="Minimize Window"
+            aria-label="Minimize Window"
+            className="w-3.5 h-3.5 rounded-full bg-amber-500/80 hover:bg-amber-500 flex items-center justify-center text-zinc-950 opacity-80 hover:opacity-100 transition-all group"
+          >
+            <Minus className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 stroke-[2.5]" />
+          </button>
+          <button
+            type="button"
+            onClick={handleToggleMaximize}
+            title="Maximize Window"
+            aria-label="Maximize Window"
+            className="w-3.5 h-3.5 rounded-full bg-emerald-500/80 hover:bg-emerald-500 flex items-center justify-center text-zinc-950 opacity-80 hover:opacity-100 transition-all group"
+          >
+            <Square className="w-2 h-2 opacity-0 group-hover:opacity-100 stroke-[2.5]" />
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={() => onTogglePopover("newCanvas")}
