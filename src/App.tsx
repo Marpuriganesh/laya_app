@@ -12,16 +12,17 @@ import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
 import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
 import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
+import { ThemeProvider } from "@/ui/theme/ThemeProvider";
 
 export default function App() {
   const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const detachedPanel = urlParams?.get("detached") as DetachablePanelId | null;
 
-  if (detachedPanel) {
-    return <DetachedWindowRoot panelId={detachedPanel} />;
-  }
-
-  return <MainWindow />;
+  return (
+    <ThemeProvider defaultTheme="dark">
+      {detachedPanel ? <DetachedWindowRoot panelId={detachedPanel} /> : <MainWindow />}
+    </ThemeProvider>
+  );
 }
 
 function MainWindow() {
@@ -102,8 +103,8 @@ function MainWindow() {
 
   return (
     <div
-      className={`dark flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans select-none transition-all duration-150 ${
-        isMaximized ? "rounded-none border-0" : "rounded-2xl border border-zinc-800/80 shadow-2xl"
+      className={`flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground font-sans select-none transition-colors duration-150 ${
+        isMaximized ? "rounded-none border-0" : "rounded-2xl border border-border shadow-2xl"
       }`}
     >
       {/* Procreate-Style Top Navigation Bar */}

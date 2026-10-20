@@ -768,7 +768,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex-1 w-full h-full relative overflow-hidden bg-[#121214] select-none touch-none ${getContainerCursorClass()}`}
+      className={`flex-1 w-full h-full relative overflow-hidden bg-zinc-200 dark:bg-[#121214] select-none touch-none ${getContainerCursorClass()}`}
     >
       {/* Hidden SVG Filter definition for 100% mathematically exact sRGB isoluminant soft proofing */}
       <svg className="absolute w-0 h-0 pointer-events-none opacity-0 overflow-hidden" aria-hidden="true">

@@ -16,7 +16,10 @@ import {
   X,
   Minus,
   Square,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useTheme } from "@/ui/theme/ThemeProvider";
 import type { ActiveTool, PopoverType, SoftProofMode } from "@/types/ui";
 import type { DocumentConfiguration } from "@/types/document";
 import type { DetachablePanelId } from "@/types/window";
@@ -58,6 +61,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   onSelectSoftProofMode,
 }) => {
   const [isProofMenuOpen, setIsProofMenuOpen] = useState(false);
+  const { resolvedTheme, toggleTheme } = useTheme();
   const proofMenuRef = useRef<HTMLDivElement>(null);
   const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
   const zoomPercent = Math.round(zoomScale * 100);
@@ -162,7 +166,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     <header
       data-tauri-drag-region
       onDoubleClick={handleHeaderDoubleClick}
-      className="h-14 px-4 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
+      className="h-14 px-4 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
       title="Double-click to toggle maximize • Drag to reposition"
     >
       {/* Left Control Cluster */}
@@ -203,13 +207,13 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           onClick={() => onTogglePopover("newCanvas")}
           aria-label="New Canvas Document"
           title="New Canvas"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 transition-colors"
         >
-          <FilePlus2 className="w-4 h-4 text-zinc-400" />
+          <FilePlus2 className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
           {/* <span className="hidden md:inline">New Canvas</span> */}
         </button>
 
-        <div className="h-4 w-px bg-zinc-800 mx-1 hidden sm:block" />
+        <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
 
         <button
           type="button"
@@ -218,8 +222,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Actions"
           className={`p-2 rounded-lg transition-colors ${
             activePopover === "actions"
-              ? "bg-zinc-800 text-white"
-              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+              ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-white"
+              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
           <Wrench className="w-4 h-4" />
@@ -232,8 +236,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Brush Settings & Studio"
           className={`p-2 rounded-lg transition-colors ${
             activePopover === "brushSettings"
-              ? "bg-zinc-800 text-white"
-              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+              ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-white"
+              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
           <SlidersHorizontal className="w-4 h-4" />
@@ -243,7 +247,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           type="button"
           aria-label="Selection Tool"
           title="Selection"
-          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+          className="p-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         >
           <Lasso className="w-4 h-4" />
         </button>
@@ -252,7 +256,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           type="button"
           aria-label="Transform Tool"
           title="Transform"
-          className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+          className="p-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         >
           <Move className="w-4 h-4" />
         </button>
@@ -260,7 +264,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
       {/* Center Document Title, Zoom, & Soft Proofing */}
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-zinc-300 max-w-[140px] sm:max-w-xs truncate hidden sm:inline">
+        <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[140px] sm:max-w-xs truncate hidden sm:inline">
           {document.title}
         </span>
         <button
@@ -268,7 +272,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           onClick={onResetZoom}
           aria-label="Reset zoom to 100%"
           title="Click to reset zoom"
-          className="flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
         >
           <ZoomIn className="w-3 h-3" />
           <span>{zoomPercent}%</span>
@@ -283,8 +287,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
             title="Soft Proofing / Tonal Value Check"
             className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border ${
               softProofMode !== "none"
-                ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs"
-                : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                ? "bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40 shadow-xs"
+                : "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800"
             }`}
           >
             <Eye className="w-3 h-3" />
@@ -344,8 +348,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Brush (Paint)"
           className={`p-2 rounded-lg transition-colors relative ${
             activeTool === "brush"
-              ? "bg-zinc-100 text-zinc-950 shadow-md"
-              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+              ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-950 shadow-md"
+              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
           <Paintbrush className="w-4 h-4" />
@@ -359,8 +363,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Smudge"
           className={`p-2 rounded-lg transition-colors ${
             activeTool === "smudge"
-              ? "bg-zinc-100 text-zinc-950 shadow-md"
-              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+              ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-950 shadow-md"
+              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
           <Hand className="w-4 h-4" />
@@ -374,14 +378,29 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title="Eraser"
           className={`p-2 rounded-lg transition-colors ${
             activeTool === "eraser"
-              ? "bg-zinc-100 text-zinc-950 shadow-md"
-              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+              ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-950 shadow-md"
+              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
           <Eraser className="w-4 h-4" />
         </button>
 
-        <div className="h-4 w-px bg-zinc-800 mx-1" />
+        <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
+
+        {/* Theme Toggle (Light / Dark Mode) */}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          className="p-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+        >
+          {resolvedTheme === "dark" ? (
+            <Sun className="w-4 h-4 text-amber-400" />
+          ) : (
+            <Moon className="w-4 h-4 text-sky-500" />
+          )}
+        </button>
 
         {/* Layers */}
         <button
@@ -391,8 +410,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           title={detachedPanels?.layers ? "Layers (Detached - click to focus)" : "Layers"}
           className={`p-2 rounded-lg transition-colors relative ${
             activePopover === "layers"
-              ? "bg-zinc-800 text-zinc-100 shadow-sm"
-              : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+              ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 shadow-sm"
+              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
         >
           <Layers className="w-4 h-4" />
