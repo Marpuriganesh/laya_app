@@ -14,8 +14,9 @@ static BOOL g_is_tablet = NO;
 @implementation SketchCanvasView
 
 - (BOOL)isFlipped {
-    // Canvas (0, 0) is top-left, matching raster image buffer coordinate space.
-    return YES;
+    // Keep standard Cocoa coordinates (origin at bottom-left)
+    // We explicitly map Y coordinates to ensure perfect alignment without Cocoa context fighting.
+    return NO;
 }
 
 - (BOOL)acceptsFirstResponder {
@@ -30,9 +31,24 @@ static BOOL g_is_tablet = NO;
     return self;
 }
 
+- (NSPoint)canvasPointFromLocation:(NSPoint)windowLocation {
+    NSPoint p = [self convertPoint:windowLocation fromView:nil];
+    int32_t bufW = 0;
+    int32_t bufH = 0;
+    rust_native_get_pixels(&bufW, &bufH);
+
+    float scaleX = (self.bounds.size.width > 0 && bufW > 0) ? ((float)bufW / self.bounds.size.width) : 1.0f;
+    float scaleY = (self.bounds.size.height > 0 && bufH > 0) ? ((float)bufH / self.bounds.size.height) : 1.0f;
+
+    // Convert from Cocoa bottom-left origin to Canvas top-left origin:
+    float x = (float)p.x * scaleX;
+    float y = (float)(self.bounds.size.height - p.y) * scaleY;
+    return NSMakePoint(x, y);
+}
+
 - (void)mouseDown:(NSEvent *)event {
     [self.window makeFirstResponder:self];
-    NSPoint location = [self convertPoint:[event locationInWindow] fromView:nil];
+    NSPoint cp = [self canvasPointFromLocation:[event locationInWindow]];
     
     // Check if event originated from a tablet/stylus digitizer
     g_is_tablet = ([event subtype] == NSEventSubtypeTabletPoint);
@@ -44,16 +60,16 @@ static BOOL g_is_tablet = NO;
     }
     
     g_last_pressure = pressure;
-    g_last_x = (float)location.x;
-    g_last_y = (float)location.y;
+    g_last_x = (float)cp.x;
+    g_last_y = (float)cp.y;
     g_is_drawing = YES;
 
-    rust_native_begin_stroke((float)location.x, (float)location.y, pressure);
+    rust_native_begin_stroke((float)cp.x, (float)cp.y, pressure);
     [self setNeedsDisplay:YES];
 }
 
 - (void)mouseDragged:(NSEvent *)event {
-    NSPoint location = [self convertPoint:[event locationInWindow] fromView:nil];
+    NSPoint cp = [self canvasPointFromLocation:[event locationInWindow]];
     
     if ([event subtype] == NSEventSubtypeTabletPoint) {
         g_is_tablet = YES;
@@ -65,10 +81,10 @@ static BOOL g_is_tablet = NO;
     }
     
     g_last_pressure = pressure;
-    g_last_x = (float)location.x;
-    g_last_y = (float)location.y;
+    g_last_x = (float)cp.x;
+    g_last_y = (float)cp.y;
 
-    rust_native_paint_event((float)location.x, (float)location.y, pressure);
+    rust_native_paint_event((float)cp.x, (float)cp.y, pressure);
     [self setNeedsDisplay:YES];
 }
 
@@ -81,15 +97,15 @@ static BOOL g_is_tablet = NO;
 - (void)tabletPoint:(NSEvent *)event {
     // Explicit high-frequency tablet digitizer point event from macOS AppKit
     g_is_tablet = YES;
-    NSPoint location = [self convertPoint:[event locationInWindow] fromView:nil];
+    NSPoint cp = [self canvasPointFromLocation:[event locationInWindow]];
     float pressure = (float)[event pressure];
     
     g_last_pressure = pressure;
-    g_last_x = (float)location.x;
-    g_last_y = (float)location.y;
+    g_last_x = (float)cp.x;
+    g_last_y = (float)cp.y;
 
     if (g_is_drawing) {
-        rust_native_paint_event((float)location.x, (float)location.y, pressure);
+        rust_native_paint_event((float)cp.x, (float)cp.y, pressure);
         [self setNeedsDisplay:YES];
     }
 }
@@ -112,25 +128,41 @@ static BOOL g_is_tablet = NO;
         return;
     }
 
-    // 1. Blit the Rust pixel buffer directly onto the view surface
-    NSBitmapImageRep *imageRep = [[NSBitmapImageRep alloc]
-        initWithBitmapDataPlanes:(unsigned char **)&pixelBuffer
-        pixelsWide:bufferWidth
-        pixelsHigh:bufferHeight
-        bitsPerSample:8
-        samplesPerPixel:4
-        hasAlpha:YES
-        isPlanar:NO
-        colorSpaceName:NSDeviceRGBColorSpace
-        bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
-        bytesPerRow:bufferWidth * 4
-        bitsPerPixel:32];
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    if (!ctx) return;
 
-    if (imageRep) {
-        [imageRep drawInRect:self.bounds];
+    // 1. Create CoreGraphics Image from Rust RGBA8 buffer
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixelBuffer, bufferWidth * bufferHeight * 4, NULL);
+    if (provider) {
+        CGImageRef image = CGImageCreate(
+            bufferWidth,
+            bufferHeight,
+            8,
+            32,
+            bufferWidth * 4,
+            colorSpace,
+            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big,
+            provider,
+            NULL,
+            NO,
+            kCGRenderingIntentDefault
+        );
+
+        if (image) {
+            // Draw image right-side up matching the (0,0) top-left canvas buffer:
+            CGContextSaveGState(ctx);
+            CGContextTranslateCTM(ctx, 0, self.bounds.size.height);
+            CGContextScaleCTM(ctx, 1.0, -1.0);
+            CGContextDrawImage(ctx, CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height), image);
+            CGContextRestoreGState(ctx);
+            CGImageRelease(image);
+        }
+        CGDataProviderRelease(provider);
     }
+    CGColorSpaceRelease(colorSpace);
 
-    // 2. Draw Sleek Semi-Transparent Status HUD
+    // 2. Draw Sleek Semi-Transparent Status HUD at the top of the window
     NSRect hudRect = NSMakeRect(16, self.bounds.size.height - 54, 460, 38);
     NSBezierPath *hudBackground = [NSBezierPath bezierPathWithRoundedRect:hudRect xRadius:8 yRadius:8];
     [[NSColor colorWithCalibratedWhite:0.1f alpha:0.85f] setFill];
