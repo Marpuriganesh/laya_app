@@ -88,6 +88,16 @@ export interface StrokeSmoothingConfig {
   readonly predictiveLookAheadFrames: number;
 }
 
+export const DEFAULT_STROKE_SMOOTHING_CONFIG: StrokeSmoothingConfig = {
+  mode: "movingAverage",
+  streamlineStringRadiusPx: 4.0,
+  streamlineBaseSmoothing: 0.15,
+  streamlineMaxSmoothing: 0.5,
+  streamlineVelocityThresholdPxPerSec: 600.0,
+  movingAverageWindowSize: 3,
+  predictiveLookAheadFrames: 2,
+};
+
 /**
  * Parameter block for Krita's Pixel Brush engine (paintopid="pixelbrush").
  */

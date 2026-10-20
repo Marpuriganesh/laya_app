@@ -12,12 +12,9 @@ import {
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import type { BrushPreset, StrokeSmoothingConfig } from "@/types/brush";
-import type { SplineInterpolationMode } from "@/engine/stroke/spline_interpolator";
-import { Canvas2dRasterTarget } from "@/engine/raster/canvas2d_raster_target";
-import { PixelBrushEngine } from "@/engine/brush/pixel_brush_engine";
-import { SplineInterpolator } from "@/engine/stroke/spline_interpolator";
-import { createStrokeSmoother, type IStrokeSmoother } from "@/engine/stroke/stroke_smoother";
 import type { StrokePoint } from "@/types/stroke";
+
+export type SplineInterpolationMode = "catmullRom" | "midpoint";
 
 interface BrushSettingsPopoverProps {
   isOpen: boolean;
@@ -63,9 +60,6 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
 
   // Scratchpad interactive canvas refs
   const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const scratchEngineRef = useRef<PixelBrushEngine | null>(null);
-  const scratchSplineRef = useRef<SplineInterpolator | null>(null);
-  const scratchSmootherRef = useRef<IStrokeSmoother | null>(null);
   const isScratchDrawingRef = useRef(false);
   const lastScratchPointRef = useRef<StrokePoint | null>(null);
 
@@ -106,50 +100,6 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
       syncFromActiveBrush();
     }
   }, [isOpen, syncFromActiveBrush]);
-
-  // Initialize and keep Scratchpad engine synchronized
-  useEffect(() => {
-    const canvas = scratchCanvasRef.current;
-    if (!canvas) return;
-
-    const rasterTarget = new Canvas2dRasterTarget(canvas);
-    const engine = new PixelBrushEngine(rasterTarget);
-    const spline = new SplineInterpolator(splineMode);
-    const smoother = createStrokeSmoother(smoothingConfig);
-
-    engine.setHardness(hardness);
-    engine.setSpacingFraction(spacingPercent / 100);
-    engine.setFlow(flowPercent / 100);
-    engine.setAspectRatio(aspectRatio);
-    engine.setAngleRadians((angleDegrees * Math.PI) / 180);
-    engine.setSizeDynamicsEnabled(sizeDynamicsEnabled);
-    engine.setOpacityDynamicsEnabled(opacityDynamicsEnabled);
-    engine.setBrushSize(20);
-
-    // Color
-    const tempEl = document.createElement("div");
-    tempEl.style.color = activeColor;
-    document.body.appendChild(tempEl);
-    const computed = window.getComputedStyle(tempEl).color;
-    document.body.removeChild(tempEl);
-    const rgb = computed.match(/\d+/g)?.map(Number) ?? [30, 30, 30];
-    engine.setForegroundColor(rgb[0], rgb[1], rgb[2], 1.0);
-
-    scratchEngineRef.current = engine;
-    scratchSplineRef.current = spline;
-    scratchSmootherRef.current = smoother;
-  }, [
-    hardness,
-    aspectRatio,
-    angleDegrees,
-    spacingPercent,
-    flowPercent,
-    splineMode,
-    smoothingConfig,
-    sizeDynamicsEnabled,
-    opacityDynamicsEnabled,
-    activeColor,
-  ]);
 
   // Handlers for Slider changes with live updates to globalDrawingEngine
   const handleHardnessChange = (newVal: number) => {
@@ -255,10 +205,12 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
     isScratchDrawingRef.current = true;
     lastScratchPointRef.current = strokePoint;
 
-    if (scratchSmootherRef.current && scratchSplineRef.current && scratchEngineRef.current) {
-      const smoothed = scratchSmootherRef.current.beginStroke(strokePoint);
-      scratchSplineRef.current.beginStroke(smoothed);
-      scratchEngineRef.current.beginStroke(smoothed);
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = activeColor;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1, 8 * pressure), 0, Math.PI * 2);
+      ctx.fill();
     }
   };
 
@@ -284,15 +236,16 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
       timeMs: e.timeStamp ?? Date.now(),
     };
 
-    if (scratchSmootherRef.current && scratchSplineRef.current && scratchEngineRef.current) {
-      const elapsedMs = lastScratchPointRef.current
-        ? Math.max(1, strokePoint.timeMs - lastScratchPointRef.current.timeMs)
-        : 16;
-      const smoothed = scratchSmootherRef.current.smooth(strokePoint, elapsedMs);
-      const segments = scratchSplineRef.current.pushPoint(smoothed);
-      for (const segment of segments) {
-        scratchEngineRef.current.paintBezierSegment(segment);
-      }
+    const ctx = canvas.getContext("2d");
+    if (ctx && lastScratchPointRef.current) {
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = Math.max(1, 16 * pressure);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(lastScratchPointRef.current.canvasX, lastScratchPointRef.current.canvasY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
     }
     lastScratchPointRef.current = strokePoint;
   };
@@ -302,15 +255,6 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
     if (!isScratchDrawingRef.current) return;
     isScratchDrawingRef.current = false;
     lastScratchPointRef.current = null;
-
-    if (scratchSmootherRef.current && scratchSplineRef.current && scratchEngineRef.current) {
-      scratchSmootherRef.current.endStroke();
-      const finalSegments = scratchSplineRef.current.endStroke();
-      for (const segment of finalSegments) {
-        scratchEngineRef.current.paintBezierSegment(segment);
-      }
-      scratchEngineRef.current.endStroke();
-    }
   };
 
   const handleClearScratchpad = () => {
