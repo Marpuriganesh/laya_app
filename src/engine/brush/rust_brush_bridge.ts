@@ -58,6 +58,33 @@ export class RustBrushBridge {
     }
   }
 
+  public async updateArtboardRect(x: number, y: number, width: number, height: number): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_update_artboard_rect", { x, y, width, height });
+    } catch (err) {
+      console.warn("Failed to update artboard rect:", err);
+    }
+  }
+
+  public async setPanActive(isPanning: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_set_pan_active", { isPanning });
+    } catch (err) {
+      console.warn("Failed to set pan active state:", err);
+    }
+  }
+
+  public async setDocumentSize(width: number, height: number): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_set_document_size", { width, height });
+    } catch (err) {
+      console.warn("Failed to set document size:", err);
+    }
+  }
+
   public async clearCanvas(fillColor?: [number, number, number, number]): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

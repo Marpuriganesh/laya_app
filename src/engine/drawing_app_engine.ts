@@ -82,6 +82,12 @@ export class DrawingAppEngine implements IDrawingEngine {
   private brushColor = { r: 30, g: 30, b: 30, a: 1.0 };
   private blendMode: BlendMode = "normal";
 
+  private brushSoftness = 0.45;
+  private brushSpacing = 0.08;
+  private brushFlow = 1.0;
+  private sizeByPressure = true;
+  private opacityByPressure = false;
+
   private lastPoint: StrokePoint | null = null;
   private smoothingConfig: StrokeSmoothingConfig = { ...DEFAULT_STROKE_SMOOTHING_CONFIG };
 
@@ -223,13 +229,13 @@ export class DrawingAppEngine implements IDrawingEngine {
     ] as [number, number, number, number];
     globalRustBrushBridge.setBrushConfig({
       diameter: this.brushSize,
-      spacing: 0.08,
-      softness: 0.45,
+      spacing: this.brushSpacing,
+      softness: this.brushSoftness,
       color: rgb,
       opacity: this.brushOpacity,
-      flow: 1.0,
-      size_by_pressure: true,
-      opacity_by_pressure: false,
+      flow: this.brushFlow,
+      size_by_pressure: this.sizeByPressure,
+      opacity_by_pressure: this.opacityByPressure,
       is_erase: this.blendMode === "erase",
     });
   }
@@ -269,17 +275,33 @@ export class DrawingAppEngine implements IDrawingEngine {
     return "midpoint";
   }
 
-  public setBrushHardness(_hardness: number): void {}
+  public setBrushHardness(hardness: number): void {
+    this.brushSoftness = Math.max(0, Math.min(1, 1.0 - hardness));
+    this.syncBrushConfigToRust();
+  }
   public getBrushHardness(): number {
-    return 1.0;
+    return 1.0 - this.brushSoftness;
   }
-  public setBrushSpacing(_spacingFraction: number): void {}
+  public setBrushSoftness(softness: number): void {
+    this.brushSoftness = Math.max(0, Math.min(1, softness));
+    this.syncBrushConfigToRust();
+  }
+  public getBrushSoftness(): number {
+    return this.brushSoftness;
+  }
+  public setBrushSpacing(spacingFraction: number): void {
+    this.brushSpacing = Math.max(0.01, Math.min(2.0, spacingFraction));
+    this.syncBrushConfigToRust();
+  }
   public getBrushSpacing(): number {
-    return 0.1;
+    return this.brushSpacing;
   }
-  public setBrushFlow(_flow: number): void {}
+  public setBrushFlow(flow: number): void {
+    this.brushFlow = Math.max(0.0, Math.min(1.0, flow));
+    this.syncBrushConfigToRust();
+  }
   public getBrushFlow(): number {
-    return 1.0;
+    return this.brushFlow;
   }
   public setBrushAspectRatio(_aspectRatio: number): void {}
   public getBrushAspectRatio(): number {
@@ -289,8 +311,20 @@ export class DrawingAppEngine implements IDrawingEngine {
   public getBrushAngle(): number {
     return 0;
   }
-  public setSizeDynamicsEnabled(_enabled: boolean): void {}
-  public setOpacityDynamicsEnabled(_enabled: boolean): void {}
+  public setSizeDynamicsEnabled(enabled: boolean): void {
+    this.sizeByPressure = enabled;
+    this.syncBrushConfigToRust();
+  }
+  public getSizeDynamicsEnabled(): boolean {
+    return this.sizeByPressure;
+  }
+  public setOpacityDynamicsEnabled(enabled: boolean): void {
+    this.opacityByPressure = enabled;
+    this.syncBrushConfigToRust();
+  }
+  public getOpacityDynamicsEnabled(): boolean {
+    return this.opacityByPressure;
+  }
 
   public setCanvasSize(widthPx: number, heightPx: number): void {
     if (this.canvasElement) {

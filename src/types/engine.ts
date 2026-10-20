@@ -42,6 +42,8 @@ export interface IDrawingEngine {
   // --- Brush Tip & Dynamics Adjustments ---
   setBrushHardness?(hardness: number): void;
   getBrushHardness?(): number;
+  setBrushSoftness?(softness: number): void;
+  getBrushSoftness?(): number;
   setBrushSpacing?(spacingFraction: number): void;
   getBrushSpacing?(): number;
   setBrushFlow?(flow: number): void;
@@ -51,7 +53,9 @@ export interface IDrawingEngine {
   setBrushAngle?(angleRadians: number): void;
   getBrushAngle?(): number;
   setSizeDynamicsEnabled?(enabled: boolean): void;
+  getSizeDynamicsEnabled?(): boolean;
   setOpacityDynamicsEnabled?(enabled: boolean): void;
+  getOpacityDynamicsEnabled?(): boolean;
 
   // --- Canvas Configuration ---
   setCanvasSize(widthPx: number, heightPx: number): void;

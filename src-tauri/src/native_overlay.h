@@ -20,6 +20,8 @@ bool rust_overlay_get_size_dynamics(void);
 // Exported by Objective-C (native_overlay.m)
 void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr);
 void set_native_overlay_modal_open(bool is_open);
+void set_native_overlay_pan_active(bool is_panning);
+void update_canvas_artboard_rect(float x, float y, float width, float height);
 void trigger_native_overlay_repaint(void);
 
 #ifdef __cplusplus

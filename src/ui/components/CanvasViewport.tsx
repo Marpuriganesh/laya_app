@@ -25,6 +25,7 @@ import {
 import { hexToRgb } from "@/engine/color/color_conversions";
 import type { StrokePoint } from "@/types/stroke";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 
 interface CanvasViewportProps {
   document: DocumentConfiguration;
@@ -49,9 +50,23 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   onTransformChange,
   stylusOnlyMode: initialStylusOnlyMode,
 }) => {
+  const isTauriApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const artboardRef = useRef<HTMLDivElement>(null);
+
+  const syncNativeArtboard = useCallback(() => {
+    if (!isTauriApp || !artboardRef.current) return;
+    const rect = artboardRef.current.getBoundingClientRect();
+    globalRustBrushBridge.updateArtboardRect(
+      rect.left,
+      rect.top,
+      rect.width,
+      rect.height
+    );
+  }, [isTauriApp]);
 
   const { palmRejection } = useDocumentStore();
   const stylusOnlyMode = initialStylusOnlyMode ?? palmRejection;
@@ -94,10 +109,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         if (pendingDomTransformRef.current && wrapperRef.current) {
           const { panX, panY, scale } = pendingDomTransformRef.current;
           wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+          syncNativeArtboard();
         }
       });
     }
-  }, []);
+  }, [syncNativeArtboard]);
 
   const commitDomTransform = useCallback(() => {
     if (rafIdRef.current !== null) {
@@ -107,9 +123,10 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     if (wrapperRef.current) {
       const { panX, panY, scale } = transformRef.current;
       wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+      syncNativeArtboard();
     }
     onTransformChange(transformRef.current);
-  }, [onTransformChange]);
+  }, [onTransformChange, syncNativeArtboard]);
 
   useEffect(() => {
     transformRef.current = transform;
@@ -120,8 +137,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     ) {
       const { panX, panY, scale } = transform;
       wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+      syncNativeArtboard();
     }
-  }, [transform]);
+  }, [transform, syncNativeArtboard]);
 
   useEffect(() => {
     isPanningRef.current = isPanning;
@@ -226,14 +244,28 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     fitToScreen(0.85);
   }, [doc.id, doc.width, doc.height, fitToScreen]);
 
+  // Synchronize document dimensions to native Rust canvas engine
+  useEffect(() => {
+    if (isTauriApp) {
+      globalRustBrushBridge.setDocumentSize(doc.width, doc.height);
+    }
+  }, [doc.width, doc.height, isTauriApp]);
+
+  // Synchronize pan state to native AppKit overlay
+  useEffect(() => {
+    if (isTauriApp) {
+      globalRustBrushBridge.setPanActive(isSpaceDown || isPanning);
+    }
+  }, [isSpaceDown, isPanning, isTauriApp]);
+
   // Listen for window resize
   useEffect(() => {
     const handleResize = () => {
-      // Auto-fit on window resize if desired
+      syncNativeArtboard();
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [syncNativeArtboard]);
 
   // Keyboard navigation shortcuts: Spacebar pan, R-key rotate, & Cmd/Ctrl + 0/1/+/-
   useEffect(() => {
@@ -667,8 +699,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     return "cursor-crosshair";
   };
 
-  const isTauriApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-
   return (
     <main
       ref={containerRef}
@@ -715,9 +745,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           transform: `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale})`,
         }}
       >
-        {/* Document Artboard Paper Surface — crisp lightweight sub-pixel border, no heavy 60px blur shadow */}
+        {/* Document Artboard Paper Surface */}
         <div
-          className="relative rounded-sm border border-zinc-700/80 overflow-hidden"
+          ref={artboardRef}
+          className={`relative rounded-sm border ${
+            isTauriApp ? "border-transparent" : "border-zinc-700/80 shadow-md"
+          } overflow-hidden`}
           style={{
             width: doc.width,
             height: doc.height,
@@ -728,8 +761,8 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
             filter: getCssFilterForSoftProof(softProofMode),
           }}
         >
-          {/* Transparency checkerboard when transparent background */}
-          {doc.backgroundColor === "transparent" && (
+          {/* Transparency checkerboard when transparent background in browser */}
+          {!isTauriApp && doc.backgroundColor === "transparent" && (
             <div
               className="absolute inset-0 pointer-events-none opacity-20"
               style={{
@@ -756,8 +789,15 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
               e.stopPropagation();
               handlePointerUp(e);
             }}
-            className={`block touch-none ${getCanvasCursorClass()}`}
-            style={{ width: doc.width, height: doc.height, imageRendering: "auto" }}
+            className={`block touch-none ${getCanvasCursorClass()} ${
+              isTauriApp ? "pointer-events-none" : ""
+            }`}
+            style={{
+              width: doc.width,
+              height: doc.height,
+              imageRendering: "auto",
+              display: isTauriApp ? "none" : "block",
+            }}
           />
         </div>
       </div>

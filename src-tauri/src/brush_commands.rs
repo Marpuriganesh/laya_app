@@ -41,7 +41,7 @@ static GLOBAL_SESSION: Mutex<Option<BrushSession>> = Mutex::new(None);
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
-    let config = BrushConfig {
+    let config = guard.as_ref().map(|s| s.engine.config.clone()).unwrap_or_else(|| BrushConfig {
         diameter: 32.0,
         spacing: 0.08,
         softness: 0.45,
@@ -51,7 +51,7 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         size_by_pressure: true,
         opacity_by_pressure: false,
         is_erase: false,
-    };
+    });
     *guard = Some(BrushSession {
         canvas: CanvasView::new(width, height),
         engine: PixelBrushEngine::new(config),
@@ -119,7 +119,37 @@ pub extern "C" fn rust_overlay_get_size_dynamics() -> bool {
 unsafe extern "C" {
     pub fn setup_native_canvas_overlay(ns_window_ptr: *mut std::ffi::c_void, ns_view_ptr: *mut std::ffi::c_void);
     pub fn set_native_overlay_modal_open(is_open: bool);
+    pub fn set_native_overlay_pan_active(is_panning: bool);
+    pub fn update_canvas_artboard_rect(x: f32, y: f32, width: f32, height: f32);
     pub fn trigger_native_overlay_repaint();
+}
+
+#[tauri::command]
+pub async fn rust_update_artboard_rect(x: f32, y: f32, width: f32, height: f32) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        update_canvas_artboard_rect(x, y, width, height);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_pan_active(is_panning: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        set_native_overlay_pan_active(is_panning);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_set_document_size(width: u32, height: u32) -> Result<(), String> {
+    rust_overlay_init(width, height);
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
 }
 
 /// DTO for brush configuration updates from the React UI.
