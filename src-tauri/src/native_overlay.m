@@ -181,66 +181,74 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
     if (!ns_window_ptr || !ns_view_ptr) return;
 
     @autoreleasepool {
-        NSWindow *window = (__bridge NSWindow *)ns_window_ptr;
-        NSView *webView = (__bridge NSView *)ns_view_ptr;
-        NSView *contentView = [window contentView];
+        @try {
+            NSWindow *window = (__bridge NSWindow *)ns_window_ptr;
+            NSView *webView = (__bridge NSView *)ns_view_ptr;
+            NSView *contentView = [window contentView];
+            if (!contentView) return;
 
-        NSRect frame = [contentView bounds];
-        OverlaySketchCanvasView *canvasView = [[OverlaySketchCanvasView alloc] initWithFrame:frame];
-        [canvasView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+            NSRect frame = [contentView bounds];
+            OverlaySketchCanvasView *canvasView = [[OverlaySketchCanvasView alloc] initWithFrame:frame];
+            [canvasView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
 
-        // Place native canvas view directly behind the webView
-        [contentView addSubview:canvasView positioned:NSWindowBelow relativeTo:webView];
-        g_active_canvas_view = canvasView;
+            // Safely place native canvas view below all other subviews
+            [contentView addSubview:canvasView positioned:NSWindowBelow relativeTo:nil];
+            g_active_canvas_view = canvasView;
 
-        // Ensure WKWebView transparent background
-        if ([webView respondsToSelector:@selector(setValue:forKey:)]) {
-            [webView setValue:@NO forKey:@"drawsBackground"];
-        }
-
-        rust_overlay_init((uint32_t)frame.size.width, (uint32_t)frame.size.height);
-
-        // First-class Apple AppKit Local Event Monitor
-        // Intercepts pen/mouse clicks over the canvas while letting UI clicks pass through to React!
-        [NSEvent addLocalMonitorForEventsMatchingMask:
-            (NSEventMaskLeftMouseDown | NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp)
-            handler:^NSEvent *(NSEvent *event) {
-                @try {
-                    if (g_modal_open) {
-                        return event; // Modals / Popovers get full touch priority
-                    }
-
-                    NSPoint loc = [event locationInWindow];
-                    float winH = (float)window.contentView.bounds.size.height;
-
-                    // UI Hit Bounds:
-                    // Top Bar is top 48px: y > (winH - 48.0)
-                    // Left Sidebar Rail is left 64px: x < 64.0
-                    BOOL in_top_bar = (loc.y > winH - 48.0f);
-                    BOOL in_sidebar = (loc.x < 64.0f);
-
-                    if (in_top_bar || in_sidebar) {
-                        return event; // Pass through to React UI!
-                    }
-
-                    // Event is in the Canvas Area: Handle via Native Rust Canvas with TRUE pressure!
-                    if ([event type] == NSEventTypeLeftMouseDown) {
-                        [canvasView handleMouseDown:event];
-                        return nil; // Consumed by native canvas
-                    } else if ([event type] == NSEventTypeLeftMouseDragged) {
-                        [canvasView handleMouseDragged:event];
-                        return nil; // Consumed by native canvas
-                    } else if ([event type] == NSEventTypeLeftMouseUp) {
-                        [canvasView handleMouseUp:event];
-                        return nil; // Consumed by native canvas
-                    }
-                } @catch (id ex) {
-                    NSLog(@"[NativeOverlay] Exception: %@", ex);
+            // Safely set transparent background
+            @try {
+                if ([webView respondsToSelector:@selector(setValue:forKey:)]) {
+                    [webView setValue:@NO forKey:@"drawsBackground"];
                 }
-                return event;
+            } @catch (id ex) {
+                // Ignore any key error
             }
-        ];
 
-        NSLog(@"[NativeOverlay] Native Rust Canvas Overlay successfully initialized under React UI!");
+            rust_overlay_init((uint32_t)frame.size.width, (uint32_t)frame.size.height);
+
+            // First-class Apple AppKit Local Event Monitor
+            [NSEvent addLocalMonitorForEventsMatchingMask:
+                (NSEventMaskLeftMouseDown | NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp)
+                handler:^NSEvent *(NSEvent *event) {
+                    @try {
+                        if (g_modal_open) {
+                            return event;
+                        }
+
+                        NSPoint loc = [event locationInWindow];
+                        float winH = (float)window.contentView.bounds.size.height;
+
+                        // UI Hit Bounds:
+                        // Top Bar is top 48px: y > (winH - 48.0)
+                        // Left Sidebar Rail is left 64px: x < 64.0
+                        BOOL in_top_bar = (loc.y > winH - 48.0f);
+                        BOOL in_sidebar = (loc.x < 64.0f);
+
+                        if (in_top_bar || in_sidebar) {
+                            return event; // Pass through to React UI!
+                        }
+
+                        // Event is in the Canvas Area: Handle via Native Rust Canvas with TRUE pressure!
+                        if ([event type] == NSEventTypeLeftMouseDown) {
+                            [canvasView handleMouseDown:event];
+                            return nil;
+                        } else if ([event type] == NSEventTypeLeftMouseDragged) {
+                            [canvasView handleMouseDragged:event];
+                            return nil;
+                        } else if ([event type] == NSEventTypeLeftMouseUp) {
+                            [canvasView handleMouseUp:event];
+                            return nil;
+                        }
+                    } @catch (id ex) {
+                        NSLog(@"[NativeOverlay] Monitor Exception: %@", ex);
+                    }
+                    return event;
+                }
+            ];
+
+            NSLog(@"[NativeOverlay] Native Rust Canvas Overlay successfully initialized under React UI!");
+        } @catch (NSException *exception) {
+            NSLog(@"[NativeOverlay] Setup Exception: %@", exception);
+        }
     }
 }

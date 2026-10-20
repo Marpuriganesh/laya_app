@@ -23,5 +23,4 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.12.4", features = [] }
-tauri-plugin-log = "2"
 sketch_core = { path = "../crates/sketch_core" }
