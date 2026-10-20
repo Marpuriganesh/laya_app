@@ -47,18 +47,18 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
   };
 
   return (
-    <div className="dark h-screen w-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden rounded-2xl border border-zinc-800/80 shadow-2xl select-none">
+    <div className="h-screen w-screen bg-white/95 dark:bg-zinc-950/95 text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800/80 shadow-2xl select-none backdrop-blur-md transition-colors duration-150">
       {/* Draggable Title Bar */}
       <header
         data-tauri-drag-region
         onDoubleClick={handleHeaderDoubleClick}
-        className="h-11 px-3.5 bg-zinc-900/90 border-b border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing backdrop-blur-md"
+        className="h-11 px-3.5 bg-zinc-100/90 dark:bg-zinc-900/90 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing backdrop-blur-md"
         title="Double-click to toggle maximize • Drag to move window across monitors"
       >
         <div className="flex items-center gap-2 pointer-events-none">
-          <GripHorizontal className="w-3.5 h-3.5 text-zinc-500" />
+          <GripHorizontal className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
           {icon}
-          <span className="text-xs font-semibold text-zinc-200 tracking-wide">
+          <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 tracking-wide">
             {title}
           </span>
         </div>
@@ -73,8 +73,8 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
             aria-label={isPinned ? "Unpin window" : "Pin window on top"}
             className={`p-1.5 rounded-md transition-colors ${
               isPinned
-                ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
-                : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80"
+                ? "text-blue-500 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
+                : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/80"
             }`}
           >
             {isPinned ? (
@@ -90,7 +90,7 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
             onClick={onDock}
             title="Dock back to main application window"
             aria-label="Dock back to main application window"
-            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/80 transition-colors"
           >
             <Minimize2 className="w-3.5 h-3.5" />
           </button>
@@ -101,7 +101,7 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
             onClick={onClose}
             title="Close detached palette"
             aria-label="Close detached palette"
-            className="p-1.5 rounded-md text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            className="p-1.5 rounded-md text-zinc-500 hover:text-red-500 hover:bg-red-500/10 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -109,7 +109,7 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
       </header>
 
       {/* Detached Palette Content */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden bg-zinc-950 flex flex-col">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden bg-white/95 dark:bg-zinc-950/95 flex flex-col transition-colors">
         {children}
       </main>
     </div>

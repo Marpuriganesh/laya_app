@@ -59,10 +59,54 @@ export const ThemeProvider: FC<ThemeProviderProps> = ({
     setResolvedTheme(active);
   }, [theme]);
 
+  // Synchronize theme across multiple windows / detached subwindows
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // 1. Cross-window BroadcastChannel listener (instant Webview/PWA broadcast)
+    let bc: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== "undefined") {
+      try {
+        bc = new BroadcastChannel("sketch_studio_theme_sync");
+        bc.onmessage = (event) => {
+          if (event.data && isValidTheme(event.data)) {
+            setThemeState(event.data);
+          }
+        };
+      } catch {
+        // BroadcastChannel unavailable
+      }
+    }
+
+    // 2. Storage event listener (standard web fallback)
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === storageKey && isValidTheme(event.newValue)) {
+        setThemeState(event.newValue);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      if (bc) {
+        try {
+          bc.close();
+        } catch {
+          // Ignore
+        }
+      }
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [storageKey]);
+
   const setTheme = (newTheme: Theme) => {
     try {
       if (typeof window !== "undefined") {
         localStorage.setItem(storageKey, newTheme);
+        if (typeof BroadcastChannel !== "undefined") {
+          const bc = new BroadcastChannel("sketch_studio_theme_sync");
+          bc.postMessage(newTheme);
+          bc.close();
+        }
       }
     } catch {
       // Ignore storage errors

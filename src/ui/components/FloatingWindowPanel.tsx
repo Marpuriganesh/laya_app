@@ -52,7 +52,7 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
 
   return (
     <div
-      className={`${anchorClassName} rounded-2xl bg-zinc-900/95 border border-zinc-800 shadow-2xl flex flex-col overflow-hidden backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100`}
+      className={`${anchorClassName} rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xl flex flex-col overflow-hidden backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100 transition-colors`}
       style={{
         width: `${width}px`,
         zIndex,
@@ -63,12 +63,12 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
       <div
         {...headerProps}
         title="Drag to reposition • Double-click to reset"
-        className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/80 cursor-grab active:cursor-grabbing bg-zinc-950/40 hover:bg-zinc-950/60 transition-colors group"
+        className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800/80 cursor-grab active:cursor-grabbing bg-zinc-50/60 hover:bg-zinc-100/60 dark:bg-zinc-950/40 dark:hover:bg-zinc-950/60 transition-colors group"
       >
         <div className="flex items-center gap-2 pointer-events-none">
-          <GripHorizontal className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-400 transition-colors" />
+          <GripHorizontal className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-400 transition-colors" />
           {icon}
-          <span className="text-xs font-semibold text-zinc-100">{title}</span>
+          <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">{title}</span>
         </div>
 
         {/* Header Action Controls */}
@@ -82,7 +82,7 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
               onClick={onPopout}
               title="Detach panel into standalone window"
               aria-label={`Detach ${title} into standalone window`}
-              className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+              className="p-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/80 transition-colors cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
             </button>
@@ -94,7 +94,7 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
             onClick={onClose}
             title="Close panel"
             aria-label={`Close ${title}`}
-            className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+            className="p-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/80 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -102,7 +102,7 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
       </div>
 
       {/* Panel Content Body */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white/95 dark:bg-zinc-900/95 transition-colors">
         {children}
       </div>
     </div>

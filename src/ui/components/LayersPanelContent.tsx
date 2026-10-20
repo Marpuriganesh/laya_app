@@ -5,43 +5,44 @@ import {
   Lock,
   Unlock,
   Plus,
-  Copy,
   Trash2,
+  Copy,
   Layers as LayersIcon,
 } from "lucide-react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import type { LayerBlendMode } from "@/types/layer";
 
-const BLEND_MODES: { value: LayerBlendMode; label: string }[] = [
-  { value: "normal", label: "Normal" },
-  { value: "multiply", label: "Multiply" },
-  { value: "screen", label: "Screen" },
-  { value: "overlay", label: "Overlay" },
-  { value: "darken", label: "Darken" },
-  { value: "lighten", label: "Lighten" },
-  { value: "color-dodge", label: "Color Dodge" },
-  { value: "color-burn", label: "Color Burn" },
+const BLEND_MODES: { label: string; value: LayerBlendMode }[] = [
+  { label: "Normal", value: "normal" },
+  { label: "Multiply", value: "multiply" },
+  { label: "Screen", value: "screen" },
+  { label: "Overlay", value: "overlay" },
+  { label: "Darken", value: "darken" },
+  { label: "Lighten", value: "lighten" },
+  { label: "Color Dodge", value: "color-dodge" },
+  { label: "Color Burn", value: "color-burn" },
 ];
 
 export const LayersPanelContent: FC = () => {
   const {
     layerStack,
-    addLayer,
-    deleteLayer,
-    duplicateLayer,
     setActiveLayerId,
+    addLayer,
+    duplicateLayer,
+    deleteLayer,
     toggleLayerVisibility,
     toggleLayerLock,
     setLayerOpacity,
     setLayerBlendMode,
   } = useDocumentStore();
 
-  const activeLayer = layerStack.layers.find((l) => l.id === layerStack.activeLayerId) ?? layerStack.layers[0];
+  const activeLayer = layerStack.layers.find(
+    (l) => l.id === layerStack.activeLayerId
+  );
 
   const handleOpacityChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (!activeLayer || activeLayer.isBackground) return;
-    const opacityValue = parseFloat(e.target.value);
-    setLayerOpacity(activeLayer.id, opacityValue);
+    setLayerOpacity(activeLayer.id, parseFloat(e.target.value));
   };
 
   const handleBlendModeChange = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -52,10 +53,10 @@ export const LayersPanelContent: FC = () => {
   const nonBackgroundCount = layerStack.layers.filter((l) => !l.isBackground).length;
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950 text-zinc-100 select-none">
+    <div className="flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 select-none transition-colors">
       {/* Top Controls Bar: Add Layer & Quick Action */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/60 shrink-0">
-        <span className="text-xs font-medium text-zinc-400">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50 dark:bg-zinc-900/60 shrink-0">
+        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
           {layerStack.layers.length} Layers
         </span>
 
@@ -64,19 +65,19 @@ export const LayersPanelContent: FC = () => {
           onClick={addLayer}
           title="Add new layer"
           aria-label="Add new layer"
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
         >
-          <Plus className="w-3.5 h-3.5 text-zinc-300" />
+          <Plus className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
           <span>New Layer</span>
         </button>
       </div>
 
       {/* Selected Layer Properties: Opacity & Blend Mode */}
       {activeLayer && !activeLayer.isBackground && (
-        <div className="px-4 py-2.5 border-b border-zinc-800/60 bg-zinc-900/30 flex flex-col gap-2 shrink-0">
-          <div className="flex items-center justify-between text-xs text-zinc-400">
+        <div className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800/60 bg-zinc-50/70 dark:bg-zinc-900/30 flex flex-col gap-2 shrink-0">
+          <div className="flex items-center justify-between text-xs text-zinc-600 dark:text-zinc-400">
             <span>Opacity</span>
-            <span className="font-mono text-zinc-200">
+            <span className="font-mono text-zinc-800 dark:text-zinc-200">
               {Math.round(activeLayer.opacity * 100)}%
             </span>
           </div>
@@ -88,19 +89,19 @@ export const LayersPanelContent: FC = () => {
             value={activeLayer.opacity}
             onChange={handleOpacityChange}
             aria-label="Layer opacity"
-            className="w-full accent-blue-500 h-1 bg-zinc-800 rounded-lg cursor-pointer"
+            className="w-full accent-blue-500 h-1 bg-zinc-200 dark:bg-zinc-800 rounded-lg cursor-pointer"
           />
 
           <div className="flex items-center justify-between gap-2 mt-1">
-            <span className="text-xs text-zinc-400">Blend Mode</span>
+            <span className="text-xs text-zinc-600 dark:text-zinc-400">Blend Mode</span>
             <select
               value={activeLayer.blendMode}
               onChange={handleBlendModeChange}
               aria-label="Layer blend mode"
-              className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200 cursor-pointer focus:outline-none focus:border-zinc-500"
+              className="text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-zinc-900 dark:text-zinc-200 cursor-pointer focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
             >
               {BLEND_MODES.map((mode) => (
-                <option key={mode.value} value={mode.value}>
+                <option key={mode.value} value={mode.value} className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">
                   {mode.label}
                 </option>
               ))}
@@ -119,20 +120,22 @@ export const LayersPanelContent: FC = () => {
               onClick={() => setActiveLayerId(layer.id)}
               className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                 isActive
-                  ? "bg-zinc-800/90 border border-zinc-700 shadow-sm"
-                  : "bg-zinc-900/40 hover:bg-zinc-900/80 border border-transparent"
+                  ? "bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 shadow-sm"
+                  : "bg-transparent hover:bg-zinc-100/70 dark:hover:bg-zinc-900/80 border border-transparent"
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                    layer.isBackground ? "bg-zinc-800" : "bg-zinc-800/80 border border-zinc-700/60"
+                    layer.isBackground
+                      ? "bg-zinc-200 dark:bg-zinc-800"
+                      : "bg-zinc-200/80 dark:bg-zinc-800/80 border border-zinc-300 dark:border-zinc-700/60"
                   }`}
                 >
-                  <LayersIcon className="w-3.5 h-3.5 text-zinc-400" />
+                  <LayersIcon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-medium text-zinc-200 truncate">
+                  <span className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate">
                     {layer.name}
                   </span>
                   {!layer.isBackground && (
@@ -154,12 +157,12 @@ export const LayersPanelContent: FC = () => {
                   onClick={() => toggleLayerVisibility(layer.id)}
                   title={layer.visible ? "Hide layer" : "Show layer"}
                   aria-label={layer.visible ? "Hide layer" : "Show layer"}
-                  className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 transition-colors"
+                  className="p-1 rounded text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 transition-colors"
                 >
                   {layer.visible ? (
-                    <Eye className="w-3.5 h-3.5 text-zinc-300" />
+                    <Eye className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
                   ) : (
-                    <EyeOff className="w-3.5 h-3.5 text-zinc-600" />
+                    <EyeOff className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-600" />
                   )}
                 </button>
 
@@ -170,12 +173,12 @@ export const LayersPanelContent: FC = () => {
                     onClick={() => toggleLayerLock(layer.id)}
                     title={layer.locked ? "Unlock layer" : "Lock layer"}
                     aria-label={layer.locked ? "Unlock layer" : "Lock layer"}
-                    className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 transition-colors"
+                    className="p-1 rounded text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 transition-colors"
                   >
                     {layer.locked ? (
-                      <Lock className="w-3.5 h-3.5 text-blue-400" />
+                      <Lock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     ) : (
-                      <Unlock className="w-3.5 h-3.5 text-zinc-500 opacity-60 hover:opacity-100" />
+                      <Unlock className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 opacity-60 hover:opacity-100" />
                     )}
                   </button>
                 )}
@@ -187,9 +190,9 @@ export const LayersPanelContent: FC = () => {
                     onClick={() => duplicateLayer(layer.id)}
                     title="Duplicate layer"
                     aria-label="Duplicate layer"
-                    className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/50 transition-colors"
+                    className="p-1 rounded text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 transition-colors"
                   >
-                    <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                    <Copy className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
                   </button>
                 )}
 
@@ -200,7 +203,7 @@ export const LayersPanelContent: FC = () => {
                     onClick={() => deleteLayer(layer.id)}
                     title="Delete layer"
                     aria-label="Delete layer"
-                    className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    className="p-1 rounded text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

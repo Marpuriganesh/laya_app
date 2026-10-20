@@ -76,13 +76,13 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Brush Library"
-        icon={<Brush className="w-4 h-4 text-zinc-300" />}
+        icon={<Brush className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >
-        <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-400 h-full select-none">
-          <Brush className="w-8 h-8 text-zinc-600 mb-1" />
-          <p className="text-sm font-medium text-zinc-200">Brush Library</p>
+        <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-500 dark:text-zinc-400 h-full select-none">
+          <Brush className="w-8 h-8 text-zinc-400 dark:text-zinc-600 mb-1" />
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Brush Library</p>
           <p className="text-xs text-zinc-500">
             Clean slate ready for Rust-powered preset library.
           </p>
@@ -95,13 +95,13 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Brush Settings"
-        icon={<SlidersHorizontal className="w-4 h-4 text-zinc-300" />}
+        icon={<SlidersHorizontal className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >
-        <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-400 h-full select-none">
-          <SlidersHorizontal className="w-8 h-8 text-zinc-600 mb-1" />
-          <p className="text-sm font-medium text-zinc-200">Brush Settings</p>
+        <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-500 dark:text-zinc-400 h-full select-none">
+          <SlidersHorizontal className="w-8 h-8 text-zinc-400 dark:text-zinc-600 mb-1" />
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Brush Settings</p>
           <p className="text-xs text-zinc-500">
             Clean slate ready for Rust brush dynamics & presets.
           </p>
@@ -116,8 +116,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
       onDock={dockToMainWindow}
       onClose={closeDetachedWindow}
     >
-      <div className="p-6 flex flex-col items-center justify-center text-center text-zinc-400 h-full select-none">
-        <p className="text-sm font-medium text-zinc-200">Unknown Panel</p>
+      <div className="p-6 flex flex-col items-center justify-center text-center text-zinc-500 dark:text-zinc-400 h-full select-none">
+        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Unknown Panel</p>
         <p className="text-xs text-zinc-500 mt-1">
           The requested panel identifier &quot;{panelId}&quot; could not be resolved.
         </p>
