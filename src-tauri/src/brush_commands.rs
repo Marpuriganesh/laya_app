@@ -52,8 +52,10 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         opacity_by_pressure: false,
         is_erase: false,
     });
+    // Transparent background: the React artboard paper div provides the white/checkerboard
+    // surface behind the ink. The native canvas only holds painted stroke pixels.
     *guard = Some(BrushSession {
-        canvas: CanvasView::new(width, height),
+        canvas: CanvasView::with_color(width, height, [0, 0, 0, 0]),
         engine: PixelBrushEngine::new(config),
         stroke_start_time: std::time::Instant::now(),
     });
@@ -209,7 +211,8 @@ pub async fn rust_brush_set_modal_open(is_open: bool) -> Result<(), String> {
 pub async fn rust_brush_clear(
     fill_color: Option<[u8; 4]>,
 ) -> Result<(), String> {
-    let fill = fill_color.unwrap_or([255, 255, 255, 255]);
+    // Default to fully transparent so the React artboard paper shows through.
+    let fill = fill_color.unwrap_or([0, 0, 0, 0]);
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         session.canvas.clear(fill);

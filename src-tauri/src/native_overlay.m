@@ -26,16 +26,28 @@ static OverlaySketchCanvasView *g_active_canvas_view = nil;
     return YES;
 }
 
+// Pass AppKit hit-testing through when the click is outside our artboard bounds.
+// This lets React toolbar buttons, panels, and workspace receive normal mouse events
+// even though this NSView is above the WebView in the Z-order.
+- (NSView *)hitTest:(NSPoint)point {
+    NSPoint localPoint = [self convertPoint:point fromView:self.superview];
+    if (!NSPointInRect(localPoint, self.bounds)) {
+        return nil; // outside our frame entirely — shouldn't normally happen
+    }
+    // Let the event monitor consume artboard events; return nil here so AppKit
+    // does not block the event reaching the WebView for toolbar/panel regions.
+    // The monitor intercepts drawing events before they reach hit-testing.
+    return nil;
+}
+
 - (instancetype)initWithFrame:(NSRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
         [self setWantsLayer:YES];
-        self.layer.backgroundColor = [[NSColor whiteColor] CGColor];
-        self.layer.cornerRadius = 2.0f;
-        self.layer.shadowColor = [[NSColor blackColor] CGColor];
-        self.layer.shadowOpacity = 0.35f;
-        self.layer.shadowOffset = CGSizeMake(0, -4);
-        self.layer.shadowRadius = 12.0f;
+        // Transparent ink layer — the React artboard paper div sits behind this view
+        // and provides the white/checkerboard background through the transparent WebView.
+        self.layer.backgroundColor = [[NSColor clearColor] CGColor];
+        self.layer.opaque = NO;
 
         NSTrackingAreaOptions options = (NSTrackingActiveAlways | NSTrackingMouseMoved | NSTrackingInVisibleRect);
         NSTrackingArea *trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds options:options owner:self userInfo:nil];
@@ -125,7 +137,8 @@ static OverlaySketchCanvasView *g_active_canvas_view = nil;
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     if (!ctx) return;
 
-    // 1. Draw Canvas Framebuffer directly on the paper surface
+    // 1. Draw Canvas Framebuffer — ink-only layer over the transparent background.
+    // The buffer contains straight (non-premultiplied) RGBA from Porter-Duff compositing.
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixelBuffer, bufferWidth * bufferHeight * 4, NULL);
     if (provider) {
@@ -136,7 +149,7 @@ static OverlaySketchCanvasView *g_active_canvas_view = nil;
             32,
             bufferWidth * 4,
             colorSpace,
-            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big,
+            kCGImageAlphaLast | kCGBitmapByteOrder32Big,
             provider,
             NULL,
             NO,
@@ -227,7 +240,13 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
             NSRect frame = NSMakeRect((winW - initW) * 0.5f, (winH - initH) * 0.5f, initW, initH);
 
             OverlaySketchCanvasView *canvasView = [[OverlaySketchCanvasView alloc] initWithFrame:frame];
-            [contentView addSubview:canvasView positioned:NSWindowBelow relativeTo:nil];
+
+            // Place the ink canvas ABOVE the WebView so strokes are visible on screen.
+            // The view itself is transparent everywhere except painted strokes, so the
+            // React UI (toolbars, panels, color pickers) still shows through the clear regions.
+            // AppKit hit-testing naturally falls through our transparent view to React controls
+            // outside the artboard rect because we consume events only inside the artboard.
+            [contentView addSubview:canvasView positioned:NSWindowAbove relativeTo:nil];
             g_active_canvas_view = canvasView;
 
             // Ensure WKWebView transparent background
