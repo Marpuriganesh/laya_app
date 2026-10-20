@@ -17,6 +17,8 @@ pub struct BrushConfig {
     pub size_by_pressure: bool,
     /// Whether opacity scales proportionally with stylus pressure.
     pub opacity_by_pressure: bool,
+    /// Whether the brush operates in destination-out erase mode.
+    pub is_erase: bool,
 }
 
 impl Default for BrushConfig {
@@ -30,6 +32,7 @@ impl Default for BrushConfig {
             flow: 1.0,
             size_by_pressure: true,
             opacity_by_pressure: false,
+            is_erase: false,
         }
     }
 }

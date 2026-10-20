@@ -35,6 +35,7 @@ impl CanvasBlitter {
         dest_y: i32,
         color: [u8; 4],
         flow_opacity: f32,
+        is_erase: bool,
     ) -> Option<Rect> {
         let x_start = dest_x.max(0);
         let y_start = dest_y.max(0);
@@ -46,7 +47,11 @@ impl CanvasBlitter {
         }
 
         let [br, bg, bb, ba] = color;
-        let flow_alpha_scale = (ba as f32 / 255.0) * flow_opacity;
+        let flow_alpha_scale = if is_erase {
+            flow_opacity
+        } else {
+            (ba as f32 / 255.0) * flow_opacity
+        };
         let br_f = br as f32;
         let bg_f = bg as f32;
         let bb_f = bb as f32;
@@ -72,6 +77,24 @@ impl CanvasBlitter {
                 let dst_g = buffer[c_idx + 1] as f32;
                 let dst_b = buffer[c_idx + 2] as f32;
                 let dst_a = buffer[c_idx + 3] as f32 / 255.0;
+
+                if is_erase {
+                    // Destination-Out / Erase: reduce destination alpha and colors
+                    let factor = (1.0 - src_a).max(0.0);
+                    let out_a = dst_a * factor;
+                    if out_a <= 0.001 {
+                        buffer[c_idx + 0] = 0;
+                        buffer[c_idx + 1] = 0;
+                        buffer[c_idx + 2] = 0;
+                        buffer[c_idx + 3] = 0;
+                    } else {
+                        buffer[c_idx + 0] = (dst_r * factor).clamp(0.0, 255.0) as u8;
+                        buffer[c_idx + 1] = (dst_g * factor).clamp(0.0, 255.0) as u8;
+                        buffer[c_idx + 2] = (dst_b * factor).clamp(0.0, 255.0) as u8;
+                        buffer[c_idx + 3] = (out_a * 255.0).clamp(0.0, 255.0) as u8;
+                    }
+                    continue;
+                }
 
                 // Standard Porter-Duff "Source Over Destination" compositing formula
                 let out_a = src_a + dst_a * (1.0 - src_a);
@@ -119,6 +142,7 @@ mod tests {
             4,
             [255, 0, 0, 255], // Red
             1.0,
+            false,
         );
 
         assert_eq!(rect, Some(Rect::new(4, 4, 2, 2)));
@@ -126,5 +150,20 @@ mod tests {
         assert_eq!(canvas.get_pixel(5, 5), Some([255, 0, 0, 255]));
         // Untouched neighbor should still be white
         assert_eq!(canvas.get_pixel(3, 3), Some([255, 255, 255, 255]));
+
+        // Test erase mode over the red pixels
+        let erase_rect = blitter.blit_dab(
+            &mut canvas,
+            &mask,
+            2,
+            2,
+            4,
+            4,
+            [0, 0, 0, 0],
+            1.0,
+            true,
+        );
+        assert_eq!(erase_rect, Some(Rect::new(4, 4, 2, 2)));
+        assert_eq!(canvas.get_pixel(4, 4), Some([0, 0, 0, 0]));
     }
 }

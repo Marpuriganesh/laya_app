@@ -51,12 +51,26 @@ export function unprojectScreenToCanvas(
  * Touch: defaults to 1.0 if hardware returns 0 or 0.5.
  */
 export function normalizePressure(rawPressure: number, pointerType: string): number {
+  // If explicitly a pen / stylus, directly preserve hardware analog pressure
+  if (pointerType === "pen") {
+    return Math.max(0.0, Math.min(1.0, rawPressure));
+  }
+
+  // If tablet driver sends analog pressure (non-default value)
+  if (rawPressure > 0 && rawPressure !== 0.5) {
+    return Math.max(0.0, Math.min(1.0, rawPressure));
+  }
+
+  // Default mouse click (W3C standard is 0.5 when button is pressed)
   if (pointerType === "mouse") {
     return rawPressure > 0 ? 1.0 : 0.0;
   }
+
+  // Touch fallback if hardware doesn't report 3D Touch / pressure
   if (pointerType === "touch" && (rawPressure === 0 || rawPressure === 0.5)) {
     return 1.0;
   }
+
   return Math.max(0.0, Math.min(1.0, rawPressure));
 }
 

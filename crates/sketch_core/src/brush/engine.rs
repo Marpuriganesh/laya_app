@@ -141,6 +141,7 @@ impl PixelBrushEngine {
             dest_y,
             self.config.color,
             flow_opacity,
+            self.config.is_erase,
         )
     }
 }

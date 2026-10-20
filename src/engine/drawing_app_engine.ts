@@ -168,6 +168,7 @@ export class DrawingAppEngine implements IDrawingEngine {
         flow: 1.0,
         size_by_pressure: true,
         opacity_by_pressure: false,
+        is_erase: this.blendMode === "erase",
       };
       globalRustBrushBridge.beginStroke(point, config).then((update) => {
         if (update && this.ctx) {
@@ -181,7 +182,8 @@ export class DrawingAppEngine implements IDrawingEngine {
     ctx.save();
     ctx.globalCompositeOperation = this.blendMode === "erase" ? "destination-out" : "source-over";
 
-    const pressure = point.pressure > 0 ? point.pressure : 1.0;
+    const rawP = typeof point.pressure === "number" ? point.pressure : 1.0;
+    const pressure = Math.max(0.05, Math.min(1.0, rawP));
     const effectiveRadius = Math.max(1, (this.brushSize * pressure) / 2);
 
     ctx.fillStyle = `rgba(${this.brushColor.r}, ${this.brushColor.g}, ${this.brushColor.b}, ${this.brushOpacity * this.brushColor.a})`;
@@ -206,7 +208,9 @@ export class DrawingAppEngine implements IDrawingEngine {
     ctx.save();
     ctx.globalCompositeOperation = this.blendMode === "erase" ? "destination-out" : "source-over";
 
-    const avgPressure = ((this.lastPoint.pressure || 1.0) + (point.pressure || 1.0)) / 2;
+    const p1P = typeof this.lastPoint.pressure === "number" ? Math.max(0.05, this.lastPoint.pressure) : 1.0;
+    const p2P = typeof point.pressure === "number" ? Math.max(0.05, point.pressure) : 1.0;
+    const avgPressure = (p1P + p2P) / 2;
     const effectiveWidth = Math.max(1, this.brushSize * avgPressure);
 
     ctx.strokeStyle = `rgba(${this.brushColor.r}, ${this.brushColor.g}, ${this.brushColor.b}, ${this.brushOpacity * this.brushColor.a})`;

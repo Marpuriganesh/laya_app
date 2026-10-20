@@ -24,6 +24,7 @@ export interface BrushConfigDto {
   flow: number;
   size_by_pressure: boolean;
   opacity_by_pressure: boolean;
+  is_erase: boolean;
 }
 
 export class RustBrushBridge {
@@ -68,7 +69,7 @@ export class RustBrushBridge {
       const eventDto = {
         x: point.canvasX,
         y: point.canvasY,
-        pressure: point.pressure || 1.0,
+        pressure: typeof point.pressure === "number" ? Math.max(0.01, point.pressure) : 1.0,
         time: point.timeMs / 1000.0,
       };
       return (await this.invokeFn("rust_brush_begin_stroke", {
@@ -88,7 +89,7 @@ export class RustBrushBridge {
       const eventsDto = points.map((p) => ({
         x: p.canvasX,
         y: p.canvasY,
-        pressure: p.pressure || 1.0,
+        pressure: typeof p.pressure === "number" ? Math.max(0.01, p.pressure) : 1.0,
         time: p.timeMs / 1000.0,
       }));
       return (await this.invokeFn("rust_brush_paint_coalesced", {

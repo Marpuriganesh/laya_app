@@ -50,6 +50,8 @@ pub struct BrushConfigDto {
     pub flow: f32,
     pub size_by_pressure: bool,
     pub opacity_by_pressure: bool,
+    #[serde(default)]
+    pub is_erase: bool,
 }
 
 impl From<BrushConfigDto> for BrushConfig {
@@ -63,6 +65,7 @@ impl From<BrushConfigDto> for BrushConfig {
             flow: dto.flow,
             size_by_pressure: dto.size_by_pressure,
             opacity_by_pressure: dto.opacity_by_pressure,
+            is_erase: dto.is_erase,
         }
     }
 }
