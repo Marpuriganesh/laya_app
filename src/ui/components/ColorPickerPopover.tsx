@@ -1475,19 +1475,25 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         e.currentTarget.releasePointerCapture(e.pointerId);
                       }
                     }}
-                    className="relative w-full h-3 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                    style={{
-                      background: "linear-gradient(to right, #000000 0%, #ffffff 100%)",
-                    }}
+                    className="relative w-full h-4 flex items-center cursor-pointer touch-none select-none"
                   >
-                    {/* Discrete notches */}
-                    {!wheelConfig.isContinuous && (
-                      <div className="absolute inset-x-1 inset-y-0 flex justify-between pointer-events-none items-center">
-                        {generateDiscreteValueSteps(wheelConfig.valueSteps).map((_, idx) => (
-                          <div key={idx} className="w-0.5 h-1.5 bg-zinc-600 rounded-full" />
-                        ))}
-                      </div>
-                    )}
+                    {/* Visual Track Pill */}
+                    <div
+                      className="w-full h-3 rounded-full overflow-hidden ring-1 ring-inset ring-white/15 shadow-sm relative"
+                      style={{
+                        background: "linear-gradient(to right, #000000 0%, #ffffff 100%)",
+                        backgroundRepeat: "no-repeat",
+                      }}
+                    >
+                      {/* Discrete notches */}
+                      {!wheelConfig.isContinuous && (
+                        <div className="absolute inset-x-1 inset-y-0 flex justify-between pointer-events-none items-center">
+                          {generateDiscreteValueSteps(wheelConfig.valueSteps).map((_, idx) => (
+                            <div key={idx} className="w-0.5 h-1.5 bg-zinc-600 rounded-full" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {/* Active Handle Blip */}
                     <div
                       className="absolute top-1/2 w-4 h-4 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
@@ -1626,12 +1632,16 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           e.currentTarget.releasePointerCapture(e.pointerId);
                         }
                       }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background:
-                          "linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)",
-                      }}
+                      className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
+                      <div
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-white/15 shadow-sm"
+                        style={{
+                          background:
+                            "linear-gradient(to right, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%)",
+                          backgroundRepeat: "no-repeat",
+                        }}
+                      />
                       <div
                         className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                         style={{ left: `${(hue / 360) * 100}%` }}
@@ -1672,11 +1682,15 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           e.currentTarget.releasePointerCapture(e.pointerId);
                         }
                       }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
-                      }}
+                      className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
+                      <div
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-white/15 shadow-sm"
+                        style={{
+                          background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
+                          backgroundRepeat: "no-repeat",
+                        }}
+                      />
                       <div
                         className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                         style={{ left: `${saturation * 100}%` }}
@@ -1717,11 +1731,15 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           e.currentTarget.releasePointerCapture(e.pointerId);
                         }
                       }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
-                      }}
+                      className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
+                      <div
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-white/15 shadow-sm"
+                        style={{
+                          background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
+                          backgroundRepeat: "no-repeat",
+                        }}
+                      />
                       <div
                         className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                         style={{ left: `${value * 100}%` }}
