@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, type FC } from "react";
 import { motion } from "motion/react";
-import { Undo2, Redo2, Pipette } from "lucide-react";
+import { Undo2, Redo2 } from "lucide-react";
 import {
   ratioToBrushSize,
   brushSizeToRatio,
@@ -138,16 +138,14 @@ export const SidebarRail: FC<SidebarRailProps> = ({
         </div>
       </div>
 
-      {/* 2. Middle Modifier / Eyedropper Button */}
+      {/* 2. Middle Sub-Menu / QuickMenu Modifier Button */}
       <button
         type="button"
         onClick={onModifierClick}
-        aria-label="Eyedropper / Modifier Button"
-        title="Eyedropper / Modifier"
-        className="w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800/90 active:scale-95 border border-white/20 hover:border-white/50 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition-all shadow-sm cursor-pointer group"
-      >
-        <Pipette className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 transition-opacity" />
-      </button>
+        aria-label="Menu / Modifier Button"
+        title="QuickMenu / Sub-Menu"
+        className="w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800/90 active:scale-95 border border-white/25 hover:border-white/50 transition-all shadow-sm cursor-pointer"
+      />
 
       {/* 3. Brush Opacity Vertical Capsule Slider (No circular thumb) */}
       <div className="relative flex flex-col items-center">

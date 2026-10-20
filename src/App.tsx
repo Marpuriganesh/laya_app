@@ -75,10 +75,10 @@ function MainWindow() {
     setTransform({ scale, panX, panY });
   }, [document.width, document.height, setTransform]);
 
-  const [isMaximized, setIsMaximized] = useState(false);
+  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const [isMaximized, setIsMaximized] = useState(true);
 
   useEffect(() => {
-    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
     if (!isTauri) return;
 
     let unlisten: (() => void) | undefined;
