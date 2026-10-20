@@ -1114,8 +1114,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         >
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
           <div
-            {...(isDetached ? {} : mainHeaderDragProps)}
-            data-tauri-drag-region
+            {...(isDetached ? { "data-tauri-drag-region": "" } : mainHeaderDragProps)}
             className="h-[46px] px-4.5 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/5 select-none"
             title={isDetached ? "Drag header to move window across monitors" : "Drag header to move, double-click to reset position"}
           >
