@@ -29,7 +29,8 @@ async fn detach_panel(
   .resizable(true)
   .decorations(false)
   .transparent(true)
-  .shadow(true);
+  .shadow(true)
+  .accept_first_mouse(true);
 
   win_builder.build().map_err(|e| e.to_string())?;
   Ok(())

@@ -60,6 +60,7 @@ export async function detachPanelWindow(config: DetachedWindowConfig): Promise<b
           decorations: false,
           transparent: true,
           shadow: true,
+          acceptFirstMouse: true,
         });
 
         await new Promise<void>((resolve, reject) => {
