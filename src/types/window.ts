@@ -24,6 +24,8 @@ export interface DetachedWindowConfig {
   readonly defaultHeight: number;
   readonly minWidth?: number;
   readonly minHeight?: number;
+  readonly maxWidth?: number;
+  readonly maxHeight?: number;
 }
 
 /**
@@ -47,6 +49,8 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
     defaultHeight: 580,
     minWidth: 300,
     minHeight: 460,
+    maxWidth: 680,
+    maxHeight: 960,
   },
   layers: {
     panelId: "layers",
@@ -55,6 +59,8 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
     defaultHeight: 480,
     minWidth: 260,
     minHeight: 320,
+    maxWidth: 540,
+    maxHeight: 800,
   },
   brushLibrary: {
     panelId: "brushLibrary",
@@ -63,6 +69,8 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
     defaultHeight: 440,
     minWidth: 260,
     minHeight: 300,
+    maxWidth: 540,
+    maxHeight: 800,
   },
   brushSettings: {
     panelId: "brushSettings",
@@ -71,6 +79,8 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
     defaultHeight: 440,
     minWidth: 260,
     minHeight: 300,
+    maxWidth: 540,
+    maxHeight: 800,
   },
   colorGamut: {
     panelId: "colorGamut",
@@ -79,6 +89,8 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
     defaultHeight: 380,
     minWidth: 240,
     minHeight: 300,
+    maxWidth: 500,
+    maxHeight: 600,
   },
   colorGrid: {
     panelId: "colorGrid",
@@ -87,6 +99,8 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
     defaultHeight: 340,
     minWidth: 240,
     minHeight: 280,
+    maxWidth: 500,
+    maxHeight: 600,
   },
 };
 

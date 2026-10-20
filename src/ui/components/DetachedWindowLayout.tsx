@@ -6,6 +6,8 @@ import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
 export interface DetachedWindowLayoutProps {
   title: string;
   icon?: ReactNode;
+  defaultWidth?: number;
+  defaultHeight?: number;
   onDock: () => void;
   onClose: () => void;
   children: ReactNode;
@@ -19,6 +21,8 @@ export interface DetachedWindowLayoutProps {
 export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
   title,
   icon,
+  defaultWidth,
+  defaultHeight,
   onDock,
   onClose,
   children,
@@ -38,17 +42,17 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
   };
 
   const handleHeaderDoubleClick = async (e: React.MouseEvent<HTMLElement>) => {
-    // Only toggle maximize when clicking blank header space, not buttons
     const target = e.target as HTMLElement | null;
     if (target?.closest("button, input, select, textarea")) return;
 
+    // Tool palettes are constrained utility windows; double-click resets to default dimensions
     const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (isTauri) {
+    if (isTauri && defaultWidth && defaultHeight) {
       try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        await getCurrentWindow().toggleMaximize();
+        const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setSize(new LogicalSize(defaultWidth, defaultHeight));
       } catch (err) {
-        console.error("Failed to toggle maximize detached window:", err);
+        console.error("Failed to reset detached window size:", err);
       }
     }
   };
@@ -60,7 +64,7 @@ export const DetachedWindowLayout: FC<DetachedWindowLayoutProps> = ({
         data-tauri-drag-region
         onDoubleClick={handleHeaderDoubleClick}
         className="h-11 px-3.5 bg-zinc-50 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between shrink-0 select-none cursor-grab active:cursor-grabbing"
-        title="Double-click to toggle maximize • Drag to move window across monitors"
+        title="Double-click to reset size • Drag to move window across monitors"
       >
         <div className="flex items-center gap-2 pointer-events-none">
           <GripHorizontal className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />

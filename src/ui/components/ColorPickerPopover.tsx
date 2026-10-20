@@ -159,6 +159,21 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
     await detachPanelWindow(DETACHABLE_PANEL_CONFIGS.colorGrid);
   }, [detachPanel]);
 
+  const handleDetachedHeaderDoubleClick = useCallback(async (e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, input, select, textarea")) return;
+
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (isTauri && isDetached) {
+      try {
+        const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setSize(new LogicalSize(340, 580));
+      } catch (err) {
+        console.error("Failed to reset color picker window size:", err);
+      }
+    }
+  }, [isDetached]);
+
   // 1. Draggable main popover position & physics
   const {
     headerProps: mainHeaderDragProps,
@@ -1170,8 +1185,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
           <div
             {...(isDetached ? { "data-tauri-drag-region": "" } : mainHeaderDragProps)}
+            onDoubleClick={isDetached ? handleDetachedHeaderDoubleClick : undefined}
             className="h-[46px] px-4.5 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-zinc-200 dark:border-white/5 select-none bg-zinc-50/60 dark:bg-transparent"
-            title={isDetached ? "Drag header to move window across monitors" : "Drag header to move, double-click to reset position"}
+            title={isDetached ? "Double-click to reset size • Drag to move window across monitors" : "Drag header to move, double-click to reset position"}
           >
             <div className="flex items-center gap-2 pointer-events-none">
               <GripVertical className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" />

@@ -1,6 +1,7 @@
 import { type FC } from "react";
 import { Layers, Brush, SlidersHorizontal, Shapes, Sliders } from "lucide-react";
 import type { DetachablePanelId } from "@/types/window";
+import { DETACHABLE_PANEL_CONFIGS } from "@/types/window";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
 import { DetachedWindowLayout } from "@/ui/components/DetachedWindowLayout";
@@ -20,6 +21,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     panelId,
   });
 
+  const config = DETACHABLE_PANEL_CONFIGS[panelId];
+
   if (panelId === "color") {
     return (
       <ColorPickerPopover
@@ -37,6 +40,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Gamut Mask"
+        defaultWidth={config?.defaultWidth}
+        defaultHeight={config?.defaultHeight}
         icon={<Shapes className="w-4 h-4 text-blue-400" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
@@ -50,6 +55,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Discrete Grid Levels"
+        defaultWidth={config?.defaultWidth}
+        defaultHeight={config?.defaultHeight}
         icon={<Sliders className="w-4 h-4 text-blue-400" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
@@ -63,6 +70,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Layers"
+        defaultWidth={config?.defaultWidth}
+        defaultHeight={config?.defaultHeight}
         icon={<Layers className="w-4 h-4 text-zinc-300" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
@@ -76,6 +85,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Brush Library"
+        defaultWidth={config?.defaultWidth}
+        defaultHeight={config?.defaultHeight}
         icon={<Brush className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
@@ -95,6 +106,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
     return (
       <DetachedWindowLayout
         title="Brush Settings"
+        defaultWidth={config?.defaultWidth}
+        defaultHeight={config?.defaultHeight}
         icon={<SlidersHorizontal className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
@@ -113,6 +126,8 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
   return (
     <DetachedWindowLayout
       title="Tool Palette"
+      defaultWidth={config?.defaultWidth}
+      defaultHeight={config?.defaultHeight}
       onDock={dockToMainWindow}
       onClose={closeDetachedWindow}
     >

@@ -8,6 +8,8 @@ async fn detach_panel(
   panel_id: String,
   width: f64,
   height: f64,
+  max_width: Option<f64>,
+  max_height: Option<f64>,
 ) -> Result<(), String> {
   // If window already exists, bring it to front and focus
   if let Some(existing_window) = app.get_webview_window(&label) {
@@ -16,6 +18,9 @@ async fn detach_panel(
     let _ = existing_window.set_focus();
     return Ok(());
   }
+
+  let max_w = max_width.unwrap_or(width * 2.0);
+  let max_h = max_height.unwrap_or(height * 2.0);
 
   let url = format!("/?detached={}", panel_id);
   let win_builder = tauri::WebviewWindowBuilder::new(
@@ -26,7 +31,9 @@ async fn detach_panel(
   .title(&title)
   .inner_size(width, height)
   .min_inner_size(240.0, 200.0)
+  .max_inner_size(max_w, max_h)
   .resizable(true)
+  .maximizable(false)
   .decorations(false)
   .transparent(true)
   .shadow(true)

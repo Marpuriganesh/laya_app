@@ -35,6 +35,8 @@ export async function detachPanelWindow(config: DetachedWindowConfig): Promise<b
         panelId: config.panelId,
         width: config.defaultWidth,
         height: config.defaultHeight,
+        maxWidth: config.maxWidth,
+        maxHeight: config.maxHeight,
       });
       return true;
     } catch (invokeError) {
@@ -56,7 +58,10 @@ export async function detachPanelWindow(config: DetachedWindowConfig): Promise<b
           height: config.defaultHeight,
           minWidth: config.minWidth ?? 240,
           minHeight: config.minHeight ?? 200,
+          maxWidth: config.maxWidth ?? config.defaultWidth * 2,
+          maxHeight: config.maxHeight ?? config.defaultHeight * 2,
           resizable: true,
+          maximizable: false,
           decorations: false,
           transparent: true,
           shadow: true,
