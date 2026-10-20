@@ -151,5 +151,32 @@ describe("useDocumentStore (Zustand)", () => {
     // Explicit set
     setPanelDetached("layers", true);
     expect(useDocumentStore.getState().detachedPanels.layers).toBe(true);
+
+    // Docking a subwindow (e.g. colorGamut) redirects to color popover
+    detachPanel("colorGamut");
+    expect(useDocumentStore.getState().detachedPanels.colorGamut).toBe(true);
+    dockPanel("colorGamut");
+    expect(useDocumentStore.getState().detachedPanels.colorGamut).toBe(false);
+    expect(useDocumentStore.getState().activePopover).toBe("color");
+  });
+
+  it("manages gamut mask and discrete wheel configuration", () => {
+    const { setGamutMask, setWheelConfig } = useDocumentStore.getState();
+
+    // Default configuration
+    expect(useDocumentStore.getState().gamutMask.enabled).toBe(false);
+    expect(useDocumentStore.getState().gamutMask.type).toBe("triad");
+    expect(useDocumentStore.getState().wheelConfig.isContinuous).toBe(false);
+
+    // Update gamut mask
+    setGamutMask({ enabled: true, rotation: 120, type: "complementary" });
+    expect(useDocumentStore.getState().gamutMask.enabled).toBe(true);
+    expect(useDocumentStore.getState().gamutMask.rotation).toBe(120);
+    expect(useDocumentStore.getState().gamutMask.type).toBe("complementary");
+
+    // Update wheel config
+    setWheelConfig({ hueSectors: 24, isContinuous: true });
+    expect(useDocumentStore.getState().wheelConfig.hueSectors).toBe(24);
+    expect(useDocumentStore.getState().wheelConfig.isContinuous).toBe(true);
   });
 });

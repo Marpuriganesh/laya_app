@@ -1,11 +1,13 @@
 import { type FC } from "react";
-import { Layers, Brush, SlidersHorizontal } from "lucide-react";
+import { Layers, Brush, SlidersHorizontal, Shapes, Sliders } from "lucide-react";
 import type { DetachablePanelId } from "@/types/window";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
 import { DetachedWindowLayout } from "@/ui/components/DetachedWindowLayout";
 import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { LayersPanelContent } from "@/ui/components/LayersPanelContent";
+import { GamutMaskPanelContent } from "@/ui/components/GamutMaskPanelContent";
+import { DiscreteGridPanelContent } from "@/ui/components/DiscreteGridPanelContent";
 
 export interface DetachedWindowRootProps {
   panelId: DetachablePanelId;
@@ -28,6 +30,32 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
         isDetached={true}
         onDock={dockToMainWindow}
       />
+    );
+  }
+
+  if (panelId === "colorGamut") {
+    return (
+      <DetachedWindowLayout
+        title="Gamut Mask"
+        icon={<Shapes className="w-4 h-4 text-amber-400" />}
+        onDock={dockToMainWindow}
+        onClose={closeDetachedWindow}
+      >
+        <GamutMaskPanelContent />
+      </DetachedWindowLayout>
+    );
+  }
+
+  if (panelId === "colorGrid") {
+    return (
+      <DetachedWindowLayout
+        title="Discrete Grid Levels"
+        icon={<Sliders className="w-4 h-4 text-amber-400" />}
+        onDock={dockToMainWindow}
+        onClose={closeDetachedWindow}
+      >
+        <DiscreteGridPanelContent />
+      </DetachedWindowLayout>
     );
   }
 

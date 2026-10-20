@@ -10,7 +10,11 @@ import {
   type LayerBlendMode,
   createDefaultLayerStack,
 } from "@/types/layer";
-import type { DetachablePanelId } from "@/types/window";
+import type { DetachablePanelId, GamutMaskConfiguration } from "@/types/window";
+import {
+  type DiscreteWheelConfig,
+  DEFAULT_DISCRETE_WHEEL_CONFIG,
+} from "@/engine/color/discrete_wheel";
 
 export interface DocumentState {
   document: DocumentConfiguration;
@@ -23,6 +27,8 @@ export interface DocumentState {
   softProofMode: SoftProofMode;
   layerStack: LayerStack;
   detachedPanels: Record<DetachablePanelId, boolean>;
+  gamutMask: GamutMaskConfiguration;
+  wheelConfig: DiscreteWheelConfig;
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
@@ -35,6 +41,8 @@ export interface DocumentState {
   setSoftProofMode: (mode: SoftProofMode) => void;
   resetTransform: () => void;
   setLayerStack: (layerStack: LayerStack) => void;
+  setGamutMask: (mask: Partial<GamutMaskConfiguration>) => void;
+  setWheelConfig: (config: Partial<DiscreteWheelConfig>) => void;
 
   // Detached Window State Management
   detachPanel: (panelId: DetachablePanelId) => void;
@@ -78,7 +86,16 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     layers: false,
     brushLibrary: false,
     brushSettings: false,
+    colorGamut: false,
+    colorGrid: false,
   },
+  gamutMask: {
+    enabled: false,
+    type: "triad",
+    rotation: 0,
+    opacity: 0.8,
+  },
+  wheelConfig: DEFAULT_DISCRETE_WHEEL_CONFIG,
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -97,6 +114,20 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       transform: { scale: 0.8, panX: 0, panY: 0 },
     }),
   setLayerStack: (layerStack) => set({ layerStack }),
+  setGamutMask: (mask) =>
+    set((state) => ({
+      gamutMask: {
+        ...state.gamutMask,
+        ...mask,
+      },
+    })),
+  setWheelConfig: (config) =>
+    set((state) => ({
+      wheelConfig: {
+        ...state.wheelConfig,
+        ...config,
+      },
+    })),
 
   detachPanel: (panelId: DetachablePanelId) =>
     set((state) => ({
@@ -108,13 +139,17 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     })),
 
   dockPanel: (panelId: DetachablePanelId) =>
-    set((state) => ({
-      detachedPanels: {
-        ...state.detachedPanels,
-        [panelId]: false,
-      },
-      activePopover: panelId,
-    })),
+    set((state) => {
+      const targetPopover: PopoverType =
+        panelId === "colorGamut" || panelId === "colorGrid" ? "color" : panelId;
+      return {
+        detachedPanels: {
+          ...state.detachedPanels,
+          [panelId]: false,
+        },
+        activePopover: targetPopover,
+      };
+    }),
 
   setPanelDetached: (panelId: DetachablePanelId, detached: boolean) =>
     set((state) => ({

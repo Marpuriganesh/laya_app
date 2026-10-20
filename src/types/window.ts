@@ -1,10 +1,18 @@
 import type { ActiveTool } from "@/types/ui";
 import type { LayerStack } from "@/types/layer";
+import type { GamutMaskType } from "@/engine/color/gamut_mask";
+import type { DiscreteWheelConfig } from "@/engine/color/discrete_wheel";
 
 /**
  * Identifiers of all panels that can be detached into standalone windows.
  */
-export type DetachablePanelId = "color" | "layers" | "brushLibrary" | "brushSettings";
+export type DetachablePanelId =
+  | "color"
+  | "layers"
+  | "brushLibrary"
+  | "brushSettings"
+  | "colorGamut"
+  | "colorGrid";
 
 /**
  * Configuration descriptor for a detached window.
@@ -16,6 +24,16 @@ export interface DetachedWindowConfig {
   readonly defaultHeight: number;
   readonly minWidth?: number;
   readonly minHeight?: number;
+}
+
+/**
+ * Gamut mask state shared across windows.
+ */
+export interface GamutMaskConfiguration {
+  readonly enabled: boolean;
+  readonly type: GamutMaskType;
+  readonly rotation: number;
+  readonly opacity: number;
 }
 
 /**
@@ -54,6 +72,22 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
     minWidth: 260,
     minHeight: 300,
   },
+  colorGamut: {
+    panelId: "colorGamut",
+    title: "Gamut Mask",
+    defaultWidth: 280,
+    defaultHeight: 380,
+    minWidth: 240,
+    minHeight: 300,
+  },
+  colorGrid: {
+    panelId: "colorGrid",
+    title: "Discrete Grid Levels",
+    defaultWidth: 280,
+    defaultHeight: 340,
+    minWidth: 240,
+    minHeight: 280,
+  },
 };
 
 /**
@@ -65,6 +99,8 @@ export interface WindowSyncPayload {
   readonly brushSize: number;
   readonly brushOpacity: number;
   readonly layerStack: LayerStack;
+  readonly gamutMask?: GamutMaskConfiguration;
+  readonly wheelConfig?: DiscreteWheelConfig;
 }
 
 /**
@@ -80,4 +116,6 @@ export type WindowSyncMessage =
   | { readonly type: "SET_ACTIVE_TOOL"; readonly tool: ActiveTool }
   | { readonly type: "SET_BRUSH_SIZE"; readonly size: number }
   | { readonly type: "SET_BRUSH_OPACITY"; readonly opacity: number }
-  | { readonly type: "SET_LAYER_STACK"; readonly layerStack: LayerStack };
+  | { readonly type: "SET_LAYER_STACK"; readonly layerStack: LayerStack }
+  | { readonly type: "SET_GAMUT_MASK"; readonly gamutMask: GamutMaskConfiguration }
+  | { readonly type: "SET_WHEEL_CONFIG"; readonly wheelConfig: DiscreteWheelConfig };

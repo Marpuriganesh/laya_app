@@ -38,11 +38,15 @@ export function useDetachedWindowSync({
     brushSize,
     brushOpacity,
     layerStack,
+    gamutMask,
+    wheelConfig,
     setActiveColor,
     setActiveTool,
     setBrushSize,
     setBrushOpacity,
     setLayerStack,
+    setGamutMask,
+    setWheelConfig,
     dockPanel,
     setPanelDetached,
   } = useDocumentStore();
@@ -75,6 +79,8 @@ export function useDetachedWindowSync({
               brushSize: currentState.brushSize,
               brushOpacity: currentState.brushOpacity,
               layerStack: currentState.layerStack,
+              gamutMask: currentState.gamutMask,
+              wheelConfig: currentState.wheelConfig,
             };
             channelRef.current.postMessage({
               type: "STATE_SYNC",
@@ -92,6 +98,12 @@ export function useDetachedWindowSync({
               setBrushSize(message.payload.brushSize);
               setBrushOpacity(message.payload.brushOpacity);
               setLayerStack(message.payload.layerStack);
+              if (message.payload.gamutMask) {
+                setGamutMask(message.payload.gamutMask);
+              }
+              if (message.payload.wheelConfig) {
+                setWheelConfig(message.payload.wheelConfig);
+              }
             });
           }
           break;
@@ -160,6 +172,20 @@ export function useDetachedWindowSync({
           });
           break;
         }
+
+        case "SET_GAMUT_MASK": {
+          applyRemoteUpdate(() => {
+            setGamutMask(message.gamutMask);
+          });
+          break;
+        }
+
+        case "SET_WHEEL_CONFIG": {
+          applyRemoteUpdate(() => {
+            setWheelConfig(message.wheelConfig);
+          });
+          break;
+        }
       }
     };
 
@@ -198,6 +224,8 @@ export function useDetachedWindowSync({
     setBrushSize,
     setBrushOpacity,
     setLayerStack,
+    setGamutMask,
+    setWheelConfig,
     dockPanel,
     setPanelDetached,
   ]);
@@ -242,6 +270,22 @@ export function useDetachedWindowSync({
       layerStack,
     });
   }, [layerStack]);
+
+  useEffect(() => {
+    if (isInternalUpdateRef.current || !channelRef.current) return;
+    channelRef.current.postMessage({
+      type: "SET_GAMUT_MASK",
+      gamutMask,
+    });
+  }, [gamutMask]);
+
+  useEffect(() => {
+    if (isInternalUpdateRef.current || !channelRef.current) return;
+    channelRef.current.postMessage({
+      type: "SET_WHEEL_CONFIG",
+      wheelConfig,
+    });
+  }, [wheelConfig]);
 
   const dockToMainWindow = useCallback(async () => {
     if (panelId && channelRef.current) {
