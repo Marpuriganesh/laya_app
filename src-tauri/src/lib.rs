@@ -2,8 +2,8 @@ use tauri::Manager;
 
 pub mod brush_commands;
 use brush_commands::{
-  rust_brush_clear, rust_brush_begin_stroke, rust_brush_end_stroke,
-  rust_brush_init, rust_brush_paint_coalesced, BrushEngineState,
+  rust_brush_clear, rust_brush_set_config, rust_brush_set_modal_open,
+  BrushEngineState,
 };
 
 #[tauri::command]
@@ -74,15 +74,26 @@ pub fn run() {
         let menu = tauri::menu::Menu::default(app.handle())?;
         app.set_menu(menu)?;
       }
+
+      // Attach High-Performance Native Canvas Overlay on macOS
+      #[cfg(target_os = "macos")]
+      {
+        if let Some(main_window) = app.get_webview_window("main") {
+          if let (Ok(ns_win), Ok(ns_view)) = (main_window.ns_window(), main_window.ns_view()) {
+            unsafe {
+              brush_commands::setup_native_canvas_overlay(ns_win, ns_view);
+            }
+          }
+        }
+      }
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
       detach_panel,
       set_always_on_top,
-      rust_brush_init,
-      rust_brush_begin_stroke,
-      rust_brush_paint_coalesced,
-      rust_brush_end_stroke,
+      rust_brush_set_config,
+      rust_brush_set_modal_open,
       rust_brush_clear
     ])
     .run(tauri::generate_context!())

@@ -1,19 +1,8 @@
 /**
  * Rust Brush Bridge
  * Communicates with the native Rust Krita pixel brush engine running in Tauri.
- * Enables zero-overhead batch processing of coalesced 120Hz-240Hz stylus events
- * with Porter-Duff Over alpha compositing and analytical radial softness masks.
+ * Controls real-time brush parameters, color palettes, and modal interaction gating.
  */
-
-import type { StrokePoint } from "@/types/stroke";
-
-export interface DirtyUpdate {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rgba_bytes: number[];
-}
 
 export interface BrushConfigDto {
   diameter: number;
@@ -51,72 +40,31 @@ export class RustBrushBridge {
     return this.isAvailable;
   }
 
-  public async init(width: number, height: number): Promise<void> {
+  public async setBrushConfig(config: BrushConfigDto): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
-      await this.invokeFn("rust_brush_init", { width, height });
+      await this.invokeFn("rust_brush_set_config", { config });
     } catch (err) {
-      console.warn("Rust brush init failed:", err);
+      console.warn("Failed to sync brush config to Rust:", err);
     }
   }
 
-  public async beginStroke(
-    point: StrokePoint,
-    config: BrushConfigDto
-  ): Promise<DirtyUpdate | null> {
-    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
-    try {
-      const eventDto = {
-        x: point.canvasX,
-        y: point.canvasY,
-        pressure: typeof point.pressure === "number" ? Math.max(0.01, point.pressure) : 1.0,
-        time: point.timeMs / 1000.0,
-      };
-      return (await this.invokeFn("rust_brush_begin_stroke", {
-        event: eventDto,
-        config,
-      })) as DirtyUpdate | null;
-    } catch (err) {
-      console.warn("Rust begin stroke failed:", err);
-      return null;
-    }
-  }
-
-  public async paintCoalesced(points: StrokePoint[]): Promise<DirtyUpdate | null> {
-    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
-    if (points.length === 0) return null;
-    try {
-      const eventsDto = points.map((p) => ({
-        x: p.canvasX,
-        y: p.canvasY,
-        pressure: typeof p.pressure === "number" ? Math.max(0.01, p.pressure) : 1.0,
-        time: p.timeMs / 1000.0,
-      }));
-      return (await this.invokeFn("rust_brush_paint_coalesced", {
-        events: eventsDto,
-      })) as DirtyUpdate | null;
-    } catch (err) {
-      console.warn("Rust paint coalesced failed:", err);
-      return null;
-    }
-  }
-
-  public async endStroke(): Promise<void> {
+  public async setModalOpen(isOpen: boolean): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
-      await this.invokeFn("rust_brush_end_stroke");
+      await this.invokeFn("rust_brush_set_modal_open", { isOpen });
     } catch (err) {
-      console.warn("Rust end stroke failed:", err);
+      console.warn("Failed to set modal open state:", err);
     }
   }
 
-  public blitDirtyUpdate(ctx: CanvasRenderingContext2D, update: DirtyUpdate): void {
-    if (update.width <= 0 || update.height <= 0 || !update.rgba_bytes || update.rgba_bytes.length === 0) {
-      return;
+  public async clearCanvas(fillColor?: [number, number, number, number]): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_clear", { fillColor });
+    } catch (err) {
+      console.warn("Failed to clear native canvas:", err);
     }
-    const clamped = new Uint8ClampedArray(update.rgba_bytes);
-    const imgData = new ImageData(clamped, update.width, update.height);
-    ctx.putImageData(imgData, update.x, update.y);
   }
 }
 

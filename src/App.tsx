@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
 import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
@@ -14,6 +14,7 @@ import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
 import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
 import { ThemeProvider } from "@/ui/theme/ThemeProvider";
+import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 
 export default function App() {
   const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
@@ -56,6 +57,10 @@ function MainWindow() {
     setActivePopover("none");
   }, [setActivePopover]);
 
+  useEffect(() => {
+    globalRustBrushBridge.setModalOpen(activePopover !== "none");
+  }, [activePopover]);
+
   const handleDetachPanel = useCallback(async (panelId: DetachablePanelId) => {
     detachPanel(panelId);
     const config = DETACHABLE_PANEL_CONFIGS[panelId];
@@ -80,7 +85,11 @@ function MainWindow() {
 
   return (
     <div
-      className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground font-sans select-none transition-colors duration-150 rounded-xl border border-border/80"
+      className={`flex flex-col h-screen w-screen overflow-hidden ${
+        typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+          ? "bg-transparent"
+          : "bg-background"
+      } text-foreground font-sans select-none transition-colors duration-150 rounded-xl border border-border/80`}
     >
       {/* Procreate-Style Top Navigation Bar */}
       <TopNavBar

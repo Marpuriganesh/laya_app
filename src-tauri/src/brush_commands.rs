@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use sketch_core::{BrushConfig, CanvasView, PixelBrushEngine, Rect, StrokeEvent};
+use sketch_core::{BrushConfig, CanvasView, PixelBrushEngine, StrokeEvent};
 use std::sync::Mutex;
-use tauri::State;
 
 /// Shared application state managing the active Rust canvas buffer and brush engine.
 pub struct BrushEngineState {
@@ -11,6 +10,7 @@ pub struct BrushEngineState {
 pub struct BrushSession {
     pub canvas: CanvasView,
     pub engine: PixelBrushEngine,
+    pub stroke_start_time: std::time::Instant,
 }
 
 impl Default for BrushEngineState {
@@ -18,28 +18,111 @@ impl Default for BrushEngineState {
         Self {
             inner: Mutex::new(BrushSession {
                 canvas: CanvasView::new(1920, 1080),
-                engine: PixelBrushEngine::new(BrushConfig::default()),
+                engine: PixelBrushEngine::new(BrushConfig {
+                    diameter: 32.0,
+                    spacing: 0.08,
+                    softness: 0.45,
+                    color: [24, 24, 27, 255],
+                    opacity: 1.0,
+                    flow: 1.0,
+                    size_by_pressure: true,
+                    opacity_by_pressure: false,
+                    is_erase: false,
+                }),
+                stroke_start_time: std::time::Instant::now(),
             }),
         }
     }
 }
 
-/// DTO for incoming pointer/stylus events from the web frontend.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct StrokeEventDto {
-    pub x: f32,
-    pub y: f32,
-    pub pressure: f32,
-    pub time: f32,
+// Global reference for native Cocoa C FFI callbacks
+static GLOBAL_SESSION: Mutex<Option<BrushSession>> = Mutex::new(None);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    let config = BrushConfig {
+        diameter: 32.0,
+        spacing: 0.08,
+        softness: 0.45,
+        color: [24, 24, 27, 255],
+        opacity: 1.0,
+        flow: 1.0,
+        size_by_pressure: true,
+        opacity_by_pressure: false,
+        is_erase: false,
+    };
+    *guard = Some(BrushSession {
+        canvas: CanvasView::new(width, height),
+        engine: PixelBrushEngine::new(config),
+        stroke_start_time: std::time::Instant::now(),
+    });
 }
 
-impl From<StrokeEventDto> for StrokeEvent {
-    fn from(dto: StrokeEventDto) -> Self {
-        Self::new(dto.x, dto.y, dto.pressure, dto.time)
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_begin_stroke(x: f32, y: f32, pressure: f32) {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stroke_start_time = std::time::Instant::now();
+        let event = StrokeEvent::new(x, y, pressure, 0.0);
+        let _ = session.engine.begin_stroke(event, &mut session.canvas);
     }
 }
 
-/// DTO for brush configuration updates from the UI.
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_paint_event(x: f32, y: f32, pressure: f32) {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        let time_sec = session.stroke_start_time.elapsed().as_secs_f32();
+        let event = StrokeEvent::new(x, y, pressure, time_sec);
+        let _ = session.engine.paint_to(event, &mut session.canvas);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_end_stroke() {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.end_stroke();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_get_pixels(out_width: *mut i32, out_height: *mut i32) -> *const u8 {
+    let guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_ref() {
+        if !out_width.is_null() {
+            unsafe { *out_width = session.canvas.width as i32 };
+        }
+        if !out_height.is_null() {
+            unsafe { *out_height = session.canvas.height as i32 };
+        }
+        session.canvas.as_slice().as_ptr()
+    } else {
+        std::ptr::null()
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_get_diameter() -> f32 {
+    let guard = GLOBAL_SESSION.lock().unwrap();
+    guard.as_ref().map(|s| s.engine.config.diameter).unwrap_or(32.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_get_size_dynamics() -> bool {
+    let guard = GLOBAL_SESSION.lock().unwrap();
+    guard.as_ref().map(|s| s.engine.config.size_by_pressure).unwrap_or(true)
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    pub fn setup_native_canvas_overlay(ns_window_ptr: *mut std::ffi::c_void, ns_view_ptr: *mut std::ffi::c_void);
+    pub fn set_native_overlay_modal_open(is_open: bool);
+    pub fn trigger_native_overlay_repaint();
+}
+
+/// DTO for brush configuration updates from the React UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrushConfigDto {
     pub diameter: f32,
@@ -70,88 +153,41 @@ impl From<BrushConfigDto> for BrushConfig {
     }
 }
 
-/// DTO returning the clipped modified region and its RGBA8 pixel bytes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DirtyUpdateDto {
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-    pub rgba_bytes: Vec<u8>,
-}
-
-fn create_dirty_update(canvas: &CanvasView, rect: Rect) -> Option<DirtyUpdateDto> {
-    let rgba_bytes = canvas.extract_sub_rect(&rect)?;
-    Some(DirtyUpdateDto {
-        x: rect.x,
-        y: rect.y,
-        width: rect.w as u32,
-        height: rect.h as u32,
-        rgba_bytes,
-    })
-}
-
 #[tauri::command]
-pub async fn rust_brush_init(
-    state: State<'_, BrushEngineState>,
-    width: u32,
-    height: u32,
-) -> Result<(), String> {
-    let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-    session.canvas = CanvasView::new(width, height);
-    session.engine.end_stroke();
+pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config = config.into();
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn rust_brush_begin_stroke(
-    state: State<'_, BrushEngineState>,
-    event: StrokeEventDto,
-    config: Option<BrushConfigDto>,
-) -> Result<Option<DirtyUpdateDto>, String> {
-    let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-    let BrushSession { canvas, engine } = &mut *session;
-    if let Some(cfg) = config {
-        engine.config = cfg.into();
+pub async fn rust_brush_set_modal_open(is_open: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        set_native_overlay_modal_open(is_open);
     }
-    let stroke_event: StrokeEvent = event.into();
-    let maybe_rect = engine.begin_stroke(stroke_event, canvas);
-    let update = maybe_rect.and_then(|r| create_dirty_update(canvas, r));
-    Ok(update)
-}
-
-#[tauri::command]
-pub async fn rust_brush_paint_coalesced(
-    state: State<'_, BrushEngineState>,
-    events: Vec<StrokeEventDto>,
-) -> Result<Option<DirtyUpdateDto>, String> {
-    let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-    if events.is_empty() {
-        return Ok(None);
-    }
-    let core_events: Vec<StrokeEvent> = events.into_iter().map(Into::into).collect();
-    let BrushSession { canvas, engine } = &mut *session;
-    let maybe_rect = engine.paint_coalesced_events(&core_events, canvas);
-    let update = maybe_rect.and_then(|r| create_dirty_update(canvas, r));
-    Ok(update)
-}
-
-#[tauri::command]
-pub async fn rust_brush_end_stroke(
-    state: State<'_, BrushEngineState>,
-) -> Result<(), String> {
-    let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-    session.engine.end_stroke();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn rust_brush_clear(
-    state: State<'_, BrushEngineState>,
-    fill_color: [u8; 4],
+    fill_color: Option<[u8; 4]>,
 ) -> Result<(), String> {
-    let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-    session.canvas.clear(fill_color);
-    session.engine.end_stroke();
+    let fill = fill_color.unwrap_or([255, 255, 255, 255]);
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.canvas.clear(fill);
+        session.engine.end_stroke();
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
     Ok(())
 }

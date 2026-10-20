@@ -667,6 +667,8 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     return "cursor-crosshair";
   };
 
+  const isTauriApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
   return (
     <main
       ref={containerRef}
@@ -678,7 +680,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex-1 w-full h-full relative overflow-hidden bg-zinc-200 dark:bg-[#1e1e22] select-none touch-none ${getContainerCursorClass()}`}
+      className={`flex-1 w-full h-full relative overflow-hidden ${
+        isTauriApp ? "bg-transparent" : "bg-zinc-200 dark:bg-[#1e1e22]"
+      } select-none touch-none ${getContainerCursorClass()}`}
     >
       {/* Hidden SVG Filter definition for 100% mathematically exact sRGB isoluminant soft proofing */}
       <svg className="absolute w-0 h-0 pointer-events-none opacity-0 overflow-hidden" aria-hidden="true">
@@ -718,7 +722,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
             width: doc.width,
             height: doc.height,
             backgroundColor:
-              doc.backgroundColor === "transparent" ? "#ffffff" : doc.backgroundColor,
+              isTauriApp || doc.backgroundColor === "transparent"
+                ? "transparent"
+                : doc.backgroundColor,
             filter: getCssFilterForSoftProof(softProofMode),
           }}
         >
