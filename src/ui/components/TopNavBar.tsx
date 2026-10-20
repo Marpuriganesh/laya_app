@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { ActiveTool, PopoverType, SoftProofMode } from "@/types/ui";
 import type { DocumentConfiguration } from "@/types/document";
+import type { DetachablePanelId } from "@/types/window";
 
 interface TopNavBarProps {
   document: DocumentConfiguration;
@@ -27,6 +28,8 @@ interface TopNavBarProps {
   zoomScale: number;
   activePopover: PopoverType;
   softProofMode: SoftProofMode;
+  detachedPanels?: Record<DetachablePanelId, boolean>;
+  onFocusDetached?: (panelId: DetachablePanelId) => void;
   onSelectTool: (tool: ActiveTool) => void;
   onTogglePopover: (popover: PopoverType) => void;
   onResetZoom: () => void;
@@ -47,6 +50,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   zoomScale,
   activePopover,
   softProofMode,
+  detachedPanels,
+  onFocusDetached,
   onSelectTool,
   onTogglePopover,
   onResetZoom,
@@ -117,9 +122,29 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
   const handleBrushClick = () => {
     if (activeTool === "brush") {
-      onTogglePopover("brushLibrary");
+      if (detachedPanels?.brushLibrary) {
+        onFocusDetached?.("brushLibrary");
+      } else {
+        onTogglePopover("brushLibrary");
+      }
     } else {
       onSelectTool("brush");
+    }
+  };
+
+  const handleLayersClick = () => {
+    if (detachedPanels?.layers) {
+      onFocusDetached?.("layers");
+    } else {
+      onTogglePopover("layers");
+    }
+  };
+
+  const handleColorClick = () => {
+    if (detachedPanels?.color) {
+      onFocusDetached?.("color");
+    } else {
+      onTogglePopover("color");
     }
   };
 
@@ -349,27 +374,37 @@ export const TopNavBar: FC<TopNavBarProps> = ({
         {/* Layers */}
         <button
           type="button"
-          onClick={() => onTogglePopover("layers")}
-          aria-label="Layers Panel"
-          title="Layers"
-          className={`p-2 rounded-lg transition-colors ${
+          onClick={handleLayersClick}
+          aria-label={detachedPanels?.layers ? "Bring detached Layers to front" : "Layers Panel"}
+          title={detachedPanels?.layers ? "Layers (Detached - click to focus)" : "Layers"}
+          className={`p-2 rounded-lg transition-colors relative ${
             activePopover === "layers"
               ? "bg-zinc-800 text-zinc-100 shadow-sm"
               : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
           }`}
         >
           <Layers className="w-4 h-4" />
+          {detachedPanels?.layers && (
+            <span
+              title="Detached in standalone window"
+              className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-blue-400 shadow-sm"
+            />
+          )}
         </button>
 
         {/* Active Color Swatch */}
         <button
           type="button"
-          onClick={() => onTogglePopover("color")}
-          aria-label="Color Palette Picker"
-          title="Color Picker"
-          className="p-1 rounded-full hover:scale-105 transition-transform"
+          onClick={handleColorClick}
+          aria-label={detachedPanels?.color ? "Bring detached Color Studio to front" : "Color Palette Picker"}
+          title={detachedPanels?.color ? "Color Studio (Detached - click to focus)" : "Color Picker"}
+          className="p-1 rounded-full hover:scale-105 transition-transform relative"
         >
-          <span className="block w-6 h-6 rounded-full overflow-hidden border-2 border-zinc-700 shadow-inner bg-zinc-950 flex items-center justify-center">
+          <span
+            className={`block w-6 h-6 rounded-full overflow-hidden shadow-inner bg-zinc-950 flex items-center justify-center transition-all ${
+              detachedPanels?.color ? "border-2 border-blue-400 ring-2 ring-blue-500/30" : "border-2 border-zinc-700"
+            }`}
+          >
             <canvas
               ref={navSwatchCanvasRef}
               width={24}
@@ -377,6 +412,12 @@ export const TopNavBar: FC<TopNavBarProps> = ({
               className="w-full h-full block"
             />
           </span>
+          {detachedPanels?.color && (
+            <span
+              title="Detached in standalone window"
+              className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-blue-400 border border-zinc-950"
+            />
+          )}
         </button>
       </div>
     </header>

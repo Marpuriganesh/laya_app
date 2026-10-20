@@ -131,4 +131,25 @@ describe("useDocumentStore (Zustand)", () => {
     expect(currentLayers.length).toBe(3);
     expect(currentLayers.some((l) => l.id === newLayerId)).toBe(false);
   });
+
+  it("manages detachable panel state transitions", () => {
+    const { detachPanel, dockPanel, setPanelDetached, setActivePopover } = useDocumentStore.getState();
+
+    setActivePopover("color");
+    expect(useDocumentStore.getState().activePopover).toBe("color");
+
+    // Detach color panel
+    detachPanel("color");
+    expect(useDocumentStore.getState().detachedPanels.color).toBe(true);
+    expect(useDocumentStore.getState().activePopover).toBe("none");
+
+    // Dock color panel
+    dockPanel("color");
+    expect(useDocumentStore.getState().detachedPanels.color).toBe(false);
+    expect(useDocumentStore.getState().activePopover).toBe("color");
+
+    // Explicit set
+    setPanelDetached("layers", true);
+    expect(useDocumentStore.getState().detachedPanels.layers).toBe(true);
+  });
 });

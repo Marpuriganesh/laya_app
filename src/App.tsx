@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
+import { detachPanelWindow, focusDetachedWindow } from "@/ui/window/window_manager";
+import { DETACHABLE_PANEL_CONFIGS, type DetachablePanelId } from "@/types/window";
 import { TopNavBar } from "@/ui/components/TopNavBar";
 import { SidebarRail } from "@/ui/components/SidebarRail";
 import { CanvasViewport } from "@/ui/components/CanvasViewport";
@@ -8,8 +11,22 @@ import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
 import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
+import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
 
 export default function App() {
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const detachedPanel = urlParams?.get("detached") as DetachablePanelId | null;
+
+  if (detachedPanel) {
+    return <DetachedWindowRoot panelId={detachedPanel} />;
+  }
+
+  return <MainWindow />;
+}
+
+function MainWindow() {
+  useDetachedWindowSync({ role: "main" });
+
   const {
     document,
     activeTool,
@@ -19,6 +36,8 @@ export default function App() {
     transform,
     activePopover,
     softProofMode,
+    detachedPanels,
+    detachPanel,
     setDocument,
     setActiveTool,
     setActiveColor,
@@ -33,6 +52,16 @@ export default function App() {
   const handleClosePopover = useCallback(() => {
     setActivePopover("none");
   }, [setActivePopover]);
+
+  const handleDetachPanel = useCallback(async (panelId: DetachablePanelId) => {
+    detachPanel(panelId);
+    const config = DETACHABLE_PANEL_CONFIGS[panelId];
+    await detachPanelWindow(config);
+  }, [detachPanel]);
+
+  const handleFocusDetached = useCallback(async (panelId: DetachablePanelId) => {
+    await focusDetachedWindow(panelId);
+  }, []);
 
   const handleResetZoom = useCallback(() => {
     const scaleFactor = Math.min(
@@ -85,6 +114,8 @@ export default function App() {
         zoomScale={transform.scale}
         activePopover={activePopover}
         softProofMode={softProofMode}
+        detachedPanels={detachedPanels}
+        onFocusDetached={handleFocusDetached}
         onSelectTool={setActiveTool}
         onTogglePopover={togglePopover}
         onResetZoom={handleResetZoom}
@@ -116,27 +147,31 @@ export default function App() {
 
       {/* Floating Popovers & Dialogs */}
       <ColorPickerPopover
-        isOpen={activePopover === "color"}
+        isOpen={activePopover === "color" && !detachedPanels.color}
         activeColor={activeColor}
         onClose={handleClosePopover}
         onSelectColor={setActiveColor}
+        onDetach={() => handleDetachPanel("color")}
       />
 
       <LayersPopover
-        isOpen={activePopover === "layers"}
+        isOpen={activePopover === "layers" && !detachedPanels.layers}
         onClose={handleClosePopover}
+        onDetach={() => handleDetachPanel("layers")}
       />
 
       <BrushLibraryPopover
-        isOpen={activePopover === "brushLibrary"}
+        isOpen={activePopover === "brushLibrary" && !detachedPanels.brushLibrary}
         onClose={handleClosePopover}
         onOpenSettings={() => setActivePopover("brushSettings")}
+        onDetach={() => handleDetachPanel("brushLibrary")}
       />
 
       <BrushSettingsPopover
-        isOpen={activePopover === "brushSettings"}
+        isOpen={activePopover === "brushSettings" && !detachedPanels.brushSettings}
         onClose={handleClosePopover}
         activeColor={activeColor}
+        onDetach={() => handleDetachPanel("brushSettings")}
       />
 
       <NewCanvasModal

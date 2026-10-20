@@ -50,7 +50,7 @@ describe("Soft Proofing Engine", () => {
     });
 
     it("returns grayscale filter for 'grayscale-values'", () => {
-      expect(getCssFilterForSoftProof("grayscale-values")).toContain("grayscale(100%)");
+      expect(getCssFilterForSoftProof("grayscale-values")).toContain("softproof-values-bw");
     });
 
     it("returns saturation/contrast dampening filter for 'cmyk-print'", () => {

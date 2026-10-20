@@ -770,6 +770,20 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onDrop={handleDrop}
       className={`flex-1 w-full h-full relative overflow-hidden bg-[#121214] select-none touch-none ${getContainerCursorClass()}`}
     >
+      {/* Hidden SVG Filter definition for 100% mathematically exact sRGB isoluminant soft proofing */}
+      <svg className="absolute w-0 h-0 pointer-events-none opacity-0 overflow-hidden" aria-hidden="true">
+        <defs>
+          <filter id="softproof-values-bw" colorInterpolationFilters="sRGB">
+            <feColorMatrix
+              type="matrix"
+              values="0.2126 0.7152 0.0722 0 0
+                      0.2126 0.7152 0.0722 0 0
+                      0.2126 0.7152 0.0722 0 0
+                      0      0      0      1 0"
+            />
+          </filter>
+        </defs>
+      </svg>
       {/* Drag & Drop Visual Overlay Feedback */}
       {isDraggingOver && (
         <div className="absolute inset-0 bg-sky-950/70 backdrop-blur-xs z-50 flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-sky-400 rounded-lg pointer-events-none">

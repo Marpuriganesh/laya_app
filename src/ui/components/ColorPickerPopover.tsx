@@ -13,7 +13,12 @@ import {
   Shapes,
   GripVertical,
   Palette,
+  ExternalLink,
+  Minimize2,
+  Pin,
+  PinOff,
 } from "lucide-react";
+import { toggleWindowAlwaysOnTop } from "@/ui/window/window_manager";
 import {
   hsvToRgb,
   rgbToHsv,
@@ -57,6 +62,9 @@ interface ColorPickerPopoverProps {
   activeColor: string;
   onClose: () => void;
   onSelectColor: (color: string) => void;
+  isDetached?: boolean;
+  onDetach?: () => void;
+  onDock?: () => void;
 }
 
 type ShapeMode = "circle" | "square" | "triangle";
@@ -67,7 +75,18 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   activeColor,
   onClose,
   onSelectColor,
+  isDetached = false,
+  onDetach,
+  onDock,
 }) => {
+  const [isPinned, setIsPinned] = useState(false);
+
+  const handleTogglePin = async () => {
+    const nextPinned = !isPinned;
+    await toggleWindowAlwaysOnTop(nextPinned);
+    setIsPinned(nextPinned);
+  };
+
   // Shape mode: circle | square | triangle
   const [shapeMode, setShapeMode] = useState<ShapeMode>("circle");
 
@@ -1086,16 +1105,21 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.16, ease: "easeOut" }}
-          style={mainPopoverWindowStyle}
-          className="fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
+          style={isDetached ? undefined : mainPopoverWindowStyle}
+          className={
+            isDetached
+              ? "h-screen w-screen bg-[#18181B] border border-zinc-800/80 rounded-2xl shadow-2xl flex flex-col overflow-y-auto overflow-x-hidden select-none"
+              : "fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
+          }
         >
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
           <div
-            {...mainHeaderDragProps}
+            {...(isDetached ? {} : mainHeaderDragProps)}
+            data-tauri-drag-region
             className="h-[46px] px-4.5 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/5 select-none"
-            title="Drag header to move, double-click to reset position"
+            title={isDetached ? "Drag header to move window across monitors" : "Drag header to move, double-click to reset position"}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pointer-events-none">
               <GripVertical className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300 transition-colors" />
               <span className="text-xs font-medium text-zinc-400 tracking-wide">
                 {shapeMode === "circle"
@@ -1107,14 +1131,61 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   : "Triangle Wheel (Classic)"}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close color picker"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+
+            <div className="flex items-center gap-1">
+              {/* If detached: Pin on top button */}
+              {isDetached && (
+                <button
+                  type="button"
+                  onClick={handleTogglePin}
+                  title={isPinned ? "Unpin window" : "Pin window on top"}
+                  aria-label={isPinned ? "Unpin window" : "Pin window on top"}
+                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+                    isPinned
+                      ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                      : "text-[#605F5F] hover:text-white hover:bg-zinc-800/60"
+                  }`}
+                >
+                  {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                </button>
+              )}
+
+              {/* If detached: Dock back button */}
+              {isDetached && onDock && (
+                <button
+                  type="button"
+                  onClick={onDock}
+                  title="Dock back to main application window"
+                  aria-label="Dock back to main application window"
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors cursor-pointer"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* If in-canvas floating popover: Detach button */}
+              {!isDetached && onDetach && (
+                <button
+                  type="button"
+                  onClick={onDetach}
+                  title="Detach color picker into standalone window"
+                  aria-label="Detach color picker into standalone window"
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close color picker"
+                className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Layer 2: Mode & Contextual Switcher Bar (h: 49px) */}

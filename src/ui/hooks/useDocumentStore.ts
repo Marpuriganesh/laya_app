@@ -10,6 +10,7 @@ import {
   type LayerBlendMode,
   createDefaultLayerStack,
 } from "@/types/layer";
+import type { DetachablePanelId } from "@/types/window";
 
 export interface DocumentState {
   document: DocumentConfiguration;
@@ -21,6 +22,7 @@ export interface DocumentState {
   activePopover: PopoverType;
   softProofMode: SoftProofMode;
   layerStack: LayerStack;
+  detachedPanels: Record<DetachablePanelId, boolean>;
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
@@ -32,6 +34,12 @@ export interface DocumentState {
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
   resetTransform: () => void;
+  setLayerStack: (layerStack: LayerStack) => void;
+
+  // Detached Window State Management
+  detachPanel: (panelId: DetachablePanelId) => void;
+  dockPanel: (panelId: DetachablePanelId) => void;
+  setPanelDetached: (panelId: DetachablePanelId, detached: boolean) => void;
 
   // Layer Management Actions
   addLayer: () => void;
@@ -65,6 +73,12 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   activePopover: "none",
   softProofMode: "none",
   layerStack: createDefaultLayerStack(),
+  detachedPanels: {
+    color: false,
+    layers: false,
+    brushLibrary: false,
+    brushSettings: false,
+  },
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -82,6 +96,33 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     set({
       transform: { scale: 0.8, panX: 0, panY: 0 },
     }),
+  setLayerStack: (layerStack) => set({ layerStack }),
+
+  detachPanel: (panelId: DetachablePanelId) =>
+    set((state) => ({
+      detachedPanels: {
+        ...state.detachedPanels,
+        [panelId]: true,
+      },
+      activePopover: state.activePopover === panelId ? "none" : state.activePopover,
+    })),
+
+  dockPanel: (panelId: DetachablePanelId) =>
+    set((state) => ({
+      detachedPanels: {
+        ...state.detachedPanels,
+        [panelId]: false,
+      },
+      activePopover: panelId,
+    })),
+
+  setPanelDetached: (panelId: DetachablePanelId, detached: boolean) =>
+    set((state) => ({
+      detachedPanels: {
+        ...state.detachedPanels,
+        [panelId]: detached,
+      },
+    })),
 
   addLayer: () =>
     set((state) => {

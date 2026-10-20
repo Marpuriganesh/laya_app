@@ -1,5 +1,5 @@
 import type { ReactNode, FC } from "react";
-import { X, GripHorizontal } from "lucide-react";
+import { X, GripHorizontal, ExternalLink } from "lucide-react";
 import { useDraggableWindow } from "@/ui/hooks/useDraggableWindow";
 
 export interface FloatingWindowPanelProps {
@@ -14,6 +14,7 @@ export interface FloatingWindowPanelProps {
   anchorClassName?: string;
   zIndex?: number;
   allowPopout?: boolean;
+  onPopout?: () => void;
   headerActions?: ReactNode;
   children: ReactNode;
 }
@@ -33,6 +34,8 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
   initialOffset = { x: 0, y: 0 },
   anchorClassName = "fixed right-4 top-16",
   zIndex = 40,
+  allowPopout = false,
+  onPopout,
   headerActions,
   children,
 }) => {
@@ -71,6 +74,19 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
         {/* Header Action Controls */}
         <div className="flex items-center gap-1">
           {headerActions}
+
+          {/* Detach into Standalone Window */}
+          {allowPopout && onPopout && (
+            <button
+              type="button"
+              onClick={onPopout}
+              title="Detach panel into standalone window"
+              aria-label={`Detach ${title} into standalone window`}
+              className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           {/* Close Window */}
           <button

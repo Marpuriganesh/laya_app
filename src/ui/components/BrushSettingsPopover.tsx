@@ -6,11 +6,13 @@ interface BrushSettingsPopoverProps {
   isOpen: boolean;
   onClose: () => void;
   activeColor?: string;
+  onDetach?: () => void;
 }
 
 export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
   isOpen,
   onClose,
+  onDetach,
 }) => {
   return (
     <FloatingWindowPanel
@@ -18,8 +20,10 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
       icon={<SlidersHorizontal className="w-4 h-4 text-zinc-300" />}
       isOpen={isOpen}
       onClose={onClose}
-      width={280}
-      height={220}
+      width={300}
+      height={320}
+      allowPopout={true}
+      onPopout={onDetach}
       anchorClassName="fixed right-4 top-16"
     >
       <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-400 h-full select-none">
