@@ -5,8 +5,10 @@
 //! analytical radial softness dab generation, and Porter-Duff Over alpha compositing.
 
 pub mod brush;
+pub mod wasm;
 
 pub use brush::*;
+pub use wasm::*;
 
 
 #[cfg(test)]

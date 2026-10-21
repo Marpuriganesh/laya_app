@@ -14,6 +14,7 @@ import { MemoryRasterBuffer } from "./raster/memory_raster_buffer";
 import { parseKritaPreset } from "./brush/kpp_parser";
 import { parseKritaBundle } from "./brush/bundle_parser";
 import { globalRustBrushBridge } from "./brush/rust_brush_bridge";
+import { globalWasmBrushBridge } from "./wasm/wasm_brush_bridge";
 
 /**
  * Creates default brush preset configuration.
@@ -105,6 +106,12 @@ export class DrawingAppEngine implements IDrawingEngine {
     this.ctx = canvasElement.getContext("2d", { willReadFrequently: true });
     this.rasterTarget = new Canvas2dRasterTarget(canvasElement);
     this.syncBrushConfigToRust();
+    void globalWasmBrushBridge.initialize(canvasElement.width, canvasElement.height).then((success) => {
+      if (success) {
+        globalWasmBrushBridge.resizeCanvas(canvasElement.width, canvasElement.height, 0, 0, 0, 0);
+        this.syncBrushConfigToRust();
+      }
+    });
   }
 
   public unmount(): void {
@@ -164,6 +171,11 @@ export class DrawingAppEngine implements IDrawingEngine {
     this.lastPoint = point;
     if (!this.ctx) return;
 
+    if (globalWasmBrushBridge.ready) {
+      globalWasmBrushBridge.beginStroke(point, this.ctx);
+      return;
+    }
+
     const ctx = this.ctx;
     ctx.save();
     ctx.globalCompositeOperation = this.blendMode === "erase" ? "destination-out" : "source-over";
@@ -182,6 +194,12 @@ export class DrawingAppEngine implements IDrawingEngine {
   public extendStroke(point: StrokePoint): void {
     if (!this.lastPoint || !this.ctx) {
       this.beginStroke(point);
+      return;
+    }
+
+    if (globalWasmBrushBridge.ready) {
+      globalWasmBrushBridge.extendStroke(point, this.ctx);
+      this.lastPoint = point;
       return;
     }
 
@@ -211,12 +229,21 @@ export class DrawingAppEngine implements IDrawingEngine {
   public extendStrokeBatch(points: readonly StrokePoint[]): void {
     if (!this.ctx || points.length === 0) return;
 
+    if (globalWasmBrushBridge.ready) {
+      globalWasmBrushBridge.extendStrokeBatch(points, this.ctx);
+      this.lastPoint = points[points.length - 1];
+      return;
+    }
+
     for (const point of points) {
       this.extendStroke(point);
     }
   }
 
   public endStroke(): void {
+    if (globalWasmBrushBridge.ready && this.ctx) {
+      globalWasmBrushBridge.finishStroke(this.ctx);
+    }
     this.lastPoint = null;
   }
 
@@ -227,6 +254,8 @@ export class DrawingAppEngine implements IDrawingEngine {
       this.brushColor.b,
       Math.round(this.brushColor.a * 255),
     ] as [number, number, number, number];
+    const isErase = this.blendMode === "erase";
+
     globalRustBrushBridge.setBrushConfig({
       diameter: this.brushSize,
       spacing: this.brushSpacing,
@@ -236,7 +265,19 @@ export class DrawingAppEngine implements IDrawingEngine {
       flow: this.brushFlow,
       size_by_pressure: this.sizeByPressure,
       opacity_by_pressure: this.opacityByPressure,
-      is_erase: this.blendMode === "erase",
+      is_erase: isErase,
+    });
+
+    globalWasmBrushBridge.setBrushConfig({
+      diameter: this.brushSize,
+      spacing: this.brushSpacing,
+      softness: this.brushSoftness,
+      color: rgb,
+      opacity: this.brushOpacity,
+      flow: this.brushFlow,
+      sizeByPressure: this.sizeByPressure,
+      opacityByPressure: this.opacityByPressure,
+      isErase,
     });
   }
 
@@ -331,12 +372,14 @@ export class DrawingAppEngine implements IDrawingEngine {
       this.canvasElement.width = widthPx;
       this.canvasElement.height = heightPx;
     }
+    globalWasmBrushBridge.resizeCanvas(widthPx, heightPx, 0, 0, 0, 0);
   }
 
   public clearCanvas(): void {
     if (this.ctx && this.canvasElement) {
       this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
     }
+    globalWasmBrushBridge.clear(0, 0, 0, 0);
     globalRustBrushBridge.clearCanvas();
   }
 
