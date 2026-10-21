@@ -23,6 +23,7 @@ import {
 import { useTheme } from "@/ui/theme/ThemeProvider";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { CurveEditor } from "@/ui/components/CurveEditor";
+import { triggerNativeUiRectsSync } from "@/ui/hooks/useNativeUiRectsSync";
 import type { ActiveTool, PopoverType, SoftProofMode } from "@/types/ui";
 import type { DocumentConfiguration } from "@/types/document";
 import type { DetachablePanelId } from "@/types/window";
@@ -98,6 +99,13 @@ export const TopNavBar: FC<TopNavBarProps> = ({
       return () => window.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isActionsMenuOpen]);
+
+  // Synchronize interactive UI blocking bounding boxes with desktop AppKit overlay
+  useEffect(() => {
+    triggerNativeUiRectsSync();
+    const t = setTimeout(triggerNativeUiRectsSync, 50);
+    return () => clearTimeout(t);
+  }, [isActionsMenuOpen, isCurveModalOpen, isProofSubmenuOpen]);
 
   const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -243,7 +251,13 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           </button>
 
           {isActionsMenuOpen && (
-            <div className="absolute top-full mt-2 left-0 w-64 p-1.5 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-white/5 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
+            <div
+              data-native-ui="settings-menu"
+              role="menu"
+              aria-label="Settings and Actions"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute top-full mt-2 left-0 w-64 p-1.5 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-white/5 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100"
+            >
               {/* Document Summary */}
               <div className="px-2.5 py-1.5 border-b border-zinc-100 dark:border-white/5 mb-0.5">
                 <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">
@@ -392,7 +406,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
                 </div>
               </div>
 
-              <div className="h-px bg-zinc-100 dark:border-white/5 my-0.5" />
+              <div className="h-px bg-blue-300 dark:bg-blue-800/50 my-0.5" />
 
               {/* Stylus Pressure Curve Trigger */}
               <button
@@ -416,7 +430,10 @@ export const TopNavBar: FC<TopNavBarProps> = ({
               </button>
 
               {isCurveModalOpen && (
-                <div className="p-2 bg-zinc-50/90 dark:bg-zinc-800/40 rounded-xl mt-1 border border-zinc-200/80 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
+                <div
+                  data-native-ui="pressure-curve-editor"
+                  className="p-2 bg-zinc-50/90 dark:bg-zinc-800/40 rounded-xl mt-1 border border-zinc-200/80 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100"
+                >
                   <CurveEditor
                     value={globalPressureCurve}
                     onChange={setGlobalPressureCurve}
