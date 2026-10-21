@@ -6,7 +6,7 @@ import {
   type FC,
   type PointerEvent,
 } from "react";
-import { PenTool, FolderDown } from "lucide-react";
+import { FolderDown, Plus, Minus, Maximize2 } from "lucide-react";
 import type { DocumentConfiguration } from "@/types/document";
 import type { ActiveTool, CanvasTransform, SoftProofMode } from "@/types/ui";
 import { getCssFilterForSoftProof } from "@/engine/color/soft_proofing";
@@ -14,7 +14,6 @@ import {
   calculateFocalZoom,
   calculateFitToScreen,
   calculateTwoFingerTransform,
-  snapRotationAngle,
   type TwoFingerGestureState,
   type Point2D,
 } from "@/engine/math/canvas_transform";
@@ -25,6 +24,8 @@ import {
 } from "@/input/pointer/pointer_event_normalizer";
 import { hexToRgb } from "@/engine/color/color_conversions";
 import type { StrokePoint } from "@/types/stroke";
+import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 
 interface CanvasViewportProps {
   document: DocumentConfiguration;
@@ -36,7 +37,6 @@ interface CanvasViewportProps {
   softProofMode: SoftProofMode;
   onTransformChange: (transform: CanvasTransform) => void;
   stylusOnlyMode?: boolean;
-  onStylusOnlyModeChange?: (enabled: boolean) => void;
 }
 
 export const CanvasViewport: FC<CanvasViewportProps> = ({
@@ -49,47 +49,58 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   softProofMode,
   onTransformChange,
   stylusOnlyMode: initialStylusOnlyMode,
-  onStylusOnlyModeChange,
 }) => {
+  const isTauriApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const artboardRef = useRef<HTMLDivElement>(null);
 
-  // Palm Rejection & Stylus-Only Mode (defaults to true for touch/pen ergonomics)
-  const [stylusOnlyMode, setStylusOnlyMode] = useState<boolean>(initialStylusOnlyMode ?? true);
+  const syncNativeArtboard = useCallback(() => {
+    if (!isTauriApp || !artboardRef.current) return;
+    const rect = artboardRef.current.getBoundingClientRect();
+    globalRustBrushBridge.updateArtboardRect(
+      rect.left,
+      rect.top,
+      rect.width,
+      rect.height
+    );
+  }, [isTauriApp]);
+
+  const { palmRejection } = useDocumentStore();
+  const stylusOnlyMode = initialStylusOnlyMode ?? palmRejection;
   const stylusOnlyModeRef = useRef<boolean>(stylusOnlyMode);
 
   useEffect(() => {
     stylusOnlyModeRef.current = stylusOnlyMode;
   }, [stylusOnlyMode]);
 
-  useEffect(() => {
-    if (initialStylusOnlyMode !== undefined) {
-      setStylusOnlyMode(initialStylusOnlyMode);
-    }
-  }, [initialStylusOnlyMode]);
-
   // Interaction States
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
-  const [isRKeyDown, setIsRKeyDown] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isScrubbingZoom, setIsScrubbingZoom] = useState(false);
+  const scrubbyZoomStateRef = useRef<{
+    startX: number;
+    startY: number;
+    startScale: number;
+    focalX: number;
+    focalY: number;
+    isAlt: boolean;
+  } | null>(null);
 
   // Refs for high-frequency tracking without stale closures
   const transformRef = useRef<CanvasTransform>(transform);
   const isPanningRef = useRef(false);
   const isSpaceDownRef = useRef(false);
-  const isRKeyDownRef = useRef(false);
-  const isRotatingRef = useRef(false);
-  const rotateStartAngleRef = useRef(0);
-  const rotateInitialAngleRef = useRef(0);
   const isDrawingRef = useRef(false);
   const drawingPointerIdRef = useRef<number | null>(null);
   const drawingPointerTypeRef = useRef<string | null>(null);
   const lastStrokePointRef = useRef<StrokePoint | null>(null);
 
-  // Multi-Touch tracking for two-finger gestures (pinch-to-zoom, pan, rotate)
+  // Multi-Touch tracking for two-finger gestures (pinch-to-zoom & pan)
   const activePointersRef = useRef<
     Map<number, { clientX: number; clientY: number; pointerType: string }>
   >(new Map());
@@ -105,14 +116,13 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       rafIdRef.current = requestAnimationFrame(() => {
         rafIdRef.current = null;
         if (pendingDomTransformRef.current && wrapperRef.current) {
-          const { panX, panY, scale, rotation } = pendingDomTransformRef.current;
-          wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale}) rotate(${
-            rotation ?? 0
-          }deg)`;
+          const { panX, panY, scale } = pendingDomTransformRef.current;
+          wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+          syncNativeArtboard();
         }
       });
     }
-  }, []);
+  }, [syncNativeArtboard]);
 
   const commitDomTransform = useCallback(() => {
     if (rafIdRef.current !== null) {
@@ -120,28 +130,25 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       rafIdRef.current = null;
     }
     if (wrapperRef.current) {
-      const { panX, panY, scale, rotation } = transformRef.current;
-      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale}) rotate(${
-        rotation ?? 0
-      }deg)`;
+      const { panX, panY, scale } = transformRef.current;
+      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+      syncNativeArtboard();
     }
     onTransformChange(transformRef.current);
-  }, [onTransformChange]);
+  }, [onTransformChange, syncNativeArtboard]);
 
   useEffect(() => {
     transformRef.current = transform;
     if (
       wrapperRef.current &&
       !isPanningRef.current &&
-      !isRotatingRef.current &&
       !gestureStateRef.current
     ) {
-      const { panX, panY, scale, rotation } = transform;
-      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale}) rotate(${
-        rotation ?? 0
-      }deg)`;
+      const { panX, panY, scale } = transform;
+      wrapperRef.current.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+      syncNativeArtboard();
     }
-  }, [transform]);
+  }, [transform, syncNativeArtboard]);
 
   useEffect(() => {
     isPanningRef.current = isPanning;
@@ -150,10 +157,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   useEffect(() => {
     isSpaceDownRef.current = isSpaceDown;
   }, [isSpaceDown]);
-
-  useEffect(() => {
-    isRKeyDownRef.current = isRKeyDown;
-  }, [isRKeyDown]);
 
   // Fit document into viewport
   const fitToScreen = useCallback(
@@ -168,9 +171,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         doc.height,
         paddingRatio
       );
+      transformRef.current = fitTransform;
+      applyTransformToDom(fitTransform);
       onTransformChange(fitTransform);
     },
-    [doc.width, doc.height, onTransformChange]
+    [doc.width, doc.height, applyTransformToDom, onTransformChange]
   );
 
   // Zoom to 100% (1:1 pixel scale) centered
@@ -181,8 +186,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const targetScale = 1.0;
     const panX = (clientWidth - doc.width * targetScale) * 0.5;
     const panY = (clientHeight - doc.height * targetScale) * 0.5;
-    onTransformChange({ scale: targetScale, panX, panY, rotation: transformRef.current.rotation });
-  }, [doc.width, doc.height, onTransformChange]);
+    const targetTransform = { scale: targetScale, panX, panY, rotation: 0 };
+    transformRef.current = targetTransform;
+    applyTransformToDom(targetTransform);
+    onTransformChange(targetTransform);
+  }, [doc.width, doc.height, applyTransformToDom, onTransformChange]);
 
   // Zoom by a multiplicative factor relative to container center
   const zoomByFactor = useCallback(
@@ -199,9 +207,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         centerY,
         targetScale
       );
+      transformRef.current = nextTransform;
+      applyTransformToDom(nextTransform);
       onTransformChange(nextTransform);
     },
-    [onTransformChange]
+    [applyTransformToDom, onTransformChange]
   );
 
   // Mount Canvas to Drawing Engine & initialize background on document size or color change
@@ -241,16 +251,37 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   // Center canvas on initial mount or when document dimension changes
   useEffect(() => {
     fitToScreen(0.85);
-  }, [doc.id, doc.width, doc.height, fitToScreen]);
+    syncNativeArtboard();
+  }, [doc.id, doc.width, doc.height, fitToScreen, syncNativeArtboard]);
+
+  // Synchronize document dimensions to native Rust canvas engine
+  useEffect(() => {
+    if (isTauriApp) {
+      globalRustBrushBridge.setDocumentSize(doc.width, doc.height);
+    }
+  }, [doc.width, doc.height, isTauriApp]);
+
+  // Synchronize pan and tool navigation state to native AppKit overlay
+  useEffect(() => {
+    if (isTauriApp) {
+      const isNavigating =
+        isSpaceDown ||
+        isPanning ||
+        isScrubbingZoom ||
+        activeTool === "zoom" ||
+        activeTool === "hand";
+      globalRustBrushBridge.setPanActive(isNavigating);
+    }
+  }, [isSpaceDown, isPanning, isScrubbingZoom, activeTool, isTauriApp]);
 
   // Listen for window resize
   useEffect(() => {
     const handleResize = () => {
-      // Auto-fit on window resize if desired
+      syncNativeArtboard();
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [syncNativeArtboard]);
 
   // Keyboard navigation shortcuts: Spacebar pan, R-key rotate, & Cmd/Ctrl + 0/1/+/-
   useEffect(() => {
@@ -263,8 +294,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault();
         setIsSpaceDown(true);
-      } else if (e.code === "KeyR" && !e.repeat) {
-        setIsRKeyDown(true);
       }
 
       // Keyboard Zoom Shortcuts
@@ -288,20 +317,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         setIsSpaceDown(false);
-      } else if (e.code === "KeyR") {
-        setIsRKeyDown(false);
-        if (isRotatingRef.current) {
-          isRotatingRef.current = false;
-          commitDomTransform();
-        }
       }
     };
 
     const handleWindowBlur = () => {
       setIsSpaceDown(false);
-      setIsRKeyDown(false);
       setIsPanning(false);
-      isRotatingRef.current = false;
       activePointersRef.current.clear();
       gestureStateRef.current = null;
     };
@@ -340,14 +361,19 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           mouseY,
           targetScale
         );
+        transformRef.current = nextTransform;
+        applyTransformToDom(nextTransform);
         onTransformChange(nextTransform);
       } else {
-        onTransformChange({
+        const nextTransform: CanvasTransform = {
           scale: transformRef.current.scale,
           panX: transformRef.current.panX - e.deltaX,
           panY: transformRef.current.panY - e.deltaY,
           rotation: transformRef.current.rotation,
-        });
+        };
+        transformRef.current = nextTransform;
+        applyTransformToDom(nextTransform);
+        onTransformChange(nextTransform);
       }
     };
 
@@ -355,16 +381,16 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     return () => {
       container.removeEventListener("wheel", handleNativeWheel);
     };
-  }, [onTransformChange]);
+  }, [applyTransformToDom, onTransformChange]);
 
-  // Computes screen-to-canvas coordinate unprojection accounting for container offset, zoom, and rotation
+  // Computes screen-to-canvas coordinate unprojection accounting for container offset and zoom
   const getEffectiveTransform = useCallback((): CanvasTransform => {
     const containerRect = containerRef.current?.getBoundingClientRect();
     return {
       scale: transformRef.current.scale,
       panX: (containerRect?.left ?? 0) + transformRef.current.panX,
       panY: (containerRect?.top ?? 0) + transformRef.current.panY,
-      rotation: transformRef.current.rotation ?? 0,
+      rotation: 0,
     };
   }, []);
 
@@ -400,23 +426,28 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     }
   };
 
-  const startRotating = (
+  const startScrubbyZoom = (
     clientX: number,
     clientY: number,
     pointerId: number,
-    targetElement: HTMLElement | HTMLCanvasElement
+    targetElement: HTMLElement | HTMLCanvasElement,
+    isAlt = false
   ) => {
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const centerX = rect.width * 0.5;
-    const centerY = rect.height * 0.5;
-    const mouseX = clientX - rect.left;
-    const mouseY = clientY - rect.top;
+    const focalX = clientX - rect.left;
+    const focalY = clientY - rect.top;
 
-    rotateStartAngleRef.current = Math.atan2(mouseY - centerY, mouseX - centerX);
-    rotateInitialAngleRef.current = transformRef.current.rotation ?? 0;
-    isRotatingRef.current = true;
+    scrubbyZoomStateRef.current = {
+      startX: clientX,
+      startY: clientY,
+      startScale: transformRef.current.scale,
+      focalX,
+      focalY,
+      isAlt,
+    };
+    setIsScrubbingZoom(true);
     try {
       targetElement.setPointerCapture(pointerId);
     } catch {
@@ -427,7 +458,8 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   // --- Pointer Event Handlers (Canvas & Container) ---
 
   const handleContainerPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.target !== containerRef.current) return;
+    const targetEl = e.target as HTMLElement;
+    if (targetEl?.closest?.('[data-native-ui="zoom-pill"]')) return;
 
     activePointersRef.current.set(e.pointerId, {
       clientX: e.clientX,
@@ -435,12 +467,15 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       pointerType: e.pointerType,
     });
 
-    if (e.button === 0 || e.button === 1) {
-      if (isRKeyDownRef.current && e.pointerType === "mouse") {
-        startRotating(e.clientX, e.clientY, e.pointerId, e.currentTarget);
-      } else {
-        startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
-      }
+    // 1. Scrubby zoom if Zoom tool is active
+    if (activeTool === "zoom") {
+      startScrubbyZoom(e.clientX, e.clientY, e.pointerId, e.currentTarget, e.altKey);
+      return;
+    }
+
+    // 2. Viewport pan if Hand tool, Spacebar, middle click, or primary drag on container
+    if (e.button === 0 || e.button === 1 || activeTool === "hand" || isSpaceDownRef.current || e.altKey) {
+      startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
     }
   };
 
@@ -470,6 +505,10 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         isPanningRef.current = false;
         setIsPanning(false);
       }
+      if (scrubbyZoomStateRef.current) {
+        scrubbyZoomStateRef.current = null;
+        setIsScrubbingZoom(false);
+      }
 
       const p1 = getContainerCoordinates(
         activeTouches[0][1].clientX,
@@ -485,20 +524,18 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         initialScale: transformRef.current.scale,
         initialCentroid: { x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5 },
         initialPan: { x: transformRef.current.panX, y: transformRef.current.panY },
-        initialAngle: Math.atan2(p2.y - p1.y, p2.x - p1.x),
-        initialRotation: transformRef.current.rotation ?? 0,
       };
       return;
     }
 
-    // 2. Desktop Shortcut: 'R' key held + mouse drag to rotate canvas
-    if (isRKeyDownRef.current && e.pointerType === "mouse") {
-      startRotating(e.clientX, e.clientY, e.pointerId, e.currentTarget);
+    // 2. Zoom Tool: Scrubby zoom on canvas
+    if (activeTool === "zoom") {
+      startScrubbyZoom(e.clientX, e.clientY, e.pointerId, e.currentTarget, e.altKey);
       return;
     }
 
-    // 3. Pan via Middle Click (button 1), Spacebar hold, or Alt key
-    if (e.button === 1 || e.buttons === 4 || isSpaceDownRef.current || e.altKey) {
+    // 3. Pan via Middle Click (button 1), Spacebar hold, Alt key, or Hand tool
+    if (e.button === 1 || e.buttons === 4 || isSpaceDownRef.current || e.altKey || activeTool === "hand") {
       startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
       return;
     }
@@ -548,7 +585,25 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       });
     }
 
-    // 1. Two-Finger Pinch-to-Zoom, Pan, and Rotate Gesture
+    // 0. Scrubby Zoom Gesture (Z-key spring-loaded hold or Zoom tool active)
+    if (scrubbyZoomStateRef.current) {
+      const { startX, startScale, focalX, focalY } = scrubbyZoomStateRef.current;
+      const deltaX = e.clientX - startX;
+      // Exponential zoom curve: 1.006^deltaX (dragging right zooms in, left zooms out)
+      const factor = Math.pow(1.006, deltaX);
+      const targetScale = Math.max(0.02, Math.min(32.0, startScale * factor));
+      const nextTransform = calculateFocalZoom(
+        transformRef.current,
+        focalX,
+        focalY,
+        targetScale
+      );
+      transformRef.current = nextTransform;
+      applyTransformToDom(nextTransform);
+      return;
+    }
+
+    // 1. Two-Finger Pinch-to-Zoom & Pan Gesture (Rotation disabled per user request)
     const activeTouches = Array.from(activePointersRef.current.entries()).filter(
       ([, p]) => p.pointerType === "touch"
     );
@@ -563,47 +618,23 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         activeTouches[1][1].clientY
       );
 
-      const nextTransform = calculateTwoFingerTransform(gestureStateRef.current, p1, p2);
+      const rawTransform = calculateTwoFingerTransform(gestureStateRef.current, p1, p2);
+      const nextTransform: CanvasTransform = {
+        ...rawTransform,
+        rotation: 0,
+      };
       transformRef.current = nextTransform;
       applyTransformToDom(nextTransform);
       return;
     }
 
-    // 2. Desktop 'R' Key Rotation
-    if (isRotatingRef.current) {
-      const container = containerRef.current;
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const centerX = rect.width * 0.5;
-        const centerY = rect.height * 0.5;
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-
-        const currentAngle = Math.atan2(mouseY - centerY, mouseX - centerX);
-        let deltaAngle = currentAngle - rotateStartAngleRef.current;
-        while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-        while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-
-        const deltaDegrees = (deltaAngle * 180) / Math.PI;
-        const rawRotation = rotateInitialAngleRef.current + deltaDegrees;
-        const snappedRotation = snapRotationAngle(rawRotation);
-
-        const nextTransform: CanvasTransform = {
-          ...transformRef.current,
-          rotation: snappedRotation,
-        };
-        transformRef.current = nextTransform;
-        applyTransformToDom(nextTransform);
-      }
-      return;
-    }
-
-    // 3. Viewport Panning
+    // 2. Viewport Panning
     if (isPanningRef.current) {
       const nextTransform: CanvasTransform = {
         ...transformRef.current,
         panX: e.clientX - panStart.x,
         panY: e.clientY - panStart.y,
+        rotation: 0,
       };
       transformRef.current = nextTransform;
       applyTransformToDom(nextTransform);
@@ -623,21 +654,58 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       lastStrokePointRef.current
     );
 
-    for (const point of points) {
-      if (lastStrokePointRef.current) {
-        const deltaX = point.canvasX - lastStrokePointRef.current.canvasX;
-        const deltaY = point.canvasY - lastStrokePointRef.current.canvasY;
-        if (deltaX * deltaX + deltaY * deltaY < 0.25) {
-          continue;
-        }
+    if (globalDrawingEngine.extendStrokeBatch) {
+      globalDrawingEngine.extendStrokeBatch(points);
+      if (points.length > 0) {
+        lastStrokePointRef.current = points[points.length - 1];
       }
-      globalDrawingEngine.extendStroke(point);
-      lastStrokePointRef.current = point;
+    } else {
+      for (const point of points) {
+        if (lastStrokePointRef.current) {
+          const deltaX = point.canvasX - lastStrokePointRef.current.canvasX;
+          const deltaY = point.canvasY - lastStrokePointRef.current.canvasY;
+          if (deltaX * deltaX + deltaY * deltaY < 0.25) {
+            continue;
+          }
+        }
+        globalDrawingEngine.extendStroke(point);
+        lastStrokePointRef.current = point;
+      }
     }
   };
 
   const handlePointerUp = (e: PointerEvent<HTMLDivElement | HTMLCanvasElement>) => {
     activePointersRef.current.delete(e.pointerId);
+
+    // Finalize Scrubby Zoom
+    if (scrubbyZoomStateRef.current) {
+      const { startX, startY, focalX, focalY, isAlt } = scrubbyZoomStateRef.current;
+      const distanceMoved = Math.hypot(e.clientX - startX, e.clientY - startY);
+      // Quick tap without dragging: step-zoom in 1.33x (or step-zoom out 0.75x if Alt held)
+      if (distanceMoved < 6) {
+        const stepFactor = isAlt || e.altKey ? 0.75 : 1.333;
+        const targetScale = Math.max(0.02, Math.min(32.0, transformRef.current.scale * stepFactor));
+        const nextTransform = calculateFocalZoom(
+          transformRef.current,
+          focalX,
+          focalY,
+          targetScale
+        );
+        transformRef.current = nextTransform;
+        applyTransformToDom(nextTransform);
+      }
+      commitDomTransform();
+      scrubbyZoomStateRef.current = null;
+      setIsScrubbingZoom(false);
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore
+      }
+      return;
+    }
 
     const activeTouches = Array.from(activePointersRef.current.values()).filter(
       (p) => p.pointerType === "touch"
@@ -646,19 +714,6 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     if (activeTouches.length < 2 && gestureStateRef.current) {
       gestureStateRef.current = null;
       commitDomTransform();
-    }
-
-    if (isRotatingRef.current) {
-      isRotatingRef.current = false;
-      try {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      } catch {
-        // Ignore
-      }
-      commitDomTransform();
-      return;
     }
 
     if (isPanningRef.current) {
@@ -744,15 +799,17 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
   // Cursor styling based on active mode
   const getContainerCursorClass = () => {
-    if (isRotatingRef.current || isRKeyDown) return "cursor-grab";
-    if (isPanning) return "cursor-grabbing";
+    if (isScrubbingZoom) return "cursor-col-resize";
+    if (activeTool === "zoom") return "cursor-zoom-in";
+    if (isPanning || activeTool === "hand") return "cursor-grabbing";
     if (isSpaceDown) return "cursor-grab";
     return "";
   };
 
   const getCanvasCursorClass = () => {
-    if (isRotatingRef.current || isRKeyDown) return "cursor-grab";
-    if (isPanning) return "cursor-grabbing";
+    if (isScrubbingZoom) return "cursor-col-resize";
+    if (activeTool === "zoom") return "cursor-zoom-in";
+    if (isPanning || activeTool === "hand") return "cursor-grabbing";
     if (isSpaceDown) return "cursor-grab";
     return "cursor-crosshair";
   };
@@ -768,8 +825,24 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex-1 w-full h-full relative overflow-hidden bg-[#121214] select-none touch-none ${getContainerCursorClass()}`}
+      className={`flex-1 w-full h-full relative overflow-hidden ${
+        isTauriApp ? "bg-transparent" : "bg-zinc-200 dark:bg-[#1e1e22]"
+      } select-none touch-none ${getContainerCursorClass()}`}
     >
+      {/* Hidden SVG Filter definition for 100% mathematically exact sRGB isoluminant soft proofing */}
+      <svg className="absolute w-0 h-0 pointer-events-none opacity-0 overflow-hidden" aria-hidden="true">
+        <defs>
+          <filter id="softproof-values-bw" colorInterpolationFilters="sRGB">
+            <feColorMatrix
+              type="matrix"
+              values="0.2126 0.7152 0.0722 0 0
+                      0.2126 0.7152 0.0722 0 0
+                      0.2126 0.7152 0.0722 0 0
+                      0      0      0      1 0"
+            />
+          </filter>
+        </defs>
+      </svg>
       {/* Drag & Drop Visual Overlay Feedback */}
       {isDraggingOver && (
         <div className="absolute inset-0 bg-sky-950/70 backdrop-blur-xs z-50 flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-sky-400 rounded-lg pointer-events-none">
@@ -779,29 +852,32 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         </div>
       )}
 
-      {/* Pan, Zoom, and Rotation Container — direct DOM rAF transform for 120fps hardware feel */}
+      {/* Pan & Zoom Container — direct DOM rAF transform for 120fps hardware feel */}
       <div
         ref={wrapperRef}
         className="absolute origin-top-left will-change-transform"
         style={{
-          transform: `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale}) rotate(${
-            transform.rotation ?? 0
-          }deg)`,
+          transform: `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale})`,
         }}
       >
-        {/* Document Artboard Paper Surface — crisp lightweight sub-pixel border, no heavy 60px blur shadow */}
+        {/* Document Artboard Paper Surface */}
         <div
-          className="relative rounded-sm border border-zinc-700/80 overflow-hidden"
+          ref={artboardRef}
+          className={`relative rounded-sm border ${
+            isTauriApp ? "border-transparent" : "border-zinc-700/80 shadow-md"
+          } overflow-hidden`}
           style={{
             width: doc.width,
             height: doc.height,
             backgroundColor:
-              doc.backgroundColor === "transparent" ? "#ffffff" : doc.backgroundColor,
+              isTauriApp || doc.backgroundColor === "transparent"
+                ? "transparent"
+                : doc.backgroundColor,
             filter: getCssFilterForSoftProof(softProofMode),
           }}
         >
-          {/* Transparency checkerboard when transparent background */}
-          {doc.backgroundColor === "transparent" && (
+          {/* Transparency checkerboard when transparent background in browser */}
+          {!isTauriApp && doc.backgroundColor === "transparent" && (
             <div
               className="absolute inset-0 pointer-events-none opacity-20"
               style={{
@@ -828,38 +904,75 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
               e.stopPropagation();
               handlePointerUp(e);
             }}
-            className={`block touch-none ${getCanvasCursorClass()}`}
-            style={{ width: doc.width, height: doc.height, imageRendering: "auto" }}
+            className={`block touch-none ${getCanvasCursorClass()} ${
+              isTauriApp ? "pointer-events-none" : ""
+            }`}
+            style={{
+              width: doc.width,
+              height: doc.height,
+              imageRendering: "auto",
+              display: isTauriApp ? "none" : "block",
+            }}
           />
         </div>
       </div>
 
-      {/* Palm Rejection (Stylus-Only Mode) Quick Toggle Indicator */}
-      <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
+      {/* Floating Zoom Controls Pill (Zoom In, Zoom Out, Fit to Screen) */}
+      <div
+        data-native-ui="zoom-pill"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-3 left-3 z-20 flex items-center h-7.75 w-28.5 rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-700/80 shadow-md select-none overflow-hidden transition-colors"
+        title={`Zoom: ${Math.round(transform.scale * 100)}%`}
+      >
         <button
           type="button"
-          onClick={() => {
-            const next = !stylusOnlyMode;
-            setStylusOnlyMode(next);
-            onStylusOnlyModeChange?.(next);
+          onClick={(e) => {
+            e.stopPropagation();
+            zoomByFactor(1.25);
           }}
-          aria-label={`Toggle Palm Rejection (Stylus Only Mode): currently ${
-            stylusOnlyMode ? "ON" : "OFF"
-          }`}
-          title={`Palm Rejection (Stylus Only): ${
-            stylusOnlyMode ? "ON (Pencil draws, finger pans)" : "OFF (Finger can draw)"
-          }`}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border backdrop-blur-md transition-colors ${
-            stylusOnlyMode
-              ? "bg-zinc-900/80 border-zinc-700/80 text-zinc-200 hover:bg-zinc-800"
-              : "bg-zinc-900/40 border-zinc-800/40 text-zinc-500 hover:text-zinc-300"
-          }`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          aria-label="Zoom In"
+          title="Zoom In (+)"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
         >
-          <PenTool className="w-3.5 h-3.5 text-sky-400" />
-          <span className="hidden sm:inline">Palm Rejection:</span>
-          <span className={stylusOnlyMode ? "text-emerald-400 font-semibold" : "text-zinc-400"}>
-            {stylusOnlyMode ? "ON" : "OFF"}
-          </span>
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+
+        <div className="w-px h-4.5 bg-zinc-200 dark:bg-zinc-700/80 shrink-0" />
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            zoomByFactor(0.8);
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          aria-label="Zoom Out"
+          title="Zoom Out (-)"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+
+        <div className="w-px h-4.5 bg-zinc-200 dark:bg-zinc-700/80 shrink-0" />
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            fitToScreen();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          aria-label="Fit Canvas to Screen"
+          title="Fit Canvas to Screen (Cmd+0 / Ctrl+0)"
+          className="flex-1 h-full flex items-center justify-center text-zinc-700 dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 active:scale-90 transition-all cursor-pointer"
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
         </button>
       </div>
     </main>

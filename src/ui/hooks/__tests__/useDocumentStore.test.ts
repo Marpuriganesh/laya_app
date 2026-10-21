@@ -15,6 +15,7 @@ describe("useDocumentStore (Zustand)", () => {
       transform: { scale: 0.8, panX: 0, panY: 0 },
       activePopover: "none",
       softProofMode: "none",
+      palmRejection: true,
       layerStack: createDefaultLayerStack(),
     });
   });
@@ -26,7 +27,18 @@ describe("useDocumentStore (Zustand)", () => {
     expect(state.brushSize).toBe(32);
     expect(state.brushOpacity).toBe(1.0);
     expect(state.softProofMode).toBe("none");
+    expect(state.palmRejection).toBe(true);
     expect(state.activePopover).toBe("none");
+  });
+
+  it("updates and toggles palm rejection state", () => {
+    const { setPalmRejection, togglePalmRejection } = useDocumentStore.getState();
+
+    setPalmRejection(false);
+    expect(useDocumentStore.getState().palmRejection).toBe(false);
+
+    togglePalmRejection();
+    expect(useDocumentStore.getState().palmRejection).toBe(true);
   });
 
   it("updates tool, size, and opacity", () => {
@@ -130,5 +142,53 @@ describe("useDocumentStore (Zustand)", () => {
     currentLayers = useDocumentStore.getState().layerStack.layers;
     expect(currentLayers.length).toBe(3);
     expect(currentLayers.some((l) => l.id === newLayerId)).toBe(false);
+  });
+
+  it("manages detachable panel state transitions", () => {
+    const { detachPanel, dockPanel, setPanelDetached, setActivePopover } = useDocumentStore.getState();
+
+    setActivePopover("color");
+    expect(useDocumentStore.getState().activePopover).toBe("color");
+
+    // Detach color panel
+    detachPanel("color");
+    expect(useDocumentStore.getState().detachedPanels.color).toBe(true);
+    expect(useDocumentStore.getState().activePopover).toBe("none");
+
+    // Dock color panel
+    dockPanel("color");
+    expect(useDocumentStore.getState().detachedPanels.color).toBe(false);
+    expect(useDocumentStore.getState().activePopover).toBe("color");
+
+    // Explicit set
+    setPanelDetached("layers", true);
+    expect(useDocumentStore.getState().detachedPanels.layers).toBe(true);
+
+    // Docking a subwindow (e.g. colorGamut) redirects to color popover
+    detachPanel("colorGamut");
+    expect(useDocumentStore.getState().detachedPanels.colorGamut).toBe(true);
+    dockPanel("colorGamut");
+    expect(useDocumentStore.getState().detachedPanels.colorGamut).toBe(false);
+    expect(useDocumentStore.getState().activePopover).toBe("color");
+  });
+
+  it("manages gamut mask and discrete wheel configuration", () => {
+    const { setGamutMask, setWheelConfig } = useDocumentStore.getState();
+
+    // Default configuration
+    expect(useDocumentStore.getState().gamutMask.enabled).toBe(false);
+    expect(useDocumentStore.getState().gamutMask.type).toBe("triad");
+    expect(useDocumentStore.getState().wheelConfig.isContinuous).toBe(false);
+
+    // Update gamut mask
+    setGamutMask({ enabled: true, rotation: 120, type: "complementary" });
+    expect(useDocumentStore.getState().gamutMask.enabled).toBe(true);
+    expect(useDocumentStore.getState().gamutMask.rotation).toBe(120);
+    expect(useDocumentStore.getState().gamutMask.type).toBe("complementary");
+
+    // Update wheel config
+    setWheelConfig({ hueSectors: 24, isContinuous: true });
+    expect(useDocumentStore.getState().wheelConfig.hueSectors).toBe(24);
+    expect(useDocumentStore.getState().wheelConfig.isContinuous).toBe(true);
   });
 });

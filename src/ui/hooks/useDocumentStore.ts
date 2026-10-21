@@ -10,6 +10,11 @@ import {
   type LayerBlendMode,
   createDefaultLayerStack,
 } from "@/types/layer";
+import type { DetachablePanelId, GamutMaskConfiguration } from "@/types/window";
+import {
+  type DiscreteWheelConfig,
+  DEFAULT_DISCRETE_WHEEL_CONFIG,
+} from "@/engine/color/discrete_wheel";
 
 export interface DocumentState {
   document: DocumentConfiguration;
@@ -20,7 +25,12 @@ export interface DocumentState {
   transform: CanvasTransform;
   activePopover: PopoverType;
   softProofMode: SoftProofMode;
+  palmRejection: boolean;
   layerStack: LayerStack;
+  detachedPanels: Record<DetachablePanelId, boolean>;
+  gamutMask: GamutMaskConfiguration;
+  wheelConfig: DiscreteWheelConfig;
+  holdThresholdMs: number;
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
@@ -31,7 +41,18 @@ export interface DocumentState {
   setActivePopover: (popover: PopoverType) => void;
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
+  setPalmRejection: (enabled: boolean) => void;
+  togglePalmRejection: () => void;
+  setHoldThresholdMs: (ms: number) => void;
   resetTransform: () => void;
+  setLayerStack: (layerStack: LayerStack) => void;
+  setGamutMask: (mask: Partial<GamutMaskConfiguration>) => void;
+  setWheelConfig: (config: Partial<DiscreteWheelConfig>) => void;
+
+  // Detached Window State Management
+  detachPanel: (panelId: DetachablePanelId) => void;
+  dockPanel: (panelId: DetachablePanelId) => void;
+  setPanelDetached: (panelId: DetachablePanelId, detached: boolean) => void;
 
   // Layer Management Actions
   addLayer: () => void;
@@ -64,7 +85,35 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   },
   activePopover: "none",
   softProofMode: "none",
+  palmRejection: true,
   layerStack: createDefaultLayerStack(),
+  detachedPanels: {
+    color: false,
+    layers: false,
+    brushLibrary: false,
+    brushSettings: false,
+    colorGamut: false,
+    colorGrid: false,
+  },
+  gamutMask: {
+    enabled: false,
+    type: "triad",
+    rotation: 0,
+    opacity: 0.8,
+  },
+  wheelConfig: DEFAULT_DISCRETE_WHEEL_CONFIG,
+  holdThresholdMs: (() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("sketch-hold-threshold");
+        if (stored) {
+          const parsed = Number(stored);
+          if (!isNaN(parsed) && parsed >= 50 && parsed <= 2000) return parsed;
+        }
+      } catch {}
+    }
+    return 250;
+  })(),
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -78,10 +127,66 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       activePopover: state.activePopover === popover ? "none" : popover,
     })),
   setSoftProofMode: (softProofMode) => set({ softProofMode }),
+  setPalmRejection: (palmRejection) => set({ palmRejection }),
+  togglePalmRejection: () => set((state) => ({ palmRejection: !state.palmRejection })),
+  setHoldThresholdMs: (ms) => {
+    const clamped = Math.max(50, Math.min(2000, ms));
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("sketch-hold-threshold", String(clamped));
+      } catch {}
+    }
+    set({ holdThresholdMs: clamped });
+  },
   resetTransform: () =>
     set({
       transform: { scale: 0.8, panX: 0, panY: 0 },
     }),
+  setLayerStack: (layerStack) => set({ layerStack }),
+  setGamutMask: (mask) =>
+    set((state) => ({
+      gamutMask: {
+        ...state.gamutMask,
+        ...mask,
+      },
+    })),
+  setWheelConfig: (config) =>
+    set((state) => ({
+      wheelConfig: {
+        ...state.wheelConfig,
+        ...config,
+      },
+    })),
+
+  detachPanel: (panelId: DetachablePanelId) =>
+    set((state) => ({
+      detachedPanels: {
+        ...state.detachedPanels,
+        [panelId]: true,
+      },
+      activePopover: state.activePopover === panelId ? "none" : state.activePopover,
+    })),
+
+  dockPanel: (panelId: DetachablePanelId) =>
+    set((state) => {
+      const targetPopover: PopoverType =
+        panelId === "colorGamut" || panelId === "colorGrid" ? "color" : panelId;
+      return {
+        detachedPanels: {
+          ...state.detachedPanels,
+          [panelId]: false,
+        },
+        activePopover: targetPopover,
+      };
+    }),
+
+  setPanelDetached: (panelId: DetachablePanelId, detached: boolean) =>
+    set((state) => ({
+      detachedPanels: {
+        ...state.detachedPanels,
+        [panelId]: detached,
+      },
+    })),
 
   addLayer: () =>
     set((state) => {

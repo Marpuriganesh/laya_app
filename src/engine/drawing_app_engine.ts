@@ -1,37 +1,27 @@
 /**
  * Drawing App Engine Facade
- * Coordinates stroke smoothing, brush engine dispatching, preset management,
- * and raster target blitting.
- * Single entry point for the UI presentation layer.
+ * Clean, lightweight orchestrator connecting the UI presentation layer
+ * with the drawing canvas.
  */
 
 import type { BrushPreset, PixelBrushParameters, StrokeSmoothingConfig } from "@/types/brush";
+import { DEFAULT_STROKE_SMOOTHING_CONFIG } from "@/types/brush";
 import type { IDrawingEngine } from "@/types/engine";
-import type { IRasterTarget } from "@/types/raster";
+import type { BlendMode, IRasterTarget } from "@/types/raster";
 import type { StrokePoint } from "@/types/stroke";
 import { Canvas2dRasterTarget } from "./raster/canvas2d_raster_target";
 import { MemoryRasterBuffer } from "./raster/memory_raster_buffer";
-import { PixelBrushEngine, createDefaultPixelBrushParameters } from "./brush/pixel_brush_engine";
 import { parseKritaPreset } from "./brush/kpp_parser";
 import { parseKritaBundle } from "./brush/bundle_parser";
-import {
-  DEFAULT_STROKE_SMOOTHING_CONFIG,
-  createStrokeSmoother,
-  type IStrokeSmoother,
-} from "./stroke/stroke_smoother";
-import {
-  SplineInterpolator,
-  type SplineInterpolationMode,
-} from "./stroke/spline_interpolator";
+import { globalRustBrushBridge } from "./brush/rust_brush_bridge";
+import { globalWasmBrushBridge } from "./wasm/wasm_brush_bridge";
 
 /**
- * Creates the default starter Studio Pen preset.
+ * Creates default brush preset configuration.
  */
 export function createDefaultStudioPenPreset(): BrushPreset {
-  const defaultParams = createDefaultPixelBrushParameters({
-    baseSizePx: 24,
-    spacingFraction: 0.12,
-    baseOpacity: 1.0,
+  const defaultParams: PixelBrushParameters = {
+    engineId: "pixelbrush",
     brushTip: {
       tipType: "generated",
       diameter: 24,
@@ -39,6 +29,13 @@ export function createDefaultStudioPenPreset(): BrushPreset {
       aspectRatio: 1.0,
       angleRadians: 0.0,
     },
+    spacingFraction: 0.12,
+    baseOpacity: 1.0,
+    baseFlow: 1.0,
+    baseSizePx: 24,
+    softness: 0.15,
+    scatterAmplitude: 0.0,
+    isAirbrushMode: false,
     sizeDynamics: {
       sensorInput: "pressure",
       curvePoints: [
@@ -47,7 +44,11 @@ export function createDefaultStudioPenPreset(): BrushPreset {
       ],
       isEnabled: true,
     },
-  });
+    opacityDynamics: null,
+    flowDynamics: null,
+    angleDynamics: null,
+    scatterDynamics: null,
+  };
 
   return {
     presetId: "default-studio-pen",
@@ -64,183 +65,71 @@ export function createDefaultStudioPenPreset(): BrushPreset {
   };
 }
 
-/**
- * Creates the suite of built-in production presets:
- * Studio Pen, 6B Pencil, Soft Airbrush, and Hard Round.
- */
 export function createDefaultPresets(): BrushPreset[] {
   const studioPen = createDefaultStudioPenPreset();
-
-  const softAirbrush: BrushPreset = {
-    presetId: "default-soft-airbrush",
-    displayName: "Soft Airbrush",
-    engineType: "pixelbrush",
-    thumbnailPngData: null,
-    engineParameters: createDefaultPixelBrushParameters({
-      baseSizePx: 50,
-      spacingFraction: 0.08,
-      baseOpacity: 0.6,
-      brushTip: {
-        tipType: "generated",
-        diameter: 50,
-        hardness: 0.0, // Gaussian falloff
-        aspectRatio: 1.0,
-        angleRadians: 0.0,
-      },
-      opacityDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.05 },
-          { inputValue: 1.0, outputValue: 0.85 },
-        ],
-        isEnabled: true,
-      },
-      sizeDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.4 },
-          { inputValue: 1.0, outputValue: 1.0 },
-        ],
-        isEnabled: true,
-      },
-    }),
-    smoothingConfig: {
-      ...DEFAULT_STROKE_SMOOTHING_CONFIG,
-      mode: "movingAverage",
-    },
-    tags: ["Airbrush"],
-  };
-
-  const pencil6B: BrushPreset = {
-    presetId: "default-6b-pencil",
-    displayName: "6B Pencil",
-    engineType: "pixelbrush",
-    thumbnailPngData: null,
-    engineParameters: createDefaultPixelBrushParameters({
-      baseSizePx: 14,
-      spacingFraction: 0.15,
-      baseOpacity: 0.85,
-      brushTip: {
-        tipType: "generated",
-        diameter: 14,
-        hardness: 0.45,
-        aspectRatio: 1.0,
-        angleRadians: 0.0,
-      },
-      sizeDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.25 },
-          { inputValue: 1.0, outputValue: 1.0 },
-        ],
-        isEnabled: true,
-      },
-      opacityDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.2 },
-          { inputValue: 1.0, outputValue: 0.95 },
-        ],
-        isEnabled: true,
-      },
-    }),
-    smoothingConfig: {
-      ...DEFAULT_STROKE_SMOOTHING_CONFIG,
-      mode: "none",
-    },
-    tags: ["Sketching"],
-  };
-
-  const hardRound: BrushPreset = {
-    presetId: "default-hard-round",
-    displayName: "Hard Round",
-    engineType: "pixelbrush",
-    thumbnailPngData: null,
-    engineParameters: createDefaultPixelBrushParameters({
-      baseSizePx: 16,
-      spacingFraction: 0.1,
-      baseOpacity: 1.0,
-      brushTip: {
-        tipType: "generated",
-        diameter: 16,
-        hardness: 1.0,
-        aspectRatio: 1.0,
-        angleRadians: 0.0,
-      },
-      sizeDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.2 },
-          { inputValue: 1.0, outputValue: 1.0 },
-        ],
-        isEnabled: true,
-      },
-    }),
-    smoothingConfig: DEFAULT_STROKE_SMOOTHING_CONFIG,
-    tags: ["Inking"],
-  };
-
-  return [studioPen, pencil6B, softAirbrush, hardRound];
+  return [studioPen];
 }
 
 export class DrawingAppEngine implements IDrawingEngine {
-  private rasterTarget: IRasterTarget;
   private canvasElement: HTMLCanvasElement | null = null;
-  private readonly pixelBrushEngine: PixelBrushEngine;
-  private smoother: IStrokeSmoother;
-  private readonly splineInterpolator: SplineInterpolator;
-  private activeBrush: BrushPreset;
-  private loadedPresets: BrushPreset[] = [];
-  private lastPoint: StrokePoint | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
+  private rasterTarget: IRasterTarget;
 
-  constructor(initialWidth = 2048, initialHeight = 2048) {
-    this.rasterTarget = new MemoryRasterBuffer(initialWidth, initialHeight);
+  private loadedPresets: BrushPreset[] = [];
+  private activeBrush: BrushPreset | null = null;
+
+  private brushSize = 24;
+  private brushOpacity = 1.0;
+  private brushColor = { r: 30, g: 30, b: 30, a: 1.0 };
+  private blendMode: BlendMode = "normal";
+
+  private brushSoftness = 0.45;
+  private brushSpacing = 0.08;
+  private brushFlow = 1.0;
+  private sizeByPressure = true;
+  private opacityByPressure = false;
+  private brushAntialias = true;
+
+  private lastPoint: StrokePoint | null = null;
+  private smoothingConfig: StrokeSmoothingConfig = { ...DEFAULT_STROKE_SMOOTHING_CONFIG };
+
+  constructor(widthPx = 2048, heightPx = 2048) {
+    this.rasterTarget = new MemoryRasterBuffer(widthPx, heightPx);
     const defaults = createDefaultPresets();
     this.loadedPresets = [...defaults];
     this.activeBrush = defaults[0];
-
-    this.pixelBrushEngine = new PixelBrushEngine(
-      this.rasterTarget,
-      this.activeBrush.engineParameters as PixelBrushParameters
-    );
-    this.smoother = createStrokeSmoother(this.activeBrush.smoothingConfig);
-    this.splineInterpolator = new SplineInterpolator("midpoint");
   }
 
   // --- Canvas Lifecycle ---
 
   public mountToCanvas(canvasElement: HTMLCanvasElement): void {
     this.canvasElement = canvasElement;
+    this.ctx = canvasElement.getContext("2d", { willReadFrequently: true });
     this.rasterTarget = new Canvas2dRasterTarget(canvasElement);
-    this.pixelBrushEngine.setRasterTarget(this.rasterTarget);
+    this.syncBrushConfigToRust();
+    void globalWasmBrushBridge.initialize(canvasElement.width, canvasElement.height).then((success) => {
+      if (success) {
+        globalWasmBrushBridge.resizeCanvas(canvasElement.width, canvasElement.height, 0, 0, 0, 0);
+        this.syncBrushConfigToRust();
+      }
+    });
   }
 
   public unmount(): void {
     this.canvasElement = null;
+    this.ctx = null;
     this.rasterTarget = new MemoryRasterBuffer(2048, 2048);
-    this.pixelBrushEngine.setRasterTarget(this.rasterTarget);
   }
 
   // --- Brush Preset Management ---
 
   public async loadKritaPreset(kppFileBuffer: ArrayBuffer): Promise<BrushPreset> {
     const rawPreset = await parseKritaPreset(kppFileBuffer);
-    const tagsWithImported = rawPreset.tags.includes("Imported")
-      ? rawPreset.tags
-      : [...rawPreset.tags, "Imported", "Krita"];
-
     const preset: BrushPreset = {
       ...rawPreset,
-      tags: tagsWithImported,
+      tags: rawPreset.tags.includes("Imported") ? rawPreset.tags : [...rawPreset.tags, "Imported", "Krita"],
     };
-
-    const existingIndex = this.loadedPresets.findIndex((p) => p.presetId === preset.presetId);
-    if (existingIndex >= 0) {
-      this.loadedPresets[existingIndex] = preset;
-    } else {
-      this.loadedPresets.push(preset);
-    }
-
+    this.loadedPresets.push(preset);
     this.setActiveBrush(preset);
     return preset;
   }
@@ -251,34 +140,22 @@ export class DrawingAppEngine implements IDrawingEngine {
   ): Promise<readonly BrushPreset[]> {
     const fallbackName = bundleFileName ? bundleFileName.replace(/\.bundle$/i, "") : "Krita Bundle";
     const result = await parseKritaBundle(bundleFileBuffer, fallbackName);
-
     for (const preset of result.presets) {
-      const existingIndex = this.loadedPresets.findIndex((p) => p.presetId === preset.presetId);
-      if (existingIndex >= 0) {
-        this.loadedPresets[existingIndex] = preset;
-      } else {
-        this.loadedPresets.push(preset);
-      }
+      this.loadedPresets.push(preset);
     }
-
     if (result.presets.length > 0) {
       this.setActiveBrush(result.presets[0]);
     }
-
     return result.presets;
   }
 
   public async loadAbrFile(_abrFileBuffer: ArrayBuffer): Promise<readonly BrushPreset[]> {
-    // ABR parser placeholder
     return [];
   }
 
   public setActiveBrush(preset: BrushPreset): void {
     this.activeBrush = preset;
-    if (preset.engineType === "pixelbrush") {
-      this.pixelBrushEngine.setParameters(preset.engineParameters as PixelBrushParameters);
-    }
-    this.smoother = createStrokeSmoother(preset.smoothingConfig);
+    this.smoothingConfig = preset.smoothingConfig;
   }
 
   public getActiveBrush(): BrushPreset | null {
@@ -289,231 +166,232 @@ export class DrawingAppEngine implements IDrawingEngine {
     return this.loadedPresets;
   }
 
-  // --- Active Stroke ---
+  // --- Active Stroke Drawing ---
 
   public beginStroke(point: StrokePoint): void {
-    const smoothed = this.smoother.beginStroke(point);
-    this.lastPoint = smoothed;
-    this.splineInterpolator.beginStroke(smoothed);
-    this.pixelBrushEngine.beginStroke(smoothed);
+    this.lastPoint = point;
+    if (!this.ctx) return;
+
+    if (globalWasmBrushBridge.ready) {
+      globalWasmBrushBridge.beginStroke(point, this.ctx);
+      return;
+    }
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = this.blendMode === "erase" ? "destination-out" : "source-over";
+
+    const rawP = typeof point.pressure === "number" ? point.pressure : 1.0;
+    const pressure = Math.max(0.05, Math.min(1.0, rawP));
+    const effectiveRadius = Math.max(1, (this.brushSize * pressure) / 2);
+
+    ctx.fillStyle = `rgba(${this.brushColor.r}, ${this.brushColor.g}, ${this.brushColor.b}, ${this.brushOpacity * this.brushColor.a})`;
+    ctx.beginPath();
+    ctx.arc(point.canvasX, point.canvasY, effectiveRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   public extendStroke(point: StrokePoint): void {
-    if (this.lastPoint) {
-      const deltaX = point.canvasX - this.lastPoint.canvasX;
-      const deltaY = point.canvasY - this.lastPoint.canvasY;
-      if (deltaX * deltaX + deltaY * deltaY < 0.25) {
-        return;
-      }
+    if (!this.lastPoint || !this.ctx) {
+      this.beginStroke(point);
+      return;
     }
 
-    const elapsedMs = this.lastPoint ? Math.max(1, point.timeMs - this.lastPoint.timeMs) : 16;
-    const smoothed = this.smoother.smooth(point, elapsedMs);
-    this.lastPoint = smoothed;
+    if (globalWasmBrushBridge.ready) {
+      globalWasmBrushBridge.extendStroke(point, this.ctx);
+      this.lastPoint = point;
+      return;
+    }
 
-    const segments = this.splineInterpolator.pushPoint(smoothed);
-    for (let index = 0; index < segments.length; index += 1) {
-      this.pixelBrushEngine.paintBezierSegment(segments[index]);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = this.blendMode === "erase" ? "destination-out" : "source-over";
+
+    const p1P = typeof this.lastPoint.pressure === "number" ? Math.max(0.05, this.lastPoint.pressure) : 1.0;
+    const p2P = typeof point.pressure === "number" ? Math.max(0.05, point.pressure) : 1.0;
+    const avgPressure = (p1P + p2P) / 2;
+    const effectiveWidth = Math.max(1, this.brushSize * avgPressure);
+
+    ctx.strokeStyle = `rgba(${this.brushColor.r}, ${this.brushColor.g}, ${this.brushColor.b}, ${this.brushOpacity * this.brushColor.a})`;
+    ctx.lineWidth = effectiveWidth;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    ctx.beginPath();
+    ctx.moveTo(this.lastPoint.canvasX, this.lastPoint.canvasY);
+    ctx.lineTo(point.canvasX, point.canvasY);
+    ctx.stroke();
+    ctx.restore();
+
+    this.lastPoint = point;
+  }
+
+  public extendStrokeBatch(points: readonly StrokePoint[]): void {
+    if (!this.ctx || points.length === 0) return;
+
+    if (globalWasmBrushBridge.ready) {
+      globalWasmBrushBridge.extendStrokeBatch(points, this.ctx);
+      this.lastPoint = points[points.length - 1];
+      return;
+    }
+
+    for (const point of points) {
+      this.extendStroke(point);
     }
   }
 
   public endStroke(): void {
-    this.smoother.endStroke();
-    const finalSegments = this.splineInterpolator.endStroke();
-    for (let index = 0; index < finalSegments.length; index += 1) {
-      this.pixelBrushEngine.paintBezierSegment(finalSegments[index]);
+    if (globalWasmBrushBridge.ready && this.ctx) {
+      globalWasmBrushBridge.finishStroke(this.ctx);
     }
-    this.pixelBrushEngine.endStroke();
     this.lastPoint = null;
   }
 
-  public setSplineInterpolationMode(mode: SplineInterpolationMode): void {
-    this.splineInterpolator.setMode(mode);
+  private syncBrushConfigToRust(): void {
+    const rgb = [
+      this.brushColor.r,
+      this.brushColor.g,
+      this.brushColor.b,
+      Math.round(this.brushColor.a * 255),
+    ] as [number, number, number, number];
+    const isErase = this.blendMode === "erase";
+
+    globalRustBrushBridge.setBrushConfig({
+      diameter: this.brushSize,
+      spacing: this.brushSpacing,
+      softness: this.brushSoftness,
+      color: rgb,
+      opacity: this.brushOpacity,
+      flow: this.brushFlow,
+      size_by_pressure: this.sizeByPressure,
+      opacity_by_pressure: this.opacityByPressure,
+      is_erase: isErase,
+      antialias: this.brushAntialias,
+    });
+
+    globalWasmBrushBridge.setBrushConfig({
+      diameter: this.brushSize,
+      spacing: this.brushSpacing,
+      softness: this.brushSoftness,
+      color: rgb,
+      opacity: this.brushOpacity,
+      flow: this.brushFlow,
+      sizeByPressure: this.sizeByPressure,
+      opacityByPressure: this.opacityByPressure,
+      isErase,
+      antialias: this.brushAntialias,
+    });
   }
 
-  public getSplineInterpolationMode(): SplineInterpolationMode {
-    return this.splineInterpolator.getMode();
-  }
-
-  // --- Real-time Brush Adjustments ---
+  // --- Real-time Adjustments ---
 
   public setForegroundColor(r: number, g: number, b: number, a = 1.0): void {
-    this.pixelBrushEngine.setForegroundColor(r, g, b, a);
+    this.brushColor = { r, g, b, a };
+    this.syncBrushConfigToRust();
   }
 
   public setBrushSize(sizePx: number): void {
-    this.pixelBrushEngine.setBrushSize(sizePx);
+    this.brushSize = Math.max(1, sizePx);
+    this.syncBrushConfigToRust();
   }
 
   public setBrushOpacity(opacityNormalized: number): void {
-    this.pixelBrushEngine.setBrushOpacity(opacityNormalized);
+    this.brushOpacity = Math.max(0, Math.min(1, opacityNormalized));
+    this.syncBrushConfigToRust();
   }
 
-  public setBlendMode(blendMode: import("@/types/raster").BlendMode): void {
-    this.pixelBrushEngine.setBlendMode(blendMode);
+  public setBlendMode(mode: BlendMode): void {
+    this.blendMode = mode;
+    this.syncBrushConfigToRust();
   }
 
   public setSmoothingConfig(config: StrokeSmoothingConfig): void {
-    this.activeBrush = {
-      ...this.activeBrush,
-      smoothingConfig: config,
-    };
-    this.smoother = createStrokeSmoother(config);
+    this.smoothingConfig = config;
   }
 
   public getSmoothingConfig(): StrokeSmoothingConfig {
-    return this.activeBrush.smoothingConfig;
+    return this.smoothingConfig;
+  }
+
+  public setSplineInterpolationMode(_mode: "catmullRom" | "midpoint"): void {}
+  public getSplineInterpolationMode(): "catmullRom" | "midpoint" {
+    return "midpoint";
   }
 
   public setBrushHardness(hardness: number): void {
-    this.pixelBrushEngine.setHardness(hardness);
-    const params = this.activeBrush.engineParameters;
-    if ("brushTip" in params && params.brushTip.tipType === "generated") {
-      this.activeBrush = {
-        ...this.activeBrush,
-        engineParameters: {
-          ...params,
-          brushTip: {
-            ...params.brushTip,
-            hardness,
-          },
-        },
-      };
-    }
+    this.brushSoftness = Math.max(0, Math.min(1, 1.0 - hardness));
+    this.syncBrushConfigToRust();
   }
-
   public getBrushHardness(): number {
-    return this.pixelBrushEngine.getHardness();
+    return 1.0 - this.brushSoftness;
   }
-
+  public setBrushSoftness(softness: number): void {
+    this.brushSoftness = Math.max(0, Math.min(1, softness));
+    this.syncBrushConfigToRust();
+  }
+  public getBrushSoftness(): number {
+    return this.brushSoftness;
+  }
   public setBrushSpacing(spacingFraction: number): void {
-    this.pixelBrushEngine.setSpacingFraction(spacingFraction);
-    const params = this.activeBrush.engineParameters;
-    if ("spacingFraction" in params) {
-      this.activeBrush = {
-        ...this.activeBrush,
-        engineParameters: {
-          ...params,
-          spacingFraction,
-        },
-      };
-    }
+    this.brushSpacing = Math.max(0.01, Math.min(2.0, spacingFraction));
+    this.syncBrushConfigToRust();
   }
-
   public getBrushSpacing(): number {
-    return this.pixelBrushEngine.getSpacingFraction();
+    return this.brushSpacing;
   }
-
   public setBrushFlow(flow: number): void {
-    this.pixelBrushEngine.setFlow(flow);
-    const params = this.activeBrush.engineParameters;
-    if ("baseFlow" in params) {
-      this.activeBrush = {
-        ...this.activeBrush,
-        engineParameters: {
-          ...params,
-          baseFlow: flow,
-        },
-      };
-    }
+    this.brushFlow = Math.max(0.0, Math.min(1.0, flow));
+    this.syncBrushConfigToRust();
   }
-
   public getBrushFlow(): number {
-    return this.pixelBrushEngine.getFlow();
+    return this.brushFlow;
   }
-
-  public setBrushAspectRatio(aspectRatio: number): void {
-    this.pixelBrushEngine.setAspectRatio(aspectRatio);
-    const params = this.activeBrush.engineParameters;
-    if ("brushTip" in params && params.brushTip.tipType === "generated") {
-      this.activeBrush = {
-        ...this.activeBrush,
-        engineParameters: {
-          ...params,
-          brushTip: {
-            ...params.brushTip,
-            aspectRatio,
-          },
-        },
-      };
-    }
-  }
-
+  public setBrushAspectRatio(_aspectRatio: number): void {}
   public getBrushAspectRatio(): number {
-    return this.pixelBrushEngine.getAspectRatio();
+    return 1.0;
   }
-
-  public setBrushAngle(angleRadians: number): void {
-    this.pixelBrushEngine.setAngleRadians(angleRadians);
-    const params = this.activeBrush.engineParameters;
-    if ("brushTip" in params && params.brushTip.tipType === "generated") {
-      this.activeBrush = {
-        ...this.activeBrush,
-        engineParameters: {
-          ...params,
-          brushTip: {
-            ...params.brushTip,
-            angleRadians,
-          },
-        },
-      };
-    }
-  }
-
+  public setBrushAngle(_angleRadians: number): void {}
   public getBrushAngle(): number {
-    return this.pixelBrushEngine.getAngleRadians();
+    return 0;
   }
-
   public setSizeDynamicsEnabled(enabled: boolean): void {
-    this.pixelBrushEngine.setSizeDynamicsEnabled(enabled);
-    const params = this.activeBrush.engineParameters;
-    if ("sizeDynamics" in params && params.sizeDynamics) {
-      this.activeBrush = {
-        ...this.activeBrush,
-        engineParameters: {
-          ...params,
-          sizeDynamics: {
-            ...params.sizeDynamics,
-            isEnabled: enabled,
-          },
-        },
-      };
-    }
+    this.sizeByPressure = enabled;
+    this.syncBrushConfigToRust();
   }
-
+  public getSizeDynamicsEnabled(): boolean {
+    return this.sizeByPressure;
+  }
   public setOpacityDynamicsEnabled(enabled: boolean): void {
-    this.pixelBrushEngine.setOpacityDynamicsEnabled(enabled);
-    const params = this.activeBrush.engineParameters;
-    if ("opacityDynamics" in params && params.opacityDynamics) {
-      this.activeBrush = {
-        ...this.activeBrush,
-        engineParameters: {
-          ...params,
-          opacityDynamics: {
-            ...params.opacityDynamics,
-            isEnabled: enabled,
-          },
-        },
-      };
-    }
+    this.opacityByPressure = enabled;
+    this.syncBrushConfigToRust();
+  }
+  public getOpacityDynamicsEnabled(): boolean {
+    return this.opacityByPressure;
   }
 
-  // --- Canvas Configuration ---
+  public setAntialias(enabled: boolean): void {
+    this.brushAntialias = enabled;
+    this.syncBrushConfigToRust();
+  }
+  public getAntialias(): boolean {
+    return this.brushAntialias;
+  }
 
   public setCanvasSize(widthPx: number, heightPx: number): void {
     if (this.canvasElement) {
       this.canvasElement.width = widthPx;
       this.canvasElement.height = heightPx;
-      this.rasterTarget = new Canvas2dRasterTarget(this.canvasElement);
-      this.pixelBrushEngine.setRasterTarget(this.rasterTarget);
-    } else {
-      this.rasterTarget = new MemoryRasterBuffer(widthPx, heightPx);
-      this.pixelBrushEngine.setRasterTarget(this.rasterTarget);
     }
+    globalWasmBrushBridge.resizeCanvas(widthPx, heightPx, 0, 0, 0, 0);
   }
 
   public clearCanvas(): void {
-    this.rasterTarget.clear();
+    if (this.ctx && this.canvasElement) {
+      this.ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+    }
+    globalWasmBrushBridge.clear(0, 0, 0, 0);
+    globalRustBrushBridge.clearCanvas();
   }
 
   public getRasterTarget(): IRasterTarget {

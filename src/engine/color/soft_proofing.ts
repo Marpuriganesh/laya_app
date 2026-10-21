@@ -63,8 +63,8 @@ export function applyCmykSimulation(
 export function getCssFilterForSoftProof(mode: SoftProofMode): string {
   switch (mode) {
     case "grayscale-values":
-      // Uses standard Rec. 709 grayscale matrix representation
-      return "grayscale(100%) contrast(105%)";
+      // Standard Rec. 709 photometric grayscale matrix in sRGB space (preserves exact isoluminance)
+      return "url(#softproof-values-bw)";
     case "cmyk-print":
       // Simulates ink contrast loss and gamut dampening
       return "saturate(86%) contrast(94%) brightness(98%)";

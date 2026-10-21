@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/sketch_core",
+    "crates/sketch_native",
+    "src-tauri",
+]
+resolver = "2"

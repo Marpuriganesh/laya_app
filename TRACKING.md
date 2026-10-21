@@ -153,6 +153,40 @@
 
 ---
 
+### 🖥️ Native Desktop Architecture & AppKit Hardware Workspace
+*Status: Architecture Proven & Initial Foundation Complete — Paused to Focus on Stroke Engine Perfection*
+
+#### Completed Milestones:
+- [x] **Full-Window Native Workspace (`NativeBackgroundWorkspaceView`)**:
+  - Replaced floating overlay with a full-window NSView positioned directly behind the transparent WKWebView (`NSWindowBelow`).
+  - Added native `CALayer` 12px rounded corners (`cornerRadius = 12.0f; masksToBounds = YES;`) matching `rounded-xl` and macOS borderless window geometry.
+- [x] **Native Canvas Artboard Composition**:
+  - Native rendering of dark/light workbench backdrop, artboard paper surface with drop shadow, border, and direct CoreGraphics blitting of the Rust pixel buffer.
+  - Zero-latency 120Hz/240Hz Apple Pencil and stylus hardware event pipeline directly from Cocoa `NSEvent` to Rust `PixelBrushEngine`.
+- [x] **Dynamic Theme Synchronization**:
+  - Native background dynamically switches between dark workbench (`#18181b`) and light workbench (`#e4e4e7`) with adjusted paper shadows when toggling theme in React.
+- [x] **Native Window Destruction**:
+  - Added native `close_window` Rust command using `window.destroy()` for detached secondary windows.
+
+#### Documented Observations & Polish Backlog (To Revisit):
+- [ ] **UI Exclusion Rect Coordinate Calibration**:
+  - In certain overlap configurations (e.g., Color Picker or Zoom pill over canvas), clicks can sometimes bleed into the canvas monitor if WebKit `getBoundingClientRect` and Cocoa window coordinates have slight scaling or titlebar offset discrepancies (e.g. Plus button registers while Minus button hits canvas).
+  - When closing a detached window, mouse up/down can register on the main window canvas underneath.
+  - *Future Plan*: Implement strict Cocoa-side view hierarchy hit checking or a robust hit map to completely isolate front UI elements from canvas input.
+
+---
+
+### 🖌️ Stroke Engine Perfection
+*Goal: Perfect the brush stroke feel, pressure curve dynamics, dab interpolation, and rendering fidelity.*
+
+- [x] **Midpoint Quadratic Bézier Spline Stepper (`crates/sketch_core`)**:
+  - [`crates/sketch_core/src/brush/event.rs`](file:///Users/ganeshmarpuri/development/sketch_app/crates/sketch_core/src/brush/event.rs) — Added `StrokeEvent::quad_bezier` and `StrokeEvent::midpoint` Bernstein quadratic polynomial evaluation.
+  - [`crates/sketch_core/src/brush/stepper.rs`](file:///Users/ganeshmarpuri/development/sketch_app/crates/sketch_core/src/brush/stepper.rs) — Implemented Gravesen's arc length approximation ($L \approx \frac{2 d_{\text{chord}} + d_{\text{legs}}}{3}$) and parameter advancing `get_next_quad_step` preserving fractional leftover distance across curve junctions.
+  - [`crates/sketch_core/src/brush/engine.rs`](file:///Users/ganeshmarpuri/development/sketch_app/crates/sketch_core/src/brush/engine.rs) — Upgraded `PixelBrushEngine::paint_to` from piecewise linear stepping to streaming Midpoint Quadratic Bézier Splines ($C^1$ tangent continuity, zero angular faceting on fast sweeps, zero display latency).
+  - 12 automated unit tests passing in Rust (`cargo test`).
+
+---
+
 - [x] **Krita Artistic Color Selector (Core Science & UI)**:
   - Reference: [`invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector`](https://invent.kde.org/graphics/krita/-/tree/master/plugins/dockers/artisticcolorselector)
   - **Artist RYB Color Space**: Johannes Itten color wheel (Blue ↔ Orange, Yellow ↔ Purple, Red ↔ Green complements).

@@ -10,18 +10,18 @@
  *   compatible with both browser and headless Node/Vitest environments.
  */
 
-import type {
-  BrushEngineParameters,
-  BrushPreset,
-  ColorSmudgeParameters,
-  DynamicsCurvePoint,
-  DynamicsMapping,
-  GeneratedBrushTip,
-  MyPaintParameters,
-  PixelBrushParameters,
-  SensorInputName,
+import {
+  DEFAULT_STROKE_SMOOTHING_CONFIG,
+  type BrushEngineParameters,
+  type BrushPreset,
+  type ColorSmudgeParameters,
+  type DynamicsCurvePoint,
+  type DynamicsMapping,
+  type GeneratedBrushTip,
+  type MyPaintParameters,
+  type PixelBrushParameters,
+  type SensorInputName,
 } from "../../types/brush";
-import { DEFAULT_STROKE_SMOOTHING_CONFIG } from "../stroke/stroke_smoother";
 import { inflate } from "./inflate";
 
 /**

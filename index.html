@@ -1,14 +1,37 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark" style="background-color: transparent;">
   <head>
     <meta charset="UTF-8" />
     <meta name="darkreader-lock" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>sketch_app</title>
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem("sketch-app-theme");
+          if (stored === "light") {
+            document.documentElement.classList.remove("dark");
+            document.documentElement.classList.add("light");
+          } else if (stored === "dark") {
+            document.documentElement.classList.remove("light");
+            document.documentElement.classList.add("dark");
+          } else {
+            var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (prefersDark === false) {
+              document.documentElement.classList.remove("dark");
+              document.documentElement.classList.add("light");
+            } else {
+              document.documentElement.classList.remove("light");
+              document.documentElement.classList.add("dark");
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background-color: transparent; margin: 0; padding: 0;">
+    <div id="root" style="background-color: transparent;"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

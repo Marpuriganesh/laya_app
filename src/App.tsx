@@ -1,5 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
+import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
+import { useSpringLoadedToolShortcuts } from "@/ui/hooks/useSpringLoadedToolShortcuts";
+import { useNativeUiRectsSync } from "@/ui/hooks/useNativeUiRectsSync";
+import { detachPanelWindow, focusDetachedWindow } from "@/ui/window/window_manager";
+import { DETACHABLE_PANEL_CONFIGS, type DetachablePanelId } from "@/types/window";
 import { TopNavBar } from "@/ui/components/TopNavBar";
 import { SidebarRail } from "@/ui/components/SidebarRail";
 import { CanvasViewport } from "@/ui/components/CanvasViewport";
@@ -8,8 +14,27 @@ import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
 import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
+import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
+import { ThemeProvider, useTheme } from "@/ui/theme/ThemeProvider";
+import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 
 export default function App() {
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const detachedPanel = urlParams?.get("detached") as DetachablePanelId | null;
+
+  return (
+    <ThemeProvider defaultTheme="dark">
+      {detachedPanel ? <DetachedWindowRoot panelId={detachedPanel} /> : <MainWindow />}
+    </ThemeProvider>
+  );
+}
+
+function MainWindow() {
+  useDetachedWindowSync({ role: "main" });
+  useWindowKeyShortcuts({ enableMinimize: true });
+  useSpringLoadedToolShortcuts();
+  const { resolvedTheme } = useTheme();
+
   const {
     document,
     activeTool,
@@ -19,6 +44,8 @@ export default function App() {
     transform,
     activePopover,
     softProofMode,
+    detachedPanels,
+    detachPanel,
     setDocument,
     setActiveTool,
     setActiveColor,
@@ -30,9 +57,31 @@ export default function App() {
     setSoftProofMode,
   } = useDocumentStore();
 
+  useNativeUiRectsSync(activePopover);
+
+  useEffect(() => {
+    globalRustBrushBridge.setWorkspaceTheme(resolvedTheme === "dark");
+  }, [resolvedTheme]);
+
   const handleClosePopover = useCallback(() => {
     setActivePopover("none");
   }, [setActivePopover]);
+
+  useEffect(() => {
+    // Only full-screen modal dialogs (like New Canvas) block canvas painting entirely.
+    // Floating popovers (Color, Layers, Brush settings) are non-modal and allow painting outside them.
+    globalRustBrushBridge.setModalOpen(activePopover === "newCanvas");
+  }, [activePopover]);
+
+  const handleDetachPanel = useCallback(async (panelId: DetachablePanelId) => {
+    detachPanel(panelId);
+    const config = DETACHABLE_PANEL_CONFIGS[panelId];
+    await detachPanelWindow(config);
+  }, [detachPanel]);
+
+  const handleFocusDetached = useCallback(async (panelId: DetachablePanelId) => {
+    await focusDetachedWindow(panelId);
+  }, []);
 
   const handleResetZoom = useCallback(() => {
     const scaleFactor = Math.min(
@@ -47,7 +96,13 @@ export default function App() {
   }, [document.width, document.height, setTransform]);
 
   return (
-    <div className="dark flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans select-none">
+    <div
+      className={`flex flex-col h-screen w-screen overflow-hidden ${
+        typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+          ? "bg-transparent"
+          : "bg-background"
+      } text-foreground font-sans select-none transition-colors duration-150 rounded-xl border border-border/80`}
+    >
       {/* Procreate-Style Top Navigation Bar */}
       <TopNavBar
         document={document}
@@ -56,6 +111,8 @@ export default function App() {
         zoomScale={transform.scale}
         activePopover={activePopover}
         softProofMode={softProofMode}
+        detachedPanels={detachedPanels}
+        onFocusDetached={handleFocusDetached}
         onSelectTool={setActiveTool}
         onTogglePopover={togglePopover}
         onResetZoom={handleResetZoom}
@@ -87,27 +144,31 @@ export default function App() {
 
       {/* Floating Popovers & Dialogs */}
       <ColorPickerPopover
-        isOpen={activePopover === "color"}
+        isOpen={activePopover === "color" && !detachedPanels.color}
         activeColor={activeColor}
         onClose={handleClosePopover}
         onSelectColor={setActiveColor}
+        onDetach={() => handleDetachPanel("color")}
       />
 
       <LayersPopover
-        isOpen={activePopover === "layers"}
+        isOpen={activePopover === "layers" && !detachedPanels.layers}
         onClose={handleClosePopover}
+        onDetach={() => handleDetachPanel("layers")}
       />
 
       <BrushLibraryPopover
-        isOpen={activePopover === "brushLibrary"}
+        isOpen={activePopover === "brushLibrary" && !detachedPanels.brushLibrary}
         onClose={handleClosePopover}
         onOpenSettings={() => setActivePopover("brushSettings")}
+        onDetach={() => handleDetachPanel("brushLibrary")}
       />
 
       <BrushSettingsPopover
-        isOpen={activePopover === "brushSettings"}
+        isOpen={activePopover === "brushSettings" && !detachedPanels.brushSettings}
         onClose={handleClosePopover}
         activeColor={activeColor}
+        onDetach={() => handleDetachPanel("brushSettings")}
       />
 
       <NewCanvasModal

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type FC, type PointerEvent, type MouseEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useDraggableWindow } from "@/ui/hooks/useDraggableWindow";
+import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
 import {
   X,
   Circle,
@@ -13,7 +14,18 @@ import {
   Shapes,
   GripVertical,
   Palette,
+  ExternalLink,
+  Minimize2,
+  Pin,
+  PinOff,
 } from "lucide-react";
+import {
+  toggleWindowAlwaysOnTop,
+  detachPanelWindow,
+  focusDetachedWindow,
+} from "@/ui/window/window_manager";
+import { DETACHABLE_PANEL_CONFIGS } from "@/types/window";
+import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import {
   hsvToRgb,
   rgbToHsv,
@@ -48,8 +60,6 @@ import {
   quantizeRybHue,
   quantizeValue,
   generateDiscreteValueSteps,
-  type DiscreteWheelConfig,
-  DEFAULT_DISCRETE_WHEEL_CONFIG,
 } from "@/engine/color/discrete_wheel";
 
 interface ColorPickerPopoverProps {
@@ -57,6 +67,9 @@ interface ColorPickerPopoverProps {
   activeColor: string;
   onClose: () => void;
   onSelectColor: (color: string) => void;
+  isDetached?: boolean;
+  onDetach?: () => void;
+  onDock?: () => void;
 }
 
 type ShapeMode = "circle" | "square" | "triangle";
@@ -67,7 +80,24 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   activeColor,
   onClose,
   onSelectColor,
+  isDetached = false,
+  onDetach,
+  onDock,
 }) => {
+  const [isPinned, setIsPinned] = useState(false);
+
+  // Keyboard window shortcuts (Cmd+M to minimize, Cmd+W to close when detached)
+  useWindowKeyShortcuts({
+    onClose: isDetached ? onClose : undefined,
+    enableMinimize: isDetached,
+  });
+
+  const handleTogglePin = async () => {
+    const nextPinned = !isPinned;
+    await toggleWindowAlwaysOnTop(nextPinned);
+    setIsPinned(nextPinned);
+  };
+
   // Shape mode: circle | square | triangle
   const [shapeMode, setShapeMode] = useState<ShapeMode>("circle");
 
@@ -78,12 +108,71 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
   const [classicHarmonyType, setClassicHarmonyType] = useState<HarmonyType>("none");
 
   // Artistic Gamut Mask & Discrete configuration
-  const [isGamutMaskEnabled, setIsGamutMaskEnabled] = useState(false);
-  const [gamutMaskType, setGamutMaskType] = useState<GamutMaskType>("triad");
-  const [gamutMaskRotation, setGamutMaskRotation] = useState<number>(0);
+  const {
+    gamutMask,
+    setGamutMask,
+    wheelConfig,
+    setWheelConfig,
+    detachedPanels,
+    detachPanel,
+  } = useDocumentStore();
+
+  const isGamutMaskEnabled = gamutMask.enabled;
+  const gamutMaskType = gamutMask.type;
+  const gamutMaskRotation = gamutMask.rotation;
+  const maskBoundaryOpacity = gamutMask.opacity;
+
+  const setIsGamutMaskEnabled = useCallback(
+    (enabled: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof enabled === "function" ? enabled(gamutMask.enabled) : enabled;
+      setGamutMask({ enabled: next });
+    },
+    [gamutMask.enabled, setGamutMask]
+  );
+
+  const setGamutMaskType = useCallback(
+    (type: GamutMaskType) => {
+      setGamutMask({ type, enabled: true });
+    },
+    [setGamutMask]
+  );
+
+  const setGamutMaskRotation = useCallback(
+    (rotation: number) => {
+      setGamutMask({ rotation });
+    },
+    [setGamutMask]
+  );
+
   const [isGamutDrawerOpen, setIsGamutDrawerOpen] = useState(false);
-  const [wheelConfig, setWheelConfig] = useState<DiscreteWheelConfig>(DEFAULT_DISCRETE_WHEEL_CONFIG);
   const [isArtisticSettingsOpen, setIsArtisticSettingsOpen] = useState(false);
+
+  const handleDetachGamut = useCallback(async () => {
+    detachPanel("colorGamut");
+    setIsGamutDrawerOpen(false);
+    await detachPanelWindow(DETACHABLE_PANEL_CONFIGS.colorGamut);
+  }, [detachPanel]);
+
+  const handleDetachGrid = useCallback(async () => {
+    detachPanel("colorGrid");
+    setIsArtisticSettingsOpen(false);
+    await detachPanelWindow(DETACHABLE_PANEL_CONFIGS.colorGrid);
+  }, [detachPanel]);
+
+  const handleDetachedHeaderDoubleClick = useCallback(async (e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, input, select, textarea")) return;
+
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (isTauri && isDetached) {
+      try {
+        const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setSize(new LogicalSize(340, 580));
+      } catch (err) {
+        console.error("Failed to reset color picker window size:", err);
+      }
+    }
+  }, [isDetached]);
 
   // 1. Draggable main popover position & physics
   const {
@@ -483,7 +572,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           ctx.lineTo(maskVertices[i].x, maskVertices[i].y);
         }
         ctx.closePath();
-        ctx.fillStyle = "rgba(18, 18, 22, 0.78)";
+        ctx.fillStyle = `rgba(18, 18, 22, ${maskBoundaryOpacity})`;
         ctx.fill("evenodd");
 
         // 2. Crisp aperture boundary stroke
@@ -1079,25 +1168,31 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       {isOpen && (
         <>
           <motion.div
-          key="color-picker-popover-panel"
-          role="dialog"
-          aria-label="Color Picker"
+            key="color-picker-popover-panel"
+            role="dialog"
+            data-native-ui="color-picker"
+            aria-label="Color Picker"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.16, ease: "easeOut" }}
-          style={mainPopoverWindowStyle}
-          className="fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-2xl bg-[#18181B] border border-[#27272A] shadow-2xl flex flex-col overflow-hidden select-none"
+          style={isDetached ? undefined : mainPopoverWindowStyle}
+          className={
+            isDetached
+              ? "h-screen w-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border border-transparent rounded-xl flex flex-col overflow-y-auto overflow-x-hidden select-none transition-colors"
+              : "fixed right-4 top-16 z-50 w-[320px] min-h-[520px] h-auto rounded-xl bg-white/95 dark:bg-zinc-900/95 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden select-none backdrop-blur-md transition-colors"
+          }
         >
           {/* Layer 1: Top Bar (h: 46px) - Draggable Handle */}
           <div
-            {...mainHeaderDragProps}
-            className="h-[46px] px-4.5 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/5 select-none"
-            title="Drag header to move, double-click to reset position"
+            {...(isDetached ? { "data-tauri-drag-region": "" } : mainHeaderDragProps)}
+            onDoubleClick={isDetached ? handleDetachedHeaderDoubleClick : undefined}
+            className="h-[46px] px-4.5 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-zinc-200 dark:border-white/5 select-none bg-zinc-50/60 dark:bg-transparent"
+            title={isDetached ? "Double-click to reset size • Drag to move window across monitors" : "Drag header to move, double-click to reset position"}
           >
-            <div className="flex items-center gap-2">
-              <GripVertical className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300 transition-colors" />
-              <span className="text-xs font-medium text-zinc-400 tracking-wide">
+            <div className="flex items-center gap-2 pointer-events-none">
+              <GripVertical className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" />
+              <span className="text-xs font-medium text-zinc-700 dark:text-zinc-400 tracking-wide">
                 {shapeMode === "circle"
                   ? isArtisticWheel
                     ? "Artistic Wheel (RYB)"
@@ -1107,18 +1202,65 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   : "Triangle Wheel (Classic)"}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close color picker"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+
+            <div className="flex items-center gap-1">
+              {/* If detached: Pin on top button */}
+              {isDetached && (
+                <button
+                  type="button"
+                  onClick={handleTogglePin}
+                  title={isPinned ? "Unpin window" : "Pin window on top"}
+                  aria-label={isPinned ? "Unpin window" : "Pin window on top"}
+                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+                    isPinned
+                      ? "text-blue-500 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
+                      : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-[#605F5F] dark:hover:text-white dark:hover:bg-zinc-800/60"
+                  }`}
+                >
+                  {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                </button>
+              )}
+
+              {/* If detached: Dock back button */}
+              {isDetached && onDock && (
+                <button
+                  type="button"
+                  onClick={onDock}
+                  title="Dock back to main application window"
+                  aria-label="Dock back to main application window"
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-[#605F5F] dark:hover:text-white dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* If in-canvas floating popover: Detach button */}
+              {!isDetached && onDetach && (
+                <button
+                  type="button"
+                  onClick={onDetach}
+                  title="Detach color picker into standalone window"
+                  aria-label="Detach color picker into standalone window"
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-[#605F5F] dark:hover:text-white dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close color picker"
+                className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-[#605F5F] dark:hover:text-white dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Layer 2: Mode & Contextual Switcher Bar (h: 49px) */}
-          <div className="h-[49px] px-4.5 flex items-center justify-between border-t border-white/5 shrink-0">
+          <div className="h-[49px] px-4.5 flex items-center justify-between border-t border-zinc-200 dark:border-white/5 shrink-0">
             {/* Left Shape Selector Group */}
             <div className="flex items-center gap-4">
               <button
@@ -1129,7 +1271,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               >
                 <Circle
                   className={`w-4 h-4 transition-colors ${
-                    shapeMode === "circle" ? "stroke-white" : "stroke-[#3F3F46] hover:stroke-zinc-300"
+                    shapeMode === "circle"
+                      ? "stroke-zinc-900 dark:stroke-white"
+                      : "stroke-zinc-400 dark:stroke-[#3F3F46] hover:stroke-zinc-600 dark:hover:stroke-zinc-300"
                   }`}
                 />
               </button>
@@ -1141,7 +1285,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               >
                 <Square
                   className={`w-4 h-4 transition-colors ${
-                    shapeMode === "square" ? "stroke-white" : "stroke-[#3F3F46] hover:stroke-zinc-300"
+                    shapeMode === "square"
+                      ? "stroke-zinc-900 dark:stroke-white"
+                      : "stroke-zinc-400 dark:stroke-[#3F3F46] hover:stroke-zinc-600 dark:hover:stroke-zinc-300"
                   }`}
                 />
               </button>
@@ -1153,7 +1299,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
               >
                 <Triangle
                   className={`w-4 h-4 transition-colors ${
-                    shapeMode === "triangle" ? "stroke-white" : "stroke-[#3F3F46] hover:stroke-zinc-300"
+                    shapeMode === "triangle"
+                      ? "stroke-zinc-900 dark:stroke-white"
+                      : "stroke-zinc-400 dark:stroke-[#3F3F46] hover:stroke-zinc-600 dark:hover:stroke-zinc-300"
                   }`}
                 />
               </button>
@@ -1170,8 +1318,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   aria-label="Cycle color harmony"
                   className={`w-[26px] h-[26px] rounded-lg flex items-center justify-center transition-all cursor-pointer ${
                     classicHarmonyType !== "none"
-                      ? "bg-amber-400/20 text-amber-300 border border-amber-400/40 shadow-[0_0_8px_rgba(251,191,36,0.25)]"
-                      : "text-[#605F5F] hover:text-zinc-200 hover:bg-zinc-800/60"
+                      ? "bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-400/40 shadow-[0_0_8px_rgba(59,130,246,0.25)]"
+                      : "text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 dark:text-[#605F5F] dark:hover:text-zinc-200 dark:hover:bg-zinc-800/60"
                   }`}
                 >
                   <Palette className="w-4 h-4" />
@@ -1195,8 +1343,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                     <SwatchBook
                       className={`w-4.5 h-4.5 transition-colors ${
                         isArtisticWheel
-                          ? "stroke-white fill-white/20"
-                          : "stroke-[#3F3F46] hover:stroke-zinc-200"
+                          ? "stroke-zinc-900 dark:stroke-white fill-zinc-900/20 dark:fill-white/20"
+                          : "stroke-zinc-400 dark:stroke-[#3F3F46] hover:stroke-zinc-600 dark:hover:stroke-zinc-200"
                       }`}
                     />
                   </motion.button>
@@ -1321,11 +1469,11 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             </div>
 
             {/* Contextual Sliders Band (h: 92px, w: 288px) */}
-            <div className="w-[288px] h-[92px] rounded-xl bg-[#252527]/50 border border-white/5 px-3 py-2 flex flex-col justify-between shrink-0">
+            <div className="w-[288px] h-[92px] rounded-xl bg-zinc-100/90 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 px-3 py-2 flex flex-col justify-between shrink-0">
               {shapeMode === "circle" && isArtisticWheel ? (
                 /* Artistic Controls: Tone Ladder + Gamut Mask + Level Settings */
                 <>
-                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 leading-none">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-600 dark:text-zinc-400 leading-none">
                     <span>Tone Value</span>
                     <span>{Math.round(artisticLuma * 100)}%</span>
                   </div>
@@ -1357,19 +1505,25 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         e.currentTarget.releasePointerCapture(e.pointerId);
                       }
                     }}
-                    className="relative w-full h-3 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                    style={{
-                      background: "linear-gradient(to right, #000000 0%, #ffffff 100%)",
-                    }}
+                    className="relative w-full h-4 flex items-center cursor-pointer touch-none select-none"
                   >
-                    {/* Discrete notches */}
-                    {!wheelConfig.isContinuous && (
-                      <div className="absolute inset-x-1 inset-y-0 flex justify-between pointer-events-none items-center">
-                        {generateDiscreteValueSteps(wheelConfig.valueSteps).map((_, idx) => (
-                          <div key={idx} className="w-0.5 h-1.5 bg-zinc-600 rounded-full" />
-                        ))}
-                      </div>
-                    )}
+                    {/* Visual Track Pill */}
+                    <div
+                      className="w-full h-3 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm relative"
+                      style={{
+                        background: "linear-gradient(to right, #000000 0%, #ffffff 100%)",
+                        backgroundRepeat: "no-repeat",
+                      }}
+                    >
+                      {/* Discrete notches */}
+                      {!wheelConfig.isContinuous && (
+                        <div className="absolute inset-x-1 inset-y-0 flex justify-between pointer-events-none items-center">
+                          {generateDiscreteValueSteps(wheelConfig.valueSteps).map((_, idx) => (
+                            <div key={idx} className="w-0.5 h-1.5 bg-zinc-600 rounded-full" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {/* Active Handle Blip */}
                     <div
                       className="absolute top-1/2 w-4 h-4 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
@@ -1387,10 +1541,10 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           setIsGamutMaskEnabled(next);
                           if (next) clampActiveColorToMask(gamutMaskType, gamutMaskRotation);
                         }}
-                        className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
+                        className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 cursor-pointer ${
                           isGamutMaskEnabled
-                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
-                            : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                            ? "bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-400/40"
+                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-200/60 dark:bg-zinc-800/40"
                         }`}
                         title={isGamutMaskEnabled ? "Disable Gamut Mask" : "Enable Gamut Mask (James Gurney / Krita)"}
                       >
@@ -1401,15 +1555,28 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                       {isGamutMaskEnabled && (
                         <button
                           type="button"
-                          onClick={() => setIsGamutDrawerOpen((prev) => !prev)}
-                          className={`px-1.5 py-0.5 text-[9px] font-mono rounded font-medium transition-colors flex items-center justify-center ${
-                            isGamutDrawerOpen
-                              ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
-                              : "text-zinc-300 bg-zinc-800/60 hover:bg-zinc-700/60"
+                          onClick={() => {
+                            if (detachedPanels.colorGamut) {
+                              focusDetachedWindow("colorGamut");
+                            } else {
+                              setIsGamutDrawerOpen((prev) => !prev);
+                            }
+                          }}
+                          className={`px-1.5 py-0.5 text-[9px] font-mono rounded font-medium transition-colors flex items-center justify-center relative cursor-pointer ${
+                            isGamutDrawerOpen || detachedPanels.colorGamut
+                              ? "bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-400/40"
+                              : "text-zinc-700 dark:text-zinc-300 bg-zinc-200/80 hover:bg-zinc-300/80 dark:bg-zinc-800/60 dark:hover:bg-zinc-700/60"
                           }`}
-                          title={`Gamut Mask: ${gamutMaskType.replace("-", " ")} (${gamutMaskRotation}°) - Click to open sub-window`}
+                          title={
+                            detachedPanels.colorGamut
+                              ? "Gamut Mask (Detached - click to focus)"
+                              : `Gamut Mask: ${gamutMaskType.replace("-", " ")} (${gamutMaskRotation}°) - Click to open sub-window`
+                          }
                         >
                           <span>{gamutMaskRotation}°</span>
+                          {detachedPanels.colorGamut && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 absolute -top-0.5 -right-0.5 shadow-sm" />
+                          )}
                         </button>
                       )}
                     </div>
@@ -1418,13 +1585,13 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                       <button
                         type="button"
                         onClick={() =>
-                          setWheelConfig((prev) => ({ ...prev, isContinuous: !prev.isContinuous }))
+                          setWheelConfig({ isContinuous: !wheelConfig.isContinuous })
                         }
                         title={wheelConfig.isContinuous ? "Switch to Discrete Steps" : "Switch to Continuous Wheel"}
-                        className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 ${
+                        className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors flex items-center gap-1 cursor-pointer ${
                           wheelConfig.isContinuous
-                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
-                            : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                            ? "bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-400/40"
+                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-200/60 dark:bg-zinc-800/40"
                         }`}
                       >
                         <InfinityIcon className="w-2.5 h-2.5" />
@@ -1433,15 +1600,28 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => setIsArtisticSettingsOpen((prev) => !prev)}
-                        title="Configure Discrete Grid Levels"
-                        className={`p-1 rounded transition-colors ${
-                          isArtisticSettingsOpen
-                            ? "bg-amber-400/20 text-amber-300 border border-amber-400/40"
-                            : "text-zinc-400 hover:text-zinc-200 bg-zinc-800/40"
+                        onClick={() => {
+                          if (detachedPanels.colorGrid) {
+                            focusDetachedWindow("colorGrid");
+                          } else {
+                            setIsArtisticSettingsOpen((prev) => !prev);
+                          }
+                        }}
+                        title={
+                          detachedPanels.colorGrid
+                            ? "Discrete Grid Levels (Detached - click to focus)"
+                            : "Configure Discrete Grid Levels"
+                        }
+                        className={`p-1 rounded transition-colors relative cursor-pointer ${
+                          isArtisticSettingsOpen || detachedPanels.colorGrid
+                            ? "bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-400/40"
+                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-200/60 dark:bg-zinc-800/40"
                         }`}
                       >
                         <SlidersHorizontal className="w-3 h-3" />
+                        {detachedPanels.colorGrid && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 absolute -top-0.5 -right-0.5 shadow-sm" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -1451,7 +1631,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                 <>
                   {/* 1. Hue Slider */}
                   <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-600 dark:text-zinc-400 leading-none">
                       <span>Hue</span>
                       <span>{hue}°</span>
                     </div>
@@ -1482,12 +1662,16 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           e.currentTarget.releasePointerCapture(e.pointerId);
                         }
                       }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background:
-                          "linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)",
-                      }}
+                      className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
+                      <div
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm"
+                        style={{
+                          background:
+                            "linear-gradient(to right, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%)",
+                          backgroundRepeat: "no-repeat",
+                        }}
+                      />
                       <div
                         className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                         style={{ left: `${(hue / 360) * 100}%` }}
@@ -1497,7 +1681,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
                   {/* 2. Saturation Slider */}
                   <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-600 dark:text-zinc-400 leading-none">
                       <span>Saturation</span>
                       <span>{Math.round(saturation * 100)}%</span>
                     </div>
@@ -1528,11 +1712,15 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           e.currentTarget.releasePointerCapture(e.pointerId);
                         }
                       }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
-                      }}
+                      className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
+                      <div
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm"
+                        style={{
+                          background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
+                          backgroundRepeat: "no-repeat",
+                        }}
+                      />
                       <div
                         className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                         style={{ left: `${saturation * 100}%` }}
@@ -1542,7 +1730,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
                   {/* 3. Brightness / Value Slider */}
                   <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 leading-none">
+                    <div className="flex items-center justify-between text-[9px] font-mono text-zinc-600 dark:text-zinc-400 leading-none">
                       <span>Brightness</span>
                       <span>{Math.round(value * 100)}%</span>
                     </div>
@@ -1573,11 +1761,15 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                           e.currentTarget.releasePointerCapture(e.pointerId);
                         }
                       }}
-                      className="relative w-full h-2 rounded-full cursor-pointer touch-none shadow-inner border border-white/10"
-                      style={{
-                        background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
-                      }}
+                      className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
+                      <div
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm"
+                        style={{
+                          background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
+                          backgroundRepeat: "no-repeat",
+                        }}
+                      />
                       <div
                         className="absolute top-1/2 w-3.5 h-3.5 bg-white border border-zinc-900 shadow-md rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                         style={{ left: `${value * 100}%` }}
@@ -1590,12 +1782,12 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
           </div>
 
           {/* Layer 4: Bottom Swatch & Hex Bar (h: 70px) */}
-          <div className="h-[70px] px-4.5 flex items-center justify-between border-t border-white/5 shrink-0">
+          <div className="h-[70px] px-4.5 flex items-center justify-between border-t border-zinc-200 dark:border-white/5 shrink-0">
             {/* Color Preview Swatch (41x41px, rounded-[7.1px]) */}
             <div className="flex items-center gap-2">
               <div
                 title={`Active Color: ${activeColor}`}
-                className="w-[41px] h-[41px] rounded-[7.1px] shadow-inner border border-white/10 flex items-center justify-center shrink-0 transition-all duration-75"
+                className="w-[41px] h-[41px] rounded-[7.1px] shadow-inner border border-zinc-300 dark:border-white/10 flex items-center justify-center shrink-0 transition-all duration-75"
                 style={{ backgroundColor: activeColor }}
               />
               {initialColor.toUpperCase() !== activeColor.toUpperCase() && (
@@ -1603,7 +1795,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   type="button"
                   onClick={() => handleSelectExternalColor(initialColor)}
                   title={`Revert to previous color (${initialColor})`}
-                  className="p-1 rounded-md text-[#605F5F] hover:text-white hover:bg-zinc-800/60 transition-colors"
+                  className="p-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200 dark:text-[#605F5F] dark:hover:text-white dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
@@ -1611,8 +1803,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             </div>
 
             {/* Hex Input Badge (95x38px, rounded-[4.8px]) */}
-            <div className="w-[95px] h-[38px] rounded-[4.8px] bg-[#252527]/50 border border-white/10 flex items-center px-2.5 focus-within:border-amber-400/80 transition-colors">
-              <span className="text-[14px] font-mono text-zinc-500 mr-1 select-none">#</span>
+            <div className="w-[95px] h-[38px] rounded-[4.8px] bg-zinc-100 dark:bg-[#252527]/50 border border-zinc-300 dark:border-white/10 flex items-center px-2.5 focus-within:border-blue-500 dark:focus-within:border-blue-400/80 transition-colors">
+              <span className="text-[14px] font-mono text-zinc-400 dark:text-zinc-500 mr-1 select-none">#</span>
               <input
                 type="text"
                 value={hexInput}
@@ -1626,7 +1818,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                 onBlur={() => {
                   setHexInput(activeColor.replace(/^#/, "").toUpperCase());
                 }}
-                className="w-full bg-transparent text-[16px] text-zinc-100 font-mono font-medium tracking-wider focus:outline-none uppercase"
+                className="w-full bg-transparent text-[16px] text-zinc-900 dark:text-zinc-100 font-mono font-medium tracking-wider focus:outline-none uppercase"
                 maxLength={6}
               />
             </div>
@@ -1640,7 +1832,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                 animate={{ height: 40, opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.16, ease: "easeOut" }}
-                className="overflow-hidden border-t border-white/10 bg-[#121214] px-4 flex items-center justify-between shrink-0"
+                className="overflow-hidden border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/80 px-4 flex items-center justify-between shrink-0"
               >
                 <div className="flex items-center gap-1.5 w-full py-1">
                   {classicHarmonyItems.map((item) => {
@@ -1652,8 +1844,8 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         onClick={() => commitClassicHsv(item.hue, item.saturation, item.value)}
                         className={`flex-1 h-6 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
                           isSelected
-                            ? "border-white shadow-md ring-1.5 ring-white scale-105"
-                            : "border-white/15 hover:border-white/50"
+                            ? "border-zinc-900 dark:border-white shadow-md ring-1.5 ring-zinc-900 dark:ring-white scale-105"
+                            : "border-zinc-300 dark:border-white/15 hover:border-zinc-500 dark:hover:border-white/50"
                         }`}
                         style={{ backgroundColor: item.hex }}
                         title={`${item.label}: ${item.hex}`}
@@ -1670,21 +1862,28 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         {shapeMode === "circle" && isArtisticWheel && isGamutDrawerOpen && (
           <motion.div
             key="gamut-mask-subwindow"
+            role="dialog"
+            data-native-ui="color-picker-subwindow"
+            aria-label="Color Gamut Mask"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
-            style={gamutWindowStyle}
-            className="fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
+            style={isDetached ? undefined : gamutWindowStyle}
+            className={
+              isDetached
+                ? "absolute inset-x-3 top-20 z-[55] rounded-xl bg-white/95 dark:bg-zinc-900 border border-blue-400/40 shadow-xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
+                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
+            }
           >
             {/* Draggable Header */}
             <div
-              {...gamutHeaderDragProps}
-              className="flex items-center justify-between pb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
-              title="Drag header to move sub-window, double-click to snap next to picker"
+              {...(isDetached ? {} : gamutHeaderDragProps)}
+              className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/10 cursor-grab active:cursor-grabbing select-none"
+              title={isDetached ? "Gamut Mask settings" : "Drag header to move sub-window, double-click to snap next to picker"}
             >
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
-                <GripVertical className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300" />
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                <GripVertical className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300" />
                 <span>Color Gamut Mask</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1697,16 +1896,25 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   }}
                   className={`px-1.5 py-0.5 text-[9px] rounded font-semibold transition-colors cursor-pointer ${
                     isGamutMaskEnabled
-                      ? "bg-amber-400/25 text-amber-300 border border-amber-400/40"
-                      : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      ? "bg-blue-500/25 text-blue-600 dark:text-blue-300 border border-blue-400/40"
+                      : "bg-zinc-100 text-zinc-600 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
                   }`}
                 >
                   {isGamutMaskEnabled ? "ON" : "OFF"}
                 </button>
                 <button
                   type="button"
+                  onClick={handleDetachGamut}
+                  title="Detach Gamut Mask into standalone window"
+                  aria-label="Detach Gamut Mask into standalone window"
+                  className="p-1 rounded text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => setIsGamutDrawerOpen(false)}
-                  className="text-zinc-400 hover:text-white p-0.5 rounded transition-colors"
+                  className="text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-white p-0.5 rounded transition-colors cursor-pointer"
                   aria-label="Close gamut mask settings"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -1716,7 +1924,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
 
             {/* Gamut Preset Select */}
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-zinc-400 font-medium">Harmonic Mask Shape</span>
+              <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-medium">Harmonic Mask Shape</span>
               <select
                 value={gamutMaskType}
                 onChange={(e) => {
@@ -1725,24 +1933,24 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
                   clampActiveColorToMask(newType, gamutMaskRotation);
                 }}
-                className="w-full bg-zinc-800/90 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-amber-400/80 cursor-pointer"
+                className="w-full bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-200 font-medium focus:outline-none focus:border-blue-500 dark:focus:border-blue-400/80 cursor-pointer"
               >
                 {GAMUT_MASK_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id} className="bg-zinc-900 text-zinc-200">
+                  <option key={preset.id} value={preset.id} className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">
                     {preset.name}
                   </option>
                 ))}
               </select>
-              <span className="text-[9px] text-zinc-400 italic">
+              <span className="text-[9px] text-zinc-500 dark:text-zinc-400 italic">
                 {GAMUT_MASK_PRESETS.find((p) => p.id === gamutMaskType)?.description}
               </span>
             </div>
 
             {/* Mask Rotation Slider */}
-            <div className="flex flex-col gap-1 py-0.5 border-t border-white/5">
-              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+            <div className="flex flex-col gap-1 py-0.5 border-t border-zinc-200 dark:border-white/5">
+              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-600 dark:text-zinc-400">
                 <span>Mask Rotation</span>
-                <span className="text-amber-400 font-semibold">{gamutMaskRotation}°</span>
+                <span className="text-blue-600 dark:text-blue-400 font-semibold">{gamutMaskRotation}°</span>
               </div>
               <input
                 type="range"
@@ -1756,13 +1964,13 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
                   clampActiveColorToMask(gamutMaskType, rot);
                 }}
-                className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                className="w-full accent-blue-500 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg cursor-pointer"
               />
             </div>
 
             {/* Quick Turn Buttons */}
-            <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[9px]">
-              <span className="text-zinc-500 font-medium">Quick Turn:</span>
+            <div className="flex items-center justify-between pt-1 border-t border-zinc-200 dark:border-white/10 text-[9px]">
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Quick Turn:</span>
               <div className="flex gap-1">
                 {[0, 90, 180, 270].map((deg) => (
                   <button
@@ -1773,7 +1981,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                       if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
                       clampActiveColorToMask(gamutMaskType, deg);
                     }}
-                    className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                    className="px-2 py-0.5 rounded bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium transition-colors cursor-pointer"
                   >
                     {deg}°
                   </button>
@@ -1787,40 +1995,58 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         {shapeMode === "circle" && isArtisticWheel && isArtisticSettingsOpen && (
           <motion.div
             key="artistic-grid-subwindow"
+            role="dialog"
+            data-native-ui="color-picker-subwindow"
+            aria-label="Discrete Grid Levels"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
-            style={gridWindowStyle}
-            className="fixed right-4 top-16 z-[55] w-[250px] rounded-2xl bg-[#18181B] border border-zinc-700/80 shadow-2xl p-3 text-zinc-200 select-none flex flex-col gap-2.5"
+            style={isDetached ? undefined : gridWindowStyle}
+            className={
+              isDetached
+                ? "absolute inset-x-3 top-20 z-[55] rounded-xl bg-white/95 dark:bg-zinc-900 border border-blue-400/40 shadow-xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
+                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
+            }
           >
             {/* Draggable Header */}
             <div
-              {...gridHeaderDragProps}
-              className="flex items-center justify-between pb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
-              title="Drag header to move sub-window, double-click to snap next to picker"
+              {...(isDetached ? {} : gridHeaderDragProps)}
+              className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/10 cursor-grab active:cursor-grabbing select-none"
+              title={isDetached ? "Discrete Grid levels" : "Drag header to move sub-window, double-click to snap next to picker"}
             >
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
-                <GripVertical className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300" />
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                <GripVertical className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300" />
                 <span>Discrete Grid Levels</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsArtisticSettingsOpen(false)}
-                className="text-zinc-400 hover:text-white p-0.5 rounded transition-colors"
-                aria-label="Close discrete settings"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleDetachGrid}
+                  title="Detach Discrete Grid into standalone window"
+                  aria-label="Detach Discrete Grid into standalone window"
+                  className="p-1 rounded text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsArtisticSettingsOpen(false)}
+                  className="text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+                  aria-label="Close discrete settings"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* Level Sliders */}
             <div className="flex flex-col gap-2">
               {/* Hue Sectors */}
               <div className="flex flex-col gap-0.5">
-                <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                <div className="flex justify-between text-[10px] font-mono text-zinc-600 dark:text-zinc-400">
                   <span>Hue Sectors</span>
-                  <span className="text-amber-400 font-semibold">{wheelConfig.hueSectors}</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{wheelConfig.hueSectors}</span>
                 </div>
                 <input
                   type="range"
@@ -1829,17 +2055,17 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   step="2"
                   value={wheelConfig.hueSectors}
                   onChange={(e) =>
-                    setWheelConfig((prev) => ({ ...prev, hueSectors: Number(e.target.value) }))
+                    setWheelConfig({ hueSectors: Number(e.target.value) })
                   }
-                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                  className="w-full accent-blue-500 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg cursor-pointer"
                 />
               </div>
 
               {/* Saturation Rings */}
               <div className="flex flex-col gap-0.5">
-                <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                <div className="flex justify-between text-[10px] font-mono text-zinc-600 dark:text-zinc-400">
                   <span>Saturation Rings</span>
-                  <span className="text-amber-400 font-semibold">{wheelConfig.saturationRings}</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{wheelConfig.saturationRings}</span>
                 </div>
                 <input
                   type="range"
@@ -1848,17 +2074,17 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   step="1"
                   value={wheelConfig.saturationRings}
                   onChange={(e) =>
-                    setWheelConfig((prev) => ({ ...prev, saturationRings: Number(e.target.value) }))
+                    setWheelConfig({ saturationRings: Number(e.target.value) })
                   }
-                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                  className="w-full accent-blue-500 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg cursor-pointer"
                 />
               </div>
 
               {/* Value Steps */}
               <div className="flex flex-col gap-0.5">
-                <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                <div className="flex justify-between text-[10px] font-mono text-zinc-600 dark:text-zinc-400">
                   <span>Value Steps</span>
-                  <span className="text-amber-400 font-semibold">{wheelConfig.valueSteps}</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{wheelConfig.valueSteps}</span>
                 </div>
                 <input
                   type="range"
@@ -1867,41 +2093,41 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   step="1"
                   value={wheelConfig.valueSteps}
                   onChange={(e) =>
-                    setWheelConfig((prev) => ({ ...prev, valueSteps: Number(e.target.value) }))
+                    setWheelConfig({ valueSteps: Number(e.target.value) })
                   }
-                  className="w-full accent-amber-400 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                  className="w-full accent-blue-500 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg cursor-pointer"
                 />
               </div>
             </div>
 
             {/* Quick Presets */}
-            <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[9px]">
-              <span className="text-zinc-500 font-medium">Presets:</span>
+            <div className="flex items-center justify-between pt-1 border-t border-zinc-200 dark:border-white/10 text-[9px]">
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">Presets:</span>
               <div className="flex gap-1">
                 <button
                   type="button"
                   onClick={() =>
-                    setWheelConfig((prev) => ({ ...prev, hueSectors: 12, saturationRings: 4, valueSteps: 8 }))
+                    setWheelConfig({ hueSectors: 12, saturationRings: 4, valueSteps: 8 })
                   }
-                  className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                  className="px-2 py-0.5 rounded bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium transition-colors cursor-pointer"
                 >
                   12/4/8
                 </button>
                 <button
                   type="button"
                   onClick={() =>
-                    setWheelConfig((prev) => ({ ...prev, hueSectors: 24, saturationRings: 6, valueSteps: 12 }))
+                    setWheelConfig({ hueSectors: 24, saturationRings: 6, valueSteps: 12 })
                   }
-                  className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                  className="px-2 py-0.5 rounded bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium transition-colors cursor-pointer"
                 >
                   24/6/12
                 </button>
                 <button
                   type="button"
                   onClick={() =>
-                    setWheelConfig((prev) => ({ ...prev, hueSectors: 6, saturationRings: 2, valueSteps: 5 }))
+                    setWheelConfig({ hueSectors: 6, saturationRings: 2, valueSteps: 5 })
                   }
-                  className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium transition-colors"
+                  className="px-2 py-0.5 rounded bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium transition-colors cursor-pointer"
                 >
                   6/2/5
                 </button>

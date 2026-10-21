@@ -1,0 +1,10 @@
+[package]
+name = "sketch_native"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sketch_core = { path = "../sketch_core" }
+
+[build-dependencies]
+cc = "1.0"
