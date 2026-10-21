@@ -2,7 +2,11 @@
  * UI State and Tool Type Definitions
  */
 
-export type ActiveTool = "brush" | "smudge" | "eraser";
+export type ActiveTool = "brush" | "smudge" | "eraser" | "zoom" | "hand";
+
+export interface ShortcutConfig {
+  readonly holdThresholdMs: number;
+}
 
 export type PopoverType = "none" | "color" | "brushLibrary" | "newCanvas" | "actions" | "layers" | "brushSettings";
 

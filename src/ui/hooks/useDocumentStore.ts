@@ -30,6 +30,7 @@ export interface DocumentState {
   detachedPanels: Record<DetachablePanelId, boolean>;
   gamutMask: GamutMaskConfiguration;
   wheelConfig: DiscreteWheelConfig;
+  holdThresholdMs: number;
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
@@ -42,6 +43,7 @@ export interface DocumentState {
   setSoftProofMode: (mode: SoftProofMode) => void;
   setPalmRejection: (enabled: boolean) => void;
   togglePalmRejection: () => void;
+  setHoldThresholdMs: (ms: number) => void;
   resetTransform: () => void;
   setLayerStack: (layerStack: LayerStack) => void;
   setGamutMask: (mask: Partial<GamutMaskConfiguration>) => void;
@@ -100,6 +102,18 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     opacity: 0.8,
   },
   wheelConfig: DEFAULT_DISCRETE_WHEEL_CONFIG,
+  holdThresholdMs: (() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("sketch-hold-threshold");
+        if (stored) {
+          const parsed = Number(stored);
+          if (!isNaN(parsed) && parsed >= 50 && parsed <= 2000) return parsed;
+        }
+      } catch {}
+    }
+    return 250;
+  })(),
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -115,6 +129,15 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   setSoftProofMode: (softProofMode) => set({ softProofMode }),
   setPalmRejection: (palmRejection) => set({ palmRejection }),
   togglePalmRejection: () => set((state) => ({ palmRejection: !state.palmRejection })),
+  setHoldThresholdMs: (ms) => {
+    const clamped = Math.max(50, Math.min(2000, ms));
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("sketch-hold-threshold", String(clamped));
+      } catch {}
+    }
+    set({ holdThresholdMs: clamped });
+  },
   resetTransform: () =>
     set({
       transform: { scale: 0.8, panX: 0, panY: 0 },

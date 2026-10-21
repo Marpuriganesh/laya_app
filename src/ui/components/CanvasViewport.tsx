@@ -81,6 +81,15 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   const [isSpaceDown, setIsSpaceDown] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isScrubbingZoom, setIsScrubbingZoom] = useState(false);
+  const scrubbyZoomStateRef = useRef<{
+    startX: number;
+    startY: number;
+    startScale: number;
+    focalX: number;
+    focalY: number;
+    isAlt: boolean;
+  } | null>(null);
 
   // Refs for high-frequency tracking without stale closures
   const transformRef = useRef<CanvasTransform>(transform);
@@ -252,12 +261,18 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     }
   }, [doc.width, doc.height, isTauriApp]);
 
-  // Synchronize pan state to native AppKit overlay
+  // Synchronize pan and tool navigation state to native AppKit overlay
   useEffect(() => {
     if (isTauriApp) {
-      globalRustBrushBridge.setPanActive(isSpaceDown || isPanning);
+      const isNavigating =
+        isSpaceDown ||
+        isPanning ||
+        isScrubbingZoom ||
+        activeTool === "zoom" ||
+        activeTool === "hand";
+      globalRustBrushBridge.setPanActive(isNavigating);
     }
-  }, [isSpaceDown, isPanning, isTauriApp]);
+  }, [isSpaceDown, isPanning, isScrubbingZoom, activeTool, isTauriApp]);
 
   // Listen for window resize
   useEffect(() => {
@@ -411,10 +426,40 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     }
   };
 
+  const startScrubbyZoom = (
+    clientX: number,
+    clientY: number,
+    pointerId: number,
+    targetElement: HTMLElement | HTMLCanvasElement,
+    isAlt = false
+  ) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const focalX = clientX - rect.left;
+    const focalY = clientY - rect.top;
+
+    scrubbyZoomStateRef.current = {
+      startX: clientX,
+      startY: clientY,
+      startScale: transformRef.current.scale,
+      focalX,
+      focalY,
+      isAlt,
+    };
+    setIsScrubbingZoom(true);
+    try {
+      targetElement.setPointerCapture(pointerId);
+    } catch {
+      // Ignore
+    }
+  };
+
   // --- Pointer Event Handlers (Canvas & Container) ---
 
   const handleContainerPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.target !== containerRef.current) return;
+    const targetEl = e.target as HTMLElement;
+    if (targetEl?.closest?.('[data-native-ui="zoom-pill"]')) return;
 
     activePointersRef.current.set(e.pointerId, {
       clientX: e.clientX,
@@ -422,7 +467,14 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       pointerType: e.pointerType,
     });
 
-    if (e.button === 0 || e.button === 1) {
+    // 1. Scrubby zoom if Zoom tool is active
+    if (activeTool === "zoom") {
+      startScrubbyZoom(e.clientX, e.clientY, e.pointerId, e.currentTarget, e.altKey);
+      return;
+    }
+
+    // 2. Viewport pan if Hand tool, Spacebar, middle click, or primary drag on container
+    if (e.button === 0 || e.button === 1 || activeTool === "hand" || isSpaceDownRef.current || e.altKey) {
       startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
     }
   };
@@ -453,6 +505,10 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         isPanningRef.current = false;
         setIsPanning(false);
       }
+      if (scrubbyZoomStateRef.current) {
+        scrubbyZoomStateRef.current = null;
+        setIsScrubbingZoom(false);
+      }
 
       const p1 = getContainerCoordinates(
         activeTouches[0][1].clientX,
@@ -472,8 +528,14 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       return;
     }
 
-    // 2. Pan via Middle Click (button 1), Spacebar hold, or Alt key
-    if (e.button === 1 || e.buttons === 4 || isSpaceDownRef.current || e.altKey) {
+    // 2. Zoom Tool: Scrubby zoom on canvas
+    if (activeTool === "zoom") {
+      startScrubbyZoom(e.clientX, e.clientY, e.pointerId, e.currentTarget, e.altKey);
+      return;
+    }
+
+    // 3. Pan via Middle Click (button 1), Spacebar hold, Alt key, or Hand tool
+    if (e.button === 1 || e.buttons === 4 || isSpaceDownRef.current || e.altKey || activeTool === "hand") {
       startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
       return;
     }
@@ -521,6 +583,24 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         clientY: e.clientY,
         pointerType: e.pointerType,
       });
+    }
+
+    // 0. Scrubby Zoom Gesture (Z-key spring-loaded hold or Zoom tool active)
+    if (scrubbyZoomStateRef.current) {
+      const { startX, startScale, focalX, focalY } = scrubbyZoomStateRef.current;
+      const deltaX = e.clientX - startX;
+      // Exponential zoom curve: 1.006^deltaX (dragging right zooms in, left zooms out)
+      const factor = Math.pow(1.006, deltaX);
+      const targetScale = Math.max(0.02, Math.min(32.0, startScale * factor));
+      const nextTransform = calculateFocalZoom(
+        transformRef.current,
+        focalX,
+        focalY,
+        targetScale
+      );
+      transformRef.current = nextTransform;
+      applyTransformToDom(nextTransform);
+      return;
     }
 
     // 1. Two-Finger Pinch-to-Zoom & Pan Gesture (Rotation disabled per user request)
@@ -596,6 +676,36 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
   const handlePointerUp = (e: PointerEvent<HTMLDivElement | HTMLCanvasElement>) => {
     activePointersRef.current.delete(e.pointerId);
+
+    // Finalize Scrubby Zoom
+    if (scrubbyZoomStateRef.current) {
+      const { startX, startY, focalX, focalY, isAlt } = scrubbyZoomStateRef.current;
+      const distanceMoved = Math.hypot(e.clientX - startX, e.clientY - startY);
+      // Quick tap without dragging: step-zoom in 1.33x (or step-zoom out 0.75x if Alt held)
+      if (distanceMoved < 6) {
+        const stepFactor = isAlt || e.altKey ? 0.75 : 1.333;
+        const targetScale = Math.max(0.02, Math.min(32.0, transformRef.current.scale * stepFactor));
+        const nextTransform = calculateFocalZoom(
+          transformRef.current,
+          focalX,
+          focalY,
+          targetScale
+        );
+        transformRef.current = nextTransform;
+        applyTransformToDom(nextTransform);
+      }
+      commitDomTransform();
+      scrubbyZoomStateRef.current = null;
+      setIsScrubbingZoom(false);
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore
+      }
+      return;
+    }
 
     const activeTouches = Array.from(activePointersRef.current.values()).filter(
       (p) => p.pointerType === "touch"
@@ -689,13 +799,17 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
   // Cursor styling based on active mode
   const getContainerCursorClass = () => {
-    if (isPanning) return "cursor-grabbing";
+    if (isScrubbingZoom) return "cursor-col-resize";
+    if (activeTool === "zoom") return "cursor-zoom-in";
+    if (isPanning || activeTool === "hand") return "cursor-grabbing";
     if (isSpaceDown) return "cursor-grab";
     return "";
   };
 
   const getCanvasCursorClass = () => {
-    if (isPanning) return "cursor-grabbing";
+    if (isScrubbingZoom) return "cursor-col-resize";
+    if (activeTool === "zoom") return "cursor-zoom-in";
+    if (isPanning || activeTool === "hand") return "cursor-grabbing";
     if (isSpaceDown) return "cursor-grab";
     return "cursor-crosshair";
   };

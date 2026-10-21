@@ -17,6 +17,8 @@ import {
   Square,
   Sun,
   Moon,
+  ZoomIn,
+  Keyboard,
 } from "lucide-react";
 import { useTheme } from "@/ui/theme/ThemeProvider";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
@@ -62,7 +64,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   const [isProofSubmenuOpen, setIsProofSubmenuOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme, toggleTheme } = useTheme();
-  const { palmRejection, togglePalmRejection } = useDocumentStore();
+  const { palmRejection, togglePalmRejection, holdThresholdMs, setHoldThresholdMs } = useDocumentStore();
   const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -348,6 +350,38 @@ export const TopNavBar: FC<TopNavBarProps> = ({
                   {palmRejection ? "ON" : "OFF"}
                 </div>
               </button>
+
+              <div className="h-px bg-zinc-100 dark:bg-zinc-800/80 my-0.5" />
+
+              {/* Spring-Loaded Shortcut Hold Threshold */}
+              <div className="px-2.5 py-1.5 flex flex-col gap-1.5 select-none">
+                <div className="flex items-center justify-between text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                  <div className="flex items-center gap-2">
+                    <Keyboard className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Hold Threshold</span>
+                  </div>
+                  <span className="font-mono text-[11px] text-blue-600 dark:text-blue-400 font-semibold">
+                    {holdThresholdMs}ms
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <input
+                    type="range"
+                    min="100"
+                    max="600"
+                    step="25"
+                    value={holdThresholdMs}
+                    onChange={(e) => setHoldThresholdMs(Number(e.target.value))}
+                    className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-800 accent-blue-600 rounded-lg cursor-pointer"
+                    title={`Spring-loaded shortcut hold threshold: ${holdThresholdMs}ms`}
+                  />
+                  <div className="flex justify-between text-[9px] text-zinc-400 dark:text-zinc-500 font-normal">
+                    <span>100ms (Fast)</span>
+                    <span>Hold to zoom / pan</span>
+                    <span>600ms</span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -412,12 +446,12 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
       {/* Right Tool Cluster */}
       <div className="flex items-center gap-1 sm:gap-2">
-        {/* Paint Brush */}
+        {/* Paint Brush (B) */}
         <button
           type="button"
           onClick={handleBrushClick}
-          aria-label="Paint Tool (Click again for Brush Library)"
-          title="Brush (Paint)"
+          aria-label="Paint Tool (B)"
+          title="Paint Brush (B) • Tap to switch, hold for quick switch"
           className={`p-2 rounded-lg transition-colors relative ${
             activeTool === "brush"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
@@ -427,12 +461,12 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           <Paintbrush className="w-4 h-4" />
         </button>
 
-        {/* Smudge */}
+        {/* Smudge (S) */}
         <button
           type="button"
           onClick={() => onSelectTool("smudge")}
-          aria-label="Smudge Tool"
-          title="Smudge"
+          aria-label="Smudge Tool (S)"
+          title="Smudge Tool (S) • Tap to switch, hold for quick switch"
           className={`p-2 rounded-lg transition-colors ${
             activeTool === "smudge"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
@@ -442,12 +476,12 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           <Hand className="w-4 h-4" />
         </button>
 
-        {/* Eraser */}
+        {/* Eraser (E) */}
         <button
           type="button"
           onClick={() => onSelectTool("eraser")}
-          aria-label="Eraser Tool"
-          title="Eraser"
+          aria-label="Eraser Tool (E)"
+          title="Eraser Tool (E) • Tap to switch, hold for quick switch"
           className={`p-2 rounded-lg transition-colors ${
             activeTool === "eraser"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
@@ -455,6 +489,21 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           }`}
         >
           <Eraser className="w-4 h-4" />
+        </button>
+
+        {/* Zoom (Z) */}
+        <button
+          type="button"
+          onClick={() => onSelectTool("zoom")}
+          aria-label="Zoom Tool (Z)"
+          title="Zoom Tool (Z) • Hold & drag stylus left/right to Scrubby Zoom"
+          className={`p-2 rounded-lg transition-colors ${
+            activeTool === "zoom"
+              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
+          }`}
+        >
+          <ZoomIn className="w-4 h-4" />
         </button>
 
         <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
