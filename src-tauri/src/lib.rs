@@ -4,7 +4,7 @@ pub mod brush_commands;
 use brush_commands::{
   rust_brush_clear, rust_brush_set_config, rust_brush_set_modal_open,
   rust_brush_set_pan_active, rust_set_document_size, rust_set_ui_blocking_rects,
-  rust_update_artboard_rect, BrushEngineState,
+  rust_set_workspace_theme, rust_update_artboard_rect, BrushEngineState,
 };
 
 #[tauri::command]
@@ -92,7 +92,8 @@ pub fn run() {
       rust_update_artboard_rect,
       rust_brush_set_pan_active,
       rust_set_document_size,
-      rust_set_ui_blocking_rects
+      rust_set_ui_blocking_rects,
+      rust_set_workspace_theme
     ])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");

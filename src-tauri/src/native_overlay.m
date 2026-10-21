@@ -13,6 +13,7 @@ static BOOL g_is_drawing = NO;
 static NSRect g_artboard_rect = { { 0, 0 }, { 1000, 1000 } };
 static NSRect g_ui_blocking_rects[MAX_UI_BLOCKING_RECTS];
 static uint32_t g_ui_blocking_count = 0;
+static BOOL g_is_dark_theme = YES;
 
 @interface NativeBackgroundWorkspaceView : NSView
 - (void)handleMouseDown:(NSEvent *)event;
@@ -156,8 +157,14 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     if (!ctx) return;
 
-    // 1. Draw Native Workspace Backdrop (dark theme workbench: #18181b / #09090b)
-    [[NSColor colorWithCalibratedRed:24.0f/255.0f green:24.0f/255.0f blue:27.0f/255.0f alpha:1.0f] setFill];
+    // 1. Draw Native Workspace Backdrop with theme awareness
+    if (g_is_dark_theme) {
+        // Dark theme workbench (#18181b / zinc-900)
+        [[NSColor colorWithCalibratedRed:24.0f/255.0f green:24.0f/255.0f blue:27.0f/255.0f alpha:1.0f] setFill];
+    } else {
+        // Light theme workbench (#e4e4e7 / zinc-200 for clean contrast against white paper)
+        [[NSColor colorWithCalibratedRed:228.0f/255.0f green:228.0f/255.0f blue:231.0f/255.0f alpha:1.0f] setFill];
+    }
     NSRectFill(self.bounds);
 
     if (g_artboard_rect.size.width <= 0 || g_artboard_rect.size.height <= 0) {
@@ -166,7 +173,9 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
 
     // 2. Draw Artboard Paper Drop Shadow & Surface
     CGContextSaveGState(ctx);
-    CGColorRef shadowColor = CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.40);
+    CGColorRef shadowColor = g_is_dark_theme
+        ? CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.40)
+        : CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.18);
     CGContextSetShadowWithColor(ctx, CGSizeMake(0, -4), 14.0f, shadowColor);
     CGColorRelease(shadowColor);
 
@@ -177,7 +186,11 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     CGContextRestoreGState(ctx); // Clear shadow state
 
     // Artboard subtle border
-    [[NSColor colorWithCalibratedWhite:0.3f alpha:0.4f] setStroke];
+    if (g_is_dark_theme) {
+        [[NSColor colorWithCalibratedWhite:0.3f alpha:0.4f] setStroke];
+    } else {
+        [[NSColor colorWithCalibratedWhite:0.75f alpha:0.8f] setStroke];
+    }
     [paperPath setLineWidth:1.0f];
     [paperPath stroke];
 
@@ -289,6 +302,15 @@ void set_ui_blocking_rects(const float *rects, uint32_t count) {
             g_ui_blocking_rects[i] = NSMakeRect(rx, winH - ry - rh, rw, rh);
         }
     });
+}
+
+void set_workspace_theme(bool is_dark) {
+    g_is_dark_theme = is_dark;
+    if (g_active_workspace_view) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [g_active_workspace_view setNeedsDisplay:YES];
+        });
+    }
 }
 
 void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {

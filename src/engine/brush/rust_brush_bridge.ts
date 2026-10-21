@@ -85,6 +85,15 @@ export class RustBrushBridge {
     }
   }
 
+  public async setWorkspaceTheme(isDark: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_set_workspace_theme", { isDark });
+    } catch (err) {
+      console.warn("Failed to set workspace theme:", err);
+    }
+  }
+
   public async setUiBlockingRects(rects: Array<[number, number, number, number]>): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

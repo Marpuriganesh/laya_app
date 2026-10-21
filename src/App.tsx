@@ -14,7 +14,7 @@ import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
 import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
 import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
-import { ThemeProvider } from "@/ui/theme/ThemeProvider";
+import { ThemeProvider, useTheme } from "@/ui/theme/ThemeProvider";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 
 export default function App() {
@@ -31,6 +31,7 @@ export default function App() {
 function MainWindow() {
   useDetachedWindowSync({ role: "main" });
   useWindowKeyShortcuts({ enableMinimize: true });
+  const { resolvedTheme } = useTheme();
 
   const {
     document,
@@ -55,6 +56,10 @@ function MainWindow() {
   } = useDocumentStore();
 
   useNativeUiRectsSync(activePopover);
+
+  useEffect(() => {
+    globalRustBrushBridge.setWorkspaceTheme(resolvedTheme === "dark");
+  }, [resolvedTheme]);
 
   const handleClosePopover = useCallback(() => {
     setActivePopover("none");

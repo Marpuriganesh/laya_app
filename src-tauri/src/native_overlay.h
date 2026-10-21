@@ -24,6 +24,7 @@ void set_native_overlay_pan_active(bool is_panning);
 void update_canvas_artboard_rect(float x, float y, float width, float height);
 void trigger_native_overlay_repaint(void);
 void set_ui_blocking_rects(const float *rects, uint32_t count);
+void set_workspace_theme(bool is_dark);
 
 #ifdef __cplusplus
 }

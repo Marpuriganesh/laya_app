@@ -125,6 +125,16 @@ unsafe extern "C" {
     pub fn update_canvas_artboard_rect(x: f32, y: f32, width: f32, height: f32);
     pub fn trigger_native_overlay_repaint();
     pub fn set_ui_blocking_rects(rects: *const f32, count: u32);
+    pub fn set_workspace_theme(is_dark: bool);
+}
+
+#[tauri::command]
+pub async fn rust_set_workspace_theme(is_dark: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        set_workspace_theme(is_dark);
+    }
+    Ok(())
 }
 
 #[tauri::command]
