@@ -10,7 +10,7 @@ static float g_cursor_x = -100.0f;
 static float g_cursor_y = -100.0f;
 static BOOL g_is_drawing = NO;
 
-static NSRect g_artboard_rect = { { 0, 0 }, { 1000, 1000 } };
+static NSRect g_artboard_rect = { { 0, 0 }, { 0, 0 } };
 static NSRect g_ui_blocking_rects[MAX_UI_BLOCKING_RECTS];
 static uint32_t g_ui_blocking_count = 0;
 static BOOL g_is_dark_theme = YES;
@@ -341,9 +341,14 @@ void set_ui_blocking_rects(const float *rects, uint32_t count) {
 void set_workspace_theme(bool is_dark) {
     g_is_dark_theme = is_dark;
     if (g_active_workspace_view) {
-        dispatch_async(dispatch_get_main_queue(), ^{
+        void (^applyBlock)(void) = ^{
             [g_active_workspace_view setNeedsDisplay:YES];
-        });
+        };
+        if ([NSThread isMainThread]) {
+            applyBlock();
+        } else {
+            dispatch_async(dispatch_get_main_queue(), applyBlock);
+        }
     }
 }
 
@@ -356,6 +361,13 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
             NSView *webView = (__bridge NSView *)ns_view_ptr;
             NSView *contentView = [window contentView];
             if (!contentView) return;
+
+            // Detect initial macOS system appearance so theme matches before React mounts
+            @try {
+                NSAppearance *appearance = [window effectiveAppearance] ?: [NSApp effectiveAppearance];
+                NSAppearanceName matched = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
+                g_is_dark_theme = ![matched isEqualToString:NSAppearanceNameAqua];
+            } @catch (id ex) {}
 
             // Ensure window supports smooth transparency & rounded corners
             [window setOpaque:NO];
@@ -376,13 +388,30 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                 if ([webView respondsToSelector:@selector(setValue:forKey:)]) {
                     [webView setValue:@NO forKey:@"drawsBackground"];
                 }
+                if ([webView respondsToSelector:@selector(setUnderPageBackgroundColor:)]) {
+                    [(id)webView performSelector:@selector(setUnderPageBackgroundColor:) withObject:[NSColor clearColor]];
+                }
             } @catch (id ex) {}
+
+            // Immediate initial repaint to paint workspace theme backdrop right on launch
+            [workspaceView setNeedsDisplay:YES];
+            [contentView setNeedsDisplay:YES];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (g_active_workspace_view) {
+                    [g_active_workspace_view setNeedsDisplay:YES];
+                }
+            });
 
             rust_overlay_init(1000, 1000);
 
+            // Disable AppKit mouse coalescing so the native drawing engine receives
+            // every single raw high-frequency hardware sample (120Hz-240Hz stylus/tablet points)
+            // without macOS dropping or compressing intermediate samples.
+            [NSEvent setMouseCoalescingEnabled:NO];
+
             // First-class Apple AppKit Local Event Monitor
             [NSEvent addLocalMonitorForEventsMatchingMask:
-                (NSEventMaskLeftMouseDown | NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp | NSEventMaskMouseMoved)
+                (NSEventMaskLeftMouseDown | NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp | NSEventMaskMouseMoved | NSEventMaskTabletPoint)
                 handler:^NSEvent *(NSEvent *event) {
                     @try {
                         if (!g_active_workspace_view) {

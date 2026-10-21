@@ -242,7 +242,8 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   // Center canvas on initial mount or when document dimension changes
   useEffect(() => {
     fitToScreen(0.85);
-  }, [doc.id, doc.width, doc.height, fitToScreen]);
+    syncNativeArtboard();
+  }, [doc.id, doc.width, doc.height, fitToScreen, syncNativeArtboard]);
 
   // Synchronize document dimensions to native Rust canvas engine
   useEffect(() => {

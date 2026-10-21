@@ -44,7 +44,14 @@ export const ThemeProvider: FC<ThemeProviderProps> = ({
     return defaultTheme;
   });
 
-  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark");
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(() => {
+    if (typeof window !== "undefined") {
+      const isSystemDark =
+        window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true;
+      return resolveTheme(theme, isSystemDark);
+    }
+    return "dark";
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
