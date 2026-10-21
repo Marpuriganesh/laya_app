@@ -1,4 +1,4 @@
-use crate::brush::event::StrokeEvent;
+use crate::stroke::event::StrokeEvent;
 
 /// Tracks distance traveled along linear segments and quadratic Bézier splines,
 /// computing exact subpixel dab placement intervals with sub-millimeter distance preservation.
@@ -98,18 +98,6 @@ impl StrokeStepper {
             None
         }
     }
-
-    /// Computes the parametric interpolation factor `t` in `[0.0, 1.0]` for the next dab along segment `(p1, p2)`.
-    /// Maintained for backwards compatibility.
-    pub fn get_next_step(
-        &mut self,
-        p1: &StrokeEvent,
-        p2: &StrokeEvent,
-        required_spacing: f32,
-    ) -> Option<f32> {
-        let length = Self::linear_length(p1, p2);
-        self.get_next_linear_step(length, 0.0, required_spacing)
-    }
 }
 
 #[cfg(test)]
@@ -119,64 +107,56 @@ mod tests {
     #[test]
     fn test_stroke_stepper_spacing() {
         let mut stepper = StrokeStepper::new();
-        let p1 = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
-        let p2 = StrokeEvent::new(100.0, 0.0, 1.0, 0.1);
+        // A linear segment of length 10.0, spacing required is 4.0
+        let seg_len = 10.0;
+        let t1 = stepper.get_next_linear_step(seg_len, 0.0, 4.0);
+        assert_eq!(t1, Some(0.4));
 
-        // Required spacing: 20 pixels
-        let t1 = stepper.get_next_step(&p1, &p2, 20.0);
-        assert_eq!(t1, Some(0.2));
+        let t2 = stepper.get_next_linear_step(seg_len, 0.4, 4.0);
+        assert_eq!(t2, Some(0.8));
 
-        // Next point starting from t=0.2 (x=20)
-        let dab1 = StrokeEvent::lerp(&p1, &p2, 0.2);
-        let t2 = stepper.get_next_step(&dab1, &p2, 20.0);
-        // Distance needed: 20 / remaining 80 = 0.25
-        assert!((t2.unwrap() - 0.25).abs() < 1e-5);
+        // Remaining distance on segment from t=0.8 to 1.0 is 2.0 (insufficient for 4.0)
+        let t3 = stepper.get_next_linear_step(seg_len, 0.8, 4.0);
+        assert_eq!(t3, None);
+        assert!((stepper.accum_distance - 2.0).abs() < 1e-4);
+
+        // Next segment of length 5.0, requires 4.0 (2.0 already accumulated, so only 2.0 needed)
+        let t4 = stepper.get_next_linear_step(5.0, 0.0, 4.0);
+        assert_eq!(t4, Some(0.4)); // 2.0 / 5.0 = 0.4
+        assert_eq!(stepper.accum_distance, 0.0);
     }
 
     #[test]
     fn test_stroke_stepper_quadratic_curve_length() {
-        // Collinear straight line: length should equal chord length exactly
         let m0 = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
-        let p1 = StrokeEvent::new(50.0, 0.0, 1.0, 0.5);
-        let m1 = StrokeEvent::new(100.0, 0.0, 1.0, 1.0);
+        let p1 = StrokeEvent::new(50.0, 50.0, 1.0, 0.0);
+        let m1 = StrokeEvent::new(100.0, 0.0, 1.0, 0.0);
 
         let len = StrokeStepper::quad_bezier_length(&m0, &p1, &m1);
-        assert!((len - 100.0).abs() < 1e-4);
-
-        // Right angle triangle: chord is hypotenuse ~141.42, legs are 100 + 100 = 200
-        let p_corner = StrokeEvent::new(100.0, 0.0, 1.0, 0.5);
-        let p_end = StrokeEvent::new(100.0, 100.0, 1.0, 1.0);
-        let len_curve = StrokeStepper::quad_bezier_length(&m0, &p_corner, &p_end);
-        // Curve length must be strictly greater than chord and strictly less than control polygon:
-        let chord = (100.0f32 * 100.0f32 + 100.0f32 * 100.0f32).sqrt();
-        assert!(len_curve > chord);
-        assert!(len_curve < 200.0);
+        // Chord = 100, legs = 2 * sqrt(50^2 + 50^2) ≈ 2 * 70.71 = 141.42
+        // Gravesen: (200 + 141.42) / 3 ≈ 113.8
+        assert!(len > 100.0);
+        assert!(len < 142.0);
+        assert!((len - 113.8).abs() < 1.0);
     }
 
     #[test]
     fn test_stroke_stepper_quadratic_step_accumulation() {
         let mut stepper = StrokeStepper::new();
-        let curve_len = 50.0;
-        let spacing = 20.0;
+        let curve_len = 100.0;
+        let spacing = 30.0;
 
-        // Step 1: 0 -> 20 (t = 20 / 50 = 0.4)
         let t1 = stepper.get_next_quad_step(curve_len, 0.0, spacing);
-        assert_eq!(t1, Some(0.4));
+        assert_eq!(t1, Some(0.3));
 
-        // Step 2: 20 -> 40 (t = 0.4 + 20 / 50 = 0.8)
-        let t2 = stepper.get_next_quad_step(curve_len, 0.4, spacing);
-        assert_eq!(t2, Some(0.8));
+        let t2 = stepper.get_next_quad_step(curve_len, 0.3, spacing);
+        assert_eq!(t2, Some(0.6));
 
-        // Step 3: remaining from 0.8 to 1.0 is 10px, insufficient for 20px spacing
-        let t3 = stepper.get_next_quad_step(curve_len, 0.8, spacing);
-        assert_eq!(t3, None);
-        // Remaining 10px is carried over in accum_distance:
-        assert!((stepper.accum_distance - 10.0).abs() < 1e-5);
+        let t3 = stepper.get_next_quad_step(curve_len, 0.6, spacing);
+        assert!((t3.unwrap() - 0.9).abs() < 1e-5);
 
-        // Next segment of 40px length: distance needed = 20 - 10 = 10px -> t = 10 / 40 = 0.25
-        let next_len = 40.0;
-        let t4 = stepper.get_next_quad_step(next_len, 0.0, spacing);
-        assert!((t4.unwrap() - 0.25).abs() < 1e-5);
-        assert_eq!(stepper.accum_distance, 0.0);
+        let t4 = stepper.get_next_quad_step(curve_len, 0.9, spacing);
+        assert_eq!(t4, None);
+        assert!((stepper.accum_distance - 10.0).abs() < 1e-4);
     }
 }

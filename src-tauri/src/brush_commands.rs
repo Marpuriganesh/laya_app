@@ -28,6 +28,7 @@ impl Default for BrushEngineState {
                     size_by_pressure: true,
                     opacity_by_pressure: false,
                     is_erase: false,
+                    antialias: true,
                 }),
                 stroke_start_time: std::time::Instant::now(),
             }),
@@ -51,6 +52,7 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         size_by_pressure: true,
         opacity_by_pressure: false,
         is_erase: false,
+        antialias: true,
     });
     // Transparent background: the React artboard paper div provides the white/checkerboard
     // surface behind the ink. The native canvas only holds painted stroke pixels.
@@ -188,6 +190,12 @@ pub struct BrushConfigDto {
     pub opacity_by_pressure: bool,
     #[serde(default)]
     pub is_erase: bool,
+    #[serde(default = "default_true")]
+    pub antialias: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl From<BrushConfigDto> for BrushConfig {
@@ -202,6 +210,7 @@ impl From<BrushConfigDto> for BrushConfig {
             size_by_pressure: dto.size_by_pressure,
             opacity_by_pressure: dto.opacity_by_pressure,
             is_erase: dto.is_erase,
+            antialias: dto.antialias,
         }
     }
 }

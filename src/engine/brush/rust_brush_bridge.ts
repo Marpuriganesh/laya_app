@@ -14,6 +14,7 @@ export interface BrushConfigDto {
   size_by_pressure: boolean;
   opacity_by_pressure: boolean;
   is_erase: boolean;
+  antialias?: boolean;
 }
 
 export class RustBrushBridge {

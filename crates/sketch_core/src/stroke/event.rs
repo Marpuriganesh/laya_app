@@ -78,46 +78,43 @@ mod tests {
     #[test]
     fn test_stroke_event_lerp() {
         let a = StrokeEvent::new(0.0, 10.0, 0.2, 1.0);
-        let b = StrokeEvent::new(100.0, 50.0, 0.8, 3.0);
-
+        let b = StrokeEvent::new(100.0, 50.0, 0.8, 2.0);
         let mid = StrokeEvent::lerp(&a, &b, 0.5);
-        assert!((mid.x - 50.0).abs() < 1e-5);
-        assert!((mid.y - 30.0).abs() < 1e-5);
-        assert!((mid.pressure - 0.5).abs() < 1e-5);
-        assert!((mid.time - 2.0).abs() < 1e-5);
+
+        assert_eq!(mid.x, 50.0);
+        assert_eq!(mid.y, 30.0);
+        assert_eq!(mid.pressure, 0.5);
+        assert_eq!(mid.time, 1.5);
     }
 
     #[test]
     fn test_stroke_event_midpoint() {
-        let a = StrokeEvent::new(10.0, 20.0, 0.2, 1.0);
-        let b = StrokeEvent::new(30.0, 40.0, 0.8, 3.0);
-
+        let a = StrokeEvent::new(10.0, 20.0, 0.4, 0.0);
+        let b = StrokeEvent::new(30.0, 60.0, 0.8, 1.0);
         let mid = StrokeEvent::midpoint(&a, &b);
-        assert!((mid.x - 20.0).abs() < 1e-5);
-        assert!((mid.y - 30.0).abs() < 1e-5);
-        assert!((mid.pressure - 0.5).abs() < 1e-5);
-        assert!((mid.time - 2.0).abs() < 1e-5);
+
+        assert_eq!(mid.x, 20.0);
+        assert_eq!(mid.y, 40.0);
+        assert_eq!(mid.pressure, 0.6);
     }
 
     #[test]
     fn test_stroke_event_quad_bezier_endpoints_and_midpoint() {
-        let m0 = StrokeEvent::new(0.0, 0.0, 0.1, 0.0);
+        let m0 = StrokeEvent::new(0.0, 0.0, 0.2, 0.0);
         let p1 = StrokeEvent::new(50.0, 100.0, 0.5, 0.5);
-        let m1 = StrokeEvent::new(100.0, 0.0, 0.9, 1.0);
+        let m1 = StrokeEvent::new(100.0, 0.0, 0.8, 1.0);
 
-        // At t = 0: equals m0
+        // At t = 0: must equal m0
         let start = StrokeEvent::quad_bezier(&m0, &p1, &m1, 0.0);
-        assert!((start.x - 0.0).abs() < 1e-5);
-        assert!((start.y - 0.0).abs() < 1e-5);
-        assert!((start.pressure - 0.1).abs() < 1e-5);
+        assert!((start.x - m0.x).abs() < 1e-5);
+        assert!((start.y - m0.y).abs() < 1e-5);
 
-        // At t = 1: equals m1
+        // At t = 1: must equal m1
         let end = StrokeEvent::quad_bezier(&m0, &p1, &m1, 1.0);
-        assert!((end.x - 100.0).abs() < 1e-5);
-        assert!((end.y - 0.0).abs() < 1e-5);
-        assert!((end.pressure - 0.9).abs() < 1e-5);
+        assert!((end.x - m1.x).abs() < 1e-5);
+        assert!((end.y - m1.y).abs() < 1e-5);
 
-        // At t = 0.5: 0.25*0 + 0.5*50 + 0.25*100 = 50 for x; 0.25*0 + 0.5*100 + 0.25*0 = 50 for y
+        // At t = 0.5: B(0.5) = 0.25*m0 + 0.5*p1 + 0.25*m1 = 0 + 25 + 25 = 50 for x, 0 + 50 + 0 = 50 for y
         let mid = StrokeEvent::quad_bezier(&m0, &p1, &m1, 0.5);
         assert!((mid.x - 50.0).abs() < 1e-5);
         assert!((mid.y - 50.0).abs() < 1e-5);

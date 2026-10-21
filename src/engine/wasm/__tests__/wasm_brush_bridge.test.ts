@@ -28,7 +28,8 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       1.0, // flow
       false, // size_by_pressure
       false, // opacity_by_pressure
-      false  // is_erase
+      false, // is_erase
+      true   // antialias
     );
 
     const dirty = engine.begin_stroke(100, 100, 1.0);
@@ -54,7 +55,8 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       1.0,
       false,
       false,
-      false
+      false,
+      true
     );
 
     engine.begin_stroke(50, 50, 1.0);
@@ -79,7 +81,8 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       1.0,
       false,
       false,
-      false
+      false,
+      true
     );
 
     engine.begin_stroke(10, 10, 1.0);
@@ -97,14 +100,12 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
 
     const [x, , w] = batchDirty;
     expect(x).toBeLessThanOrEqual(50);
-    // Midpoint quadratic spline curves up to midpoint M_next = (100 + 150) / 2 = 125 (+ dab radius)
     expect(x + w).toBeGreaterThanOrEqual(130);
 
     const finishDirty = engine.finish_stroke();
     expect(finishDirty).toBeDefined();
     if (!finishDirty) return;
     const [fx, , fw] = finishDirty;
-    // finish_stroke stamps the final segment to x = 150
     expect(fx + fw).toBeGreaterThanOrEqual(155);
   });
 
@@ -119,7 +120,8 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       1.0,
       false,
       false,
-      false
+      false,
+      true
     );
 
     const dirty = engine.begin_stroke(100, 100, 1.0);
@@ -144,10 +146,8 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
 
   it("erases pixels when is_erase is enabled", () => {
     const engine = new WasmBrushEngine(200, 200);
-    // 1. Fill with opaque white
     engine.clear(255, 255, 255, 255);
 
-    // 2. Set eraser brush
     engine.set_brush_config(
       30,
       0.1,
@@ -157,7 +157,8 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       1.0,
       false,
       false,
-      true // is_erase = true
+      true, // is_erase = true
+      true  // antialias = true
     );
 
     const dirty = engine.begin_stroke(100, 100, 1.0);
@@ -174,5 +175,62 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
 
     // Center pixel alpha should be erased to 0
     expect(outBuffer[centerOffset + 3]).toBe(0);
+  });
+
+  it("respects antialias toggle (subpixel falloff when true vs crisp binary when false)", () => {
+    // 1. With antialias = false: non-zero pixels must all be strictly 255
+    const engineNonAa = new WasmBrushEngine(100, 100);
+    engineNonAa.set_brush_config(
+      10,
+      0.1,
+      0.0, // Hard circle
+      0, 0, 0, 255,
+      1.0,
+      1.0,
+      false,
+      false,
+      false,
+      false // antialias = false
+    );
+    const dNoAa = engineNonAa.begin_stroke(50, 50, 1.0);
+    expect(dNoAa).toBeDefined();
+    const [nx, ny, nw, nh] = dNoAa!;
+    const bufNoAa = new Uint8Array(nw * nh * 4);
+    engineNonAa.copy_sub_rect(nx, ny, nw, nh, bufNoAa);
+
+    for (let i = 3; i < bufNoAa.length; i += 4) {
+      const alpha = bufNoAa[i];
+      expect(alpha === 0 || alpha === 255).toBe(true);
+    }
+
+    // 2. With antialias = true: perimeter has subpixel intermediate alpha
+    const engineAa = new WasmBrushEngine(100, 100);
+    engineAa.set_brush_config(
+      10,
+      0.1,
+      0.0, // Hard circle
+      0, 0, 0, 255,
+      1.0,
+      1.0,
+      false,
+      false,
+      false,
+      true // antialias = true
+    );
+    const dAa = engineAa.begin_stroke(50, 50, 1.0);
+    expect(dAa).toBeDefined();
+    const [ax, ay, aw, ah] = dAa!;
+    const bufAa = new Uint8Array(aw * ah * 4);
+    engineAa.copy_sub_rect(ax, ay, aw, ah, bufAa);
+
+    let hasIntermediateAlpha = false;
+    for (let i = 3; i < bufAa.length; i += 4) {
+      const alpha = bufAa[i];
+      if (alpha > 0 && alpha < 255) {
+        hasIntermediateAlpha = true;
+        break;
+      }
+    }
+    expect(hasIntermediateAlpha).toBe(true);
   });
 });

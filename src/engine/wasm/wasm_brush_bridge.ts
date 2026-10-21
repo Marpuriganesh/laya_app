@@ -19,6 +19,7 @@ export interface WasmBrushConfig {
   sizeByPressure: boolean;
   opacityByPressure: boolean;
   isErase: boolean;
+  antialias: boolean;
 }
 
 export class WasmBrushBridge {
@@ -39,6 +40,7 @@ export class WasmBrushBridge {
     sizeByPressure: true,
     opacityByPressure: false,
     isErase: false,
+    antialias: true,
   };
 
   /**
@@ -108,7 +110,8 @@ export class WasmBrushBridge {
       c.flow,
       c.sizeByPressure,
       c.opacityByPressure,
-      c.isErase
+      c.isErase,
+      c.antialias ?? true
     );
   }
 

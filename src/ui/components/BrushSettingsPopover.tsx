@@ -23,6 +23,7 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
   const [flow, setFlow] = useState(() => (globalDrawingEngine.getBrushFlow?.() ?? 1.0) * 100);
   const [sizeDynamics, setSizeDynamics] = useState(() => globalDrawingEngine.getSizeDynamicsEnabled?.() ?? true);
   const [opacityDynamics, setOpacityDynamics] = useState(() => globalDrawingEngine.getOpacityDynamicsEnabled?.() ?? false);
+  const [antialias, setAntialias] = useState(() => globalDrawingEngine.getAntialias?.() ?? true);
 
   useEffect(() => {
     if (isOpen) {
@@ -31,6 +32,7 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
       setFlow((globalDrawingEngine.getBrushFlow?.() ?? 1.0) * 100);
       setSizeDynamics(globalDrawingEngine.getSizeDynamicsEnabled?.() ?? true);
       setOpacityDynamics(globalDrawingEngine.getOpacityDynamicsEnabled?.() ?? false);
+      setAntialias(globalDrawingEngine.getAntialias?.() ?? true);
     }
   }, [isOpen]);
 
@@ -57,6 +59,11 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
   const handleOpacityDynamicsToggle = (enabled: boolean) => {
     setOpacityDynamics(enabled);
     globalDrawingEngine.setOpacityDynamicsEnabled?.(enabled);
+  };
+
+  const handleAntialiasToggle = (enabled: boolean) => {
+    setAntialias(enabled);
+    globalDrawingEngine.setAntialias?.(enabled);
   };
 
   const handleClear = () => {
@@ -157,6 +164,20 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
             className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
           />
         </div>
+
+        {/* Anti-Aliasing (Subpixel Smoothing) */}
+        <label className="flex items-center justify-between cursor-pointer p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">Anti-Aliasing</span>
+            <span className="text-[10px] text-zinc-500">Smooth subpixel edges (disable for pixel art)</span>
+          </div>
+          <input
+            type="checkbox"
+            checked={antialias}
+            onChange={(e) => handleAntialiasToggle(e.target.checked)}
+            className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+          />
+        </label>
 
         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
 

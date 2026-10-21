@@ -19,6 +19,8 @@ pub struct BrushConfig {
     pub opacity_by_pressure: bool,
     /// Whether the brush operates in destination-out erase mode.
     pub is_erase: bool,
+    /// Whether analytical subpixel edge anti-aliasing is applied to brush tips.
+    pub antialias: bool,
 }
 
 impl Default for BrushConfig {
@@ -33,6 +35,7 @@ impl Default for BrushConfig {
             size_by_pressure: true,
             opacity_by_pressure: false,
             is_erase: false,
+            antialias: true,
         }
     }
 }

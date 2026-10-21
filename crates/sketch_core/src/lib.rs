@@ -4,9 +4,11 @@
 //! Contains the standalone Krita pixel brush engine with subpixel dab stepping,
 //! analytical radial softness dab generation, and Porter-Duff Over alpha compositing.
 
+pub mod stroke;
 pub mod brush;
 pub mod wasm;
 
+pub use stroke::*;
 pub use brush::*;
 pub use wasm::*;
 

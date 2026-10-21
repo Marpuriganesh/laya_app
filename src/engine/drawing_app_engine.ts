@@ -88,6 +88,7 @@ export class DrawingAppEngine implements IDrawingEngine {
   private brushFlow = 1.0;
   private sizeByPressure = true;
   private opacityByPressure = false;
+  private brushAntialias = true;
 
   private lastPoint: StrokePoint | null = null;
   private smoothingConfig: StrokeSmoothingConfig = { ...DEFAULT_STROKE_SMOOTHING_CONFIG };
@@ -266,6 +267,7 @@ export class DrawingAppEngine implements IDrawingEngine {
       size_by_pressure: this.sizeByPressure,
       opacity_by_pressure: this.opacityByPressure,
       is_erase: isErase,
+      antialias: this.brushAntialias,
     });
 
     globalWasmBrushBridge.setBrushConfig({
@@ -278,6 +280,7 @@ export class DrawingAppEngine implements IDrawingEngine {
       sizeByPressure: this.sizeByPressure,
       opacityByPressure: this.opacityByPressure,
       isErase,
+      antialias: this.brushAntialias,
     });
   }
 
@@ -365,6 +368,14 @@ export class DrawingAppEngine implements IDrawingEngine {
   }
   public getOpacityDynamicsEnabled(): boolean {
     return this.opacityByPressure;
+  }
+
+  public setAntialias(enabled: boolean): void {
+    this.brushAntialias = enabled;
+    this.syncBrushConfigToRust();
+  }
+  public getAntialias(): boolean {
+    return this.brushAntialias;
   }
 
   public setCanvasSize(widthPx: number, heightPx: number): void {

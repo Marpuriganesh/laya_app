@@ -2,8 +2,8 @@ use wasm_bindgen::prelude::*;
 use crate::brush::canvas::CanvasView;
 use crate::brush::config::BrushConfig;
 use crate::brush::engine::PixelBrushEngine;
-use crate::brush::event::StrokeEvent;
 use crate::brush::rect::Rect;
+use crate::stroke::StrokeEvent;
 
 /// WebAssembly binding for the Krita pixel brush engine.
 /// Exposes stroke stepping along continuous midpoint quadratic Bézier splines,
@@ -51,6 +51,7 @@ impl WasmBrushEngine {
         size_by_pressure: bool,
         opacity_by_pressure: bool,
         is_erase: bool,
+        antialias: bool,
     ) {
         self.engine.config = BrushConfig {
             diameter,
@@ -62,6 +63,7 @@ impl WasmBrushEngine {
             size_by_pressure,
             opacity_by_pressure,
             is_erase,
+            antialias,
         };
     }
 
