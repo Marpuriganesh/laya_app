@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, type FC, type PointerEvent, type MouseEvent } from "react";
 import {
   evaluateMonotonicCurve,
-  generateSvgPathFromCurve,
   createLinearCurve,
   createSoftCurve,
   createFirmCurve,
@@ -27,8 +26,8 @@ export interface CurveEditorProps {
 export const CurveEditor: FC<CurveEditorProps> = ({
   value,
   onChange,
-  width = 240,
-  height = 180,
+  width = 260,
+  height = 170,
   inputLabel = "Pressure In",
   outputLabel = "Output Scale",
   showLiveTelemetry = true,
@@ -37,56 +36,110 @@ export const CurveEditor: FC<CurveEditorProps> = ({
 }) => {
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const [livePressure, setLivePressure] = useState<number | null>(null);
-  const graphRef = useRef<SVGSVGElement>(null);
+  const activeIndexRef = useRef<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  // Padding inside SVG canvas so endpoints don't get clipped
-  const pad = 12;
-  const graphW = width - pad * 2;
-  const graphH = height - pad * 2;
+  // Safe internal padding so endpoint circles (radius 6px + 2px border) never clip against SVG boundaries
+  const padX = 14;
+  const padY = 14;
+  const graphW = width - padX * 2;
+  const graphH = height - padY * 2;
 
-  // Normalized [0..1] to SVG Screen Coordinates
-  const toScreenX = useCallback((nx: number) => pad + nx * graphW, [graphW]);
-  const toScreenY = useCallback((ny: number) => pad + (1.0 - ny) * graphH, [graphH]);
+  // Coordinate Conversion Functions
+  const toScreenX = useCallback((nx: number) => padX + nx * graphW, [graphW]);
+  const toScreenY = useCallback((ny: number) => padY + (1.0 - ny) * graphH, [graphH]);
 
-  // Screen Coordinates to Normalized [0..1]
   const toNormX = useCallback(
-    (sx: number) => clampScalar((sx - pad) / graphW, 0.0, 1.0),
+    (sx: number) => clampScalar((sx - padX) / graphW, 0.0, 1.0),
     [graphW]
   );
   const toNormY = useCallback(
-    (sy: number) => clampScalar(1.0 - (sy - pad) / graphH, 0.0, 1.0),
+    (sy: number) => clampScalar(1.0 - (sy - padY) / graphH, 0.0, 1.0),
     [graphH]
   );
 
-  // 1. Pointer Dragging on Existing Control Points
-  const handlePointPointerDown = (index: number, e: PointerEvent<SVGCircleElement>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    (e.target as Element).setPointerCapture(e.pointerId);
-    setActivePointIndex(index);
+  // Keep ref in sync for synchronous pointer event processing
+  activeIndexRef.current = activePointIndex;
+
+  // 1. Unified Pointer Down on SVG (Handles grabbing existing points OR fluidly creating & immediately dragging a new point)
+  const handleSvgPointerDown = (e: PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const clientX = ((e.clientX - rect.left) / rect.width) * width;
+    const clientY = ((e.clientY - rect.top) / rect.height) * height;
+
+    // Check if clicked close to an existing control point (hit radius 16px)
+    let hitIndex = -1;
+    let minDistance = 16;
+    for (let i = 0; i < value.length; i++) {
+      const px = toScreenX(value[i].x);
+      const py = toScreenY(value[i].y);
+      const dist = Math.hypot(px - clientX, py - clientY);
+      if (dist < minDistance) {
+        minDistance = dist;
+        hitIndex = i;
+      }
+    }
+
+    if (hitIndex >= 0) {
+      // Grabbed existing point
+      setActivePointIndex(hitIndex);
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    // Otherwise: click on canvas to add a new point fluidly
+    const normX = toNormX(clientX);
+    const normY = toNormY(clientY);
+
+    // Max 10 points
+    if (value.length >= 10) return;
+
+    // Don't add if x is too close to endpoints (within 0.03) or any existing point
+    if (normX <= 0.03 || normX >= 0.97) return;
+    const tooCloseToX = value.some((p) => Math.abs(p.x - normX) < 0.04);
+    if (tooCloseToX) return;
+
+    // If click is within 35px of the actual curve line, snap Y to curve for a natural feel
+    const curveNormY = evaluateMonotonicCurve(value, normX);
+    const curveScreenY = toScreenY(curveNormY);
+    const effectiveNormY =
+      Math.abs(curveScreenY - clientY) < 35 ? curveNormY : normY;
+
+    const newPoint: CurvePoint = { x: normX, y: effectiveNormY };
+    const nextPoints = [...value, newPoint].sort((a, b) => a.x - b.x);
+    const newIndex = nextPoints.findIndex((p) => p === newPoint);
+
+    onChange(nextPoints);
+    setActivePointIndex(newIndex);
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
 
-  const handlePointPointerMove = (index: number, e: PointerEvent<SVGCircleElement>) => {
-    if (activePointIndex !== index || !graphRef.current) return;
-    const rect = graphRef.current.getBoundingClientRect();
-    const clientX = e.clientX - rect.left;
-    const clientY = e.clientY - rect.top;
+  // 2. Smooth Pointer Move on SVG Canvas
+  const handleSvgPointerMove = (e: PointerEvent<SVGSVGElement>) => {
+    const idx = activeIndexRef.current;
+    if (idx === null || !svgRef.current) return;
+
+    const rect = svgRef.current.getBoundingClientRect();
+    const clientX = ((e.clientX - rect.left) / rect.width) * width;
+    const clientY = ((e.clientY - rect.top) / rect.height) * height;
 
     const newNormX = toNormX(clientX);
     const newNormY = toNormY(clientY);
 
     const nextPoints = [...value].map((p) => ({ ...p }));
 
-    // Endpoints: x is locked to 0 or 1, only y can change
-    if (index === 0) {
+    if (idx === 0) {
+      // First point: locked at x=0
       nextPoints[0] = { x: 0.0, y: newNormY };
-    } else if (index === nextPoints.length - 1) {
-      nextPoints[index] = { x: 1.0, y: newNormY };
+    } else if (idx === nextPoints.length - 1) {
+      // Last point: locked at x=1
+      nextPoints[idx] = { x: 1.0, y: newNormY };
     } else {
-      // Interior points: clamp x between neighbor points with minimum clearance
-      const minX = (nextPoints[index - 1]?.x ?? 0.0) + 0.03;
-      const maxX = (nextPoints[index + 1]?.x ?? 1.0) - 0.03;
-      nextPoints[index] = {
+      // Interior point: bounded between previous and next points
+      const minX = (nextPoints[idx - 1]?.x ?? 0.0) + 0.025;
+      const maxX = (nextPoints[idx + 1]?.x ?? 1.0) - 0.025;
+      nextPoints[idx] = {
         x: clampScalar(newNormX, minX, maxX),
         y: newNormY,
       };
@@ -95,47 +148,26 @@ export const CurveEditor: FC<CurveEditorProps> = ({
     onChange(nextPoints);
   };
 
-  const handlePointPointerUp = (e: PointerEvent<SVGCircleElement>) => {
+  const handleSvgPointerUp = (e: PointerEvent<SVGSVGElement>) => {
     setActivePointIndex(null);
-    if ((e.target as Element).hasPointerCapture(e.pointerId)) {
-      (e.target as Element).releasePointerCapture(e.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
   };
 
-  // 2. Click to Add Point on Graph Background
-  const handleGraphClick = (e: MouseEvent<SVGSVGElement>) => {
-    if (activePointIndex !== null || !graphRef.current) return;
-    const rect = graphRef.current.getBoundingClientRect();
-    const normX = toNormX(e.clientX - rect.left);
-    const normY = toNormY(e.clientY - rect.top);
-
-    // Max 8 points to prevent over-complication
-    if (value.length >= 8) return;
-
-    // Don't add if too close to an existing point
-    const isTooClose = value.some(
-      (p) => Math.hypot(p.x - normX, p.y - normY) < 0.06
-    );
-    if (isTooClose) return;
-
-    const newPoint: CurvePoint = { x: normX, y: normY };
-    const nextPoints = [...value, newPoint].sort((a, b) => a.x - b.x);
-    onChange(nextPoints);
-  };
-
-  // 3. Double-click or Right-click to Delete Interior Point
-  const handlePointDoubleClick = (index: number, e: MouseEvent) => {
+  // 3. Delete Point on Double-click or Context Menu
+  const handleDeletePoint = (index: number, e: MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     if (index === 0 || index === value.length - 1) return; // Cannot delete endpoints
-    const nextPoints = value.filter((_, idx) => idx !== index);
+    const nextPoints = value.filter((_, i) => i !== index);
     onChange(nextPoints);
+    setActivePointIndex(null);
   };
 
-  // 4. Live Pressure Testing Pad
+  // 4. Live Stylus Testing Pad
   const handleTestPointer = (e: PointerEvent<HTMLDivElement>) => {
     let p = e.pressure;
-    // Fallback for mouse dragging on test pad: simulate pressure by horizontal ratio
     if (e.pointerType === "mouse" || p <= 0.001) {
       const rect = e.currentTarget.getBoundingClientRect();
       p = clampScalar((e.clientX - rect.left) / rect.width, 0.0, 1.0);
@@ -147,62 +179,76 @@ export const CurveEditor: FC<CurveEditorProps> = ({
     setLivePressure(null);
   };
 
-  // Precomputed Spline Curve SVG Path
-  const curvePath = generateSvgPathFromCurve(value, graphW, graphH, 48);
+  // 5. Generate Curve and Area Fill using the shared (toScreenX, toScreenY) coordinates
+  const samples = 48;
+  let curvePath = "";
+  let areaPath = "";
 
-  // Closed Path for Subtle Area Fill under curve
-  const areaPath = `${curvePath} L ${(pad + graphW).toFixed(2)} ${(pad + graphH).toFixed(2)} L ${pad.toFixed(2)} ${(pad + graphH).toFixed(2)} Z`;
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const yVal = evaluateMonotonicCurve(value, t);
+    const sx = toScreenX(t);
+    const sy = toScreenY(yVal);
+    const prefix = i === 0 ? "M" : "L";
+    curvePath += `${prefix} ${sx.toFixed(1)} ${sy.toFixed(1)}`;
+    areaPath += `${prefix} ${sx.toFixed(1)} ${sy.toFixed(1)}`;
+  }
 
-  // Evaluated live telemetry coordinates
+  const bottomY = toScreenY(0.0);
+  const startX = toScreenX(0.0);
+  const endX = toScreenX(1.0);
+  areaPath += ` L ${endX.toFixed(1)} ${bottomY.toFixed(1)} L ${startX.toFixed(1)} ${bottomY.toFixed(1)} Z`;
+
+  // Live Telemetry coordinates
   const liveOutput =
     livePressure !== null ? evaluateMonotonicCurve(value, livePressure) : null;
-  const liveScreenX =
-    livePressure !== null ? toScreenX(livePressure) : null;
-  const liveScreenY =
-    liveOutput !== null ? toScreenY(liveOutput) : null;
+  const liveScreenX = livePressure !== null ? toScreenX(livePressure) : null;
+  const liveScreenY = liveOutput !== null ? toScreenY(liveOutput) : null;
 
   return (
     <div className={`flex flex-col gap-2.5 select-none text-zinc-800 dark:text-zinc-200 ${className}`}>
       {/* Curve Canvas Area */}
-      <div className="relative rounded-xl bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200 dark:border-white/5 p-2 shadow-inner overflow-hidden">
-        {/* Axis Labels */}
-        <div className="absolute top-2 left-2 text-[9px] font-mono font-medium text-zinc-400 dark:text-zinc-500 pointer-events-none">
+      <div className="relative rounded-xl bg-zinc-50 dark:bg-zinc-900/95 border border-zinc-200 dark:border-white/5 shadow-inner overflow-hidden">
+        {/* Subtle Axis Watermarks */}
+        <div className="absolute top-2 left-2 text-[9px] font-mono font-medium text-zinc-400 dark:text-zinc-500 pointer-events-none select-none">
           {outputLabel} (1.0)
         </div>
-        <div className="absolute bottom-2 right-2 text-[9px] font-mono font-medium text-zinc-400 dark:text-zinc-500 pointer-events-none">
+        <div className="absolute bottom-2 right-2 text-[9px] font-mono font-medium text-zinc-400 dark:text-zinc-500 pointer-events-none select-none">
           {inputLabel} (1.0)
         </div>
 
         <svg
-          ref={graphRef}
-          width={width}
-          height={height}
-          onClick={handleGraphClick}
-          className="cursor-crosshair touch-none"
+          ref={svgRef}
+          viewBox={`0 0 ${width} ${height}`}
+          onPointerDown={handleSvgPointerDown}
+          onPointerMove={handleSvgPointerMove}
+          onPointerUp={handleSvgPointerUp}
+          onPointerCancel={handleSvgPointerUp}
+          className="w-full h-auto block cursor-crosshair touch-none select-none"
         >
           {/* Subtle Grid Lines (25%, 50%, 75%) */}
           <line
-            x1={pad}
+            x1={toScreenX(0.0)}
             y1={toScreenY(0.25)}
-            x2={pad + graphW}
+            x2={toScreenX(1.0)}
             y2={toScreenY(0.25)}
             stroke="currentColor"
             className="text-zinc-200 dark:text-white/5"
             strokeDasharray="3 3"
           />
           <line
-            x1={pad}
+            x1={toScreenX(0.0)}
             y1={toScreenY(0.5)}
-            x2={pad + graphW}
+            x2={toScreenX(1.0)}
             y2={toScreenY(0.5)}
             stroke="currentColor"
             className="text-zinc-300 dark:text-white/10"
             strokeDasharray="3 3"
           />
           <line
-            x1={pad}
+            x1={toScreenX(0.0)}
             y1={toScreenY(0.75)}
-            x2={pad + graphW}
+            x2={toScreenX(1.0)}
             y2={toScreenY(0.75)}
             stroke="currentColor"
             className="text-zinc-200 dark:text-white/5"
@@ -211,81 +257,76 @@ export const CurveEditor: FC<CurveEditorProps> = ({
 
           <line
             x1={toScreenX(0.25)}
-            y1={pad}
+            y1={toScreenY(0.0)}
             x2={toScreenX(0.25)}
-            y2={pad + graphH}
+            y2={toScreenY(1.0)}
             stroke="currentColor"
             className="text-zinc-200 dark:text-white/5"
             strokeDasharray="3 3"
           />
           <line
             x1={toScreenX(0.5)}
-            y1={pad}
+            y1={toScreenY(0.0)}
             x2={toScreenX(0.5)}
-            y2={pad + graphH}
+            y2={toScreenY(1.0)}
             stroke="currentColor"
             className="text-zinc-300 dark:text-white/10"
             strokeDasharray="3 3"
           />
           <line
             x1={toScreenX(0.75)}
-            y1={pad}
+            y1={toScreenY(0.0)}
             x2={toScreenX(0.75)}
-            y2={pad + graphH}
+            y2={toScreenY(1.0)}
             stroke="currentColor"
             className="text-zinc-200 dark:text-white/5"
             strokeDasharray="3 3"
           />
 
-          {/* 1:1 Linear Reference Line */}
+          {/* 1:1 Reference Line */}
           <line
-            x1={pad}
-            y1={pad + graphH}
-            x2={pad + graphW}
-            y2={pad}
+            x1={toScreenX(0.0)}
+            y1={toScreenY(0.0)}
+            x2={toScreenX(1.0)}
+            y2={toScreenY(1.0)}
             stroke="currentColor"
             className="text-zinc-300/80 dark:text-white/10"
             strokeDasharray="4 4"
             strokeWidth="1"
           />
 
-          {/* Area Fill under Curve */}
-          <path d={areaPath} className="fill-blue-500/10 dark:fill-blue-500/15" />
+          {/* Smooth Shaded Area Fill Under Curve */}
+          <path d={areaPath} className="fill-blue-500/10 dark:fill-blue-500/20" />
 
-          {/* Interpolated Monotonic Spline Line */}
-          <g transform={`translate(${pad}, ${pad})`}>
-            <path
-              d={curvePath}
-              fill="none"
-              stroke="#3b82f6"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </g>
+          {/* Smooth Spline Curve Stroke */}
+          <path
+            d={curvePath}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
 
-          {/* Live Telemetry Indicator (Stylus input feedback) */}
+          {/* Live Telemetry Indicator Dot */}
           {liveScreenX !== null && liveScreenY !== null && (
             <g className="animate-in fade-in duration-75">
-              {/* Vertical tracking line */}
               <line
                 x1={liveScreenX}
-                y1={pad}
+                y1={toScreenY(0.0)}
                 x2={liveScreenX}
-                y2={pad + graphH}
+                y2={toScreenY(1.0)}
                 stroke="#60a5fa"
                 strokeWidth="1"
                 strokeDasharray="2 2"
                 opacity="0.6"
               />
-              {/* Outer pulse aura */}
               <circle
                 cx={liveScreenX}
                 cy={liveScreenY}
                 r="9"
                 className="fill-blue-500/30 animate-ping"
               />
-              {/* Center point */}
               <circle
                 cx={liveScreenX}
                 cy={liveScreenY}
@@ -297,7 +338,7 @@ export const CurveEditor: FC<CurveEditorProps> = ({
             </g>
           )}
 
-          {/* Draggable Control Points */}
+          {/* Interactive Control Points */}
           {value.map((point, index) => {
             const cx = toScreenX(point.x);
             const cy = toScreenY(point.y);
@@ -305,21 +346,17 @@ export const CurveEditor: FC<CurveEditorProps> = ({
 
             return (
               <g key={index}>
-                {/* Invisible larger hit circle for easy stylus grab */}
+                {/* Hit circle */}
                 <circle
                   cx={cx}
                   cy={cy}
-                  r="12"
+                  r="14"
                   fill="transparent"
                   className="cursor-grab active:cursor-grabbing"
-                  onPointerDown={(e) => handlePointPointerDown(index, e)}
-                  onPointerMove={(e) => handlePointPointerMove(index, e)}
-                  onPointerUp={handlePointPointerUp}
-                  onPointerCancel={handlePointPointerUp}
-                  onDoubleClick={(e) => handlePointDoubleClick(index, e)}
-                  onContextMenu={(e) => handlePointDoubleClick(index, e)}
+                  onDoubleClick={(e) => handleDeletePoint(index, e)}
+                  onContextMenu={(e) => handleDeletePoint(index, e)}
                 />
-                {/* Visible Control Point */}
+                {/* Visible point */}
                 <circle
                   cx={cx}
                   cy={cy}
@@ -362,7 +399,6 @@ export const CurveEditor: FC<CurveEditorProps> = ({
             className="w-full h-7 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-800/80 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-white/5 flex items-center justify-center cursor-crosshair touch-none transition-colors relative overflow-hidden"
             title="Press down with stylus to test pressure curve response live"
           >
-            {/* Live Visual Gauge filling horizontally */}
             {liveOutput !== null && (
               <div
                 className="absolute inset-y-0 left-0 bg-blue-500/25 dark:bg-blue-500/30 transition-all duration-75"
@@ -376,14 +412,14 @@ export const CurveEditor: FC<CurveEditorProps> = ({
         </div>
       )}
 
-      {/* Preset Buttons */}
+      {/* Preset Pills */}
       {showPresets && (
-        <div className="flex items-center justify-between gap-1 pt-1">
-          <div className="flex gap-1 flex-wrap">
+        <div className="flex items-center justify-between gap-1 pt-0.5">
+          <div className="flex gap-1 flex-wrap items-center">
             <button
               type="button"
               onClick={() => onChange(createLinearCurve())}
-              className="px-2 py-1 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+              className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
               title="1:1 Linear default pressure response"
             >
               Linear
@@ -391,7 +427,7 @@ export const CurveEditor: FC<CurveEditorProps> = ({
             <button
               type="button"
               onClick={() => onChange(createSoftCurve())}
-              className="px-2 py-1 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+              className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
               title="Soft touch: high initial sensitivity"
             >
               Soft
@@ -399,7 +435,7 @@ export const CurveEditor: FC<CurveEditorProps> = ({
             <button
               type="button"
               onClick={() => onChange(createFirmCurve())}
-              className="px-2 py-1 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+              className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
               title="Firm touch: requires heavier hand pressure"
             >
               Firm
@@ -407,7 +443,7 @@ export const CurveEditor: FC<CurveEditorProps> = ({
             <button
               type="button"
               onClick={() => onChange(createSCurve())}
-              className="px-2 py-1 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+              className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
               title="S-Curve: subtle low end with rapid high-contrast midtones"
             >
               S-Curve
@@ -415,7 +451,7 @@ export const CurveEditor: FC<CurveEditorProps> = ({
             <button
               type="button"
               onClick={() => onChange(createDeadzoneCurve())}
-              className="px-2 py-1 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+              className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
               title="Deadzone: ignores resting feather touches below 10%"
             >
               Deadzone
