@@ -31,6 +31,33 @@ impl StrokeEvent {
             time: a.time + t * (b.time - a.time),
         }
     }
+
+    /// Computes the exact midpoint between two events.
+    pub fn midpoint(a: &StrokeEvent, b: &StrokeEvent) -> Self {
+        Self {
+            x: 0.5 * (a.x + b.x),
+            y: 0.5 * (a.y + b.y),
+            pressure: 0.5 * (a.pressure + b.pressure),
+            time: 0.5 * (a.time + b.time),
+        }
+    }
+
+    /// Evaluates a point along a quadratic Bézier curve defined by start midpoint `m0`,
+    /// control point `p1`, and end midpoint `m1` for parametric factor `t` in `[0.0, 1.0]`.
+    /// Formula: B(t) = (1-t)^2 * m0 + 2*(1-t)*t * p1 + t^2 * m1
+    pub fn quad_bezier(m0: &StrokeEvent, p1: &StrokeEvent, m1: &StrokeEvent, t: f32) -> Self {
+        let u = 1.0 - t;
+        let w0 = u * u;
+        let w1 = 2.0 * u * t;
+        let w2 = t * t;
+
+        Self {
+            x: w0 * m0.x + w1 * p1.x + w2 * m1.x,
+            y: w0 * m0.y + w1 * p1.y + w2 * m1.y,
+            pressure: w0 * m0.pressure + w1 * p1.pressure + w2 * m1.pressure,
+            time: w0 * m0.time + w1 * p1.time + w2 * m1.time,
+        }
+    }
 }
 
 impl Default for StrokeEvent {
@@ -58,5 +85,42 @@ mod tests {
         assert!((mid.y - 30.0).abs() < 1e-5);
         assert!((mid.pressure - 0.5).abs() < 1e-5);
         assert!((mid.time - 2.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_stroke_event_midpoint() {
+        let a = StrokeEvent::new(10.0, 20.0, 0.2, 1.0);
+        let b = StrokeEvent::new(30.0, 40.0, 0.8, 3.0);
+
+        let mid = StrokeEvent::midpoint(&a, &b);
+        assert!((mid.x - 20.0).abs() < 1e-5);
+        assert!((mid.y - 30.0).abs() < 1e-5);
+        assert!((mid.pressure - 0.5).abs() < 1e-5);
+        assert!((mid.time - 2.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_stroke_event_quad_bezier_endpoints_and_midpoint() {
+        let m0 = StrokeEvent::new(0.0, 0.0, 0.1, 0.0);
+        let p1 = StrokeEvent::new(50.0, 100.0, 0.5, 0.5);
+        let m1 = StrokeEvent::new(100.0, 0.0, 0.9, 1.0);
+
+        // At t = 0: equals m0
+        let start = StrokeEvent::quad_bezier(&m0, &p1, &m1, 0.0);
+        assert!((start.x - 0.0).abs() < 1e-5);
+        assert!((start.y - 0.0).abs() < 1e-5);
+        assert!((start.pressure - 0.1).abs() < 1e-5);
+
+        // At t = 1: equals m1
+        let end = StrokeEvent::quad_bezier(&m0, &p1, &m1, 1.0);
+        assert!((end.x - 100.0).abs() < 1e-5);
+        assert!((end.y - 0.0).abs() < 1e-5);
+        assert!((end.pressure - 0.9).abs() < 1e-5);
+
+        // At t = 0.5: 0.25*0 + 0.5*50 + 0.25*100 = 50 for x; 0.25*0 + 0.5*100 + 0.25*0 = 50 for y
+        let mid = StrokeEvent::quad_bezier(&m0, &p1, &m1, 0.5);
+        assert!((mid.x - 50.0).abs() < 1e-5);
+        assert!((mid.y - 50.0).abs() < 1e-5);
+        assert!((mid.pressure - 0.5).abs() < 1e-5);
     }
 }

@@ -176,8 +176,14 @@
 
 ---
 
-### 🖌️ Next Immediate Focus: Stroke Engine Perfection
+### 🖌️ Stroke Engine Perfection
 *Goal: Perfect the brush stroke feel, pressure curve dynamics, dab interpolation, and rendering fidelity.*
+
+- [x] **Midpoint Quadratic Bézier Spline Stepper (`crates/sketch_core`)**:
+  - [`crates/sketch_core/src/brush/event.rs`](file:///Users/ganeshmarpuri/development/sketch_app/crates/sketch_core/src/brush/event.rs) — Added `StrokeEvent::quad_bezier` and `StrokeEvent::midpoint` Bernstein quadratic polynomial evaluation.
+  - [`crates/sketch_core/src/brush/stepper.rs`](file:///Users/ganeshmarpuri/development/sketch_app/crates/sketch_core/src/brush/stepper.rs) — Implemented Gravesen's arc length approximation ($L \approx \frac{2 d_{\text{chord}} + d_{\text{legs}}}{3}$) and parameter advancing `get_next_quad_step` preserving fractional leftover distance across curve junctions.
+  - [`crates/sketch_core/src/brush/engine.rs`](file:///Users/ganeshmarpuri/development/sketch_app/crates/sketch_core/src/brush/engine.rs) — Upgraded `PixelBrushEngine::paint_to` from piecewise linear stepping to streaming Midpoint Quadratic Bézier Splines ($C^1$ tangent continuity, zero angular faceting on fast sweeps, zero display latency).
+  - 12 automated unit tests passing in Rust (`cargo test`).
 
 ---
 
