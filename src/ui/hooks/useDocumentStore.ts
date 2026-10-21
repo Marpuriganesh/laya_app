@@ -15,6 +15,8 @@ import {
   type DiscreteWheelConfig,
   DEFAULT_DISCRETE_WHEEL_CONFIG,
 } from "@/engine/color/discrete_wheel";
+import { createLinearCurve, type CurvePoint } from "@/engine/math/dynamics_curve";
+import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 
 export interface DocumentState {
   document: DocumentConfiguration;
@@ -31,6 +33,7 @@ export interface DocumentState {
   gamutMask: GamutMaskConfiguration;
   wheelConfig: DiscreteWheelConfig;
   holdThresholdMs: number;
+  globalPressureCurve: CurvePoint[];
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
@@ -44,6 +47,7 @@ export interface DocumentState {
   setPalmRejection: (enabled: boolean) => void;
   togglePalmRejection: () => void;
   setHoldThresholdMs: (ms: number) => void;
+  setGlobalPressureCurve: (points: CurvePoint[]) => void;
   resetTransform: () => void;
   setLayerStack: (layerStack: LayerStack) => void;
   setGamutMask: (mask: Partial<GamutMaskConfiguration>) => void;
@@ -114,6 +118,21 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     return 250;
   })(),
+  globalPressureCurve: (() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("sketch-global-pressure-curve");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length >= 2) {
+            setTimeout(() => globalDrawingEngine.setPressureCurve?.(parsed), 0);
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+    return createLinearCurve();
+  })(),
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -137,6 +156,15 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       } catch {}
     }
     set({ holdThresholdMs: clamped });
+  },
+  setGlobalPressureCurve: (points: CurvePoint[]) => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("sketch-global-pressure-curve", JSON.stringify(points));
+      } catch {}
+    }
+    globalDrawingEngine.setPressureCurve?.(points);
+    set({ globalPressureCurve: points });
   },
   resetTransform: () =>
     set({

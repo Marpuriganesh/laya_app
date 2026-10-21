@@ -21,6 +21,8 @@ pub struct BrushConfig {
     pub is_erase: bool,
     /// Whether analytical subpixel edge anti-aliasing is applied to brush tips.
     pub antialias: bool,
+    /// Optional 256-entry lookup table mapping normalized pressure [0.0..1.0] to response curve output.
+    pub pressure_lut: Option<Box<[f32; 256]>>,
 }
 
 impl Default for BrushConfig {
@@ -36,6 +38,7 @@ impl Default for BrushConfig {
             opacity_by_pressure: false,
             is_erase: false,
             antialias: true,
+            pressure_lut: None,
         }
     }
 }

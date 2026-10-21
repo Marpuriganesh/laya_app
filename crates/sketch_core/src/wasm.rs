@@ -53,6 +53,7 @@ impl WasmBrushEngine {
         is_erase: bool,
         antialias: bool,
     ) {
+        let existing_lut = self.engine.config.pressure_lut.take();
         self.engine.config = BrushConfig {
             diameter,
             spacing,
@@ -64,7 +65,20 @@ impl WasmBrushEngine {
             opacity_by_pressure,
             is_erase,
             antialias,
+            pressure_lut: existing_lut,
         };
+    }
+
+    /// Configures the 256-sample pressure response curve lookup table.
+    /// If slice is empty or not 256 samples, clears the custom LUT (reverting to linear 1:1).
+    pub fn set_pressure_lut(&mut self, lut: &[f32]) {
+        if lut.len() == 256 {
+            let mut arr = [0.0f32; 256];
+            arr.copy_from_slice(lut);
+            self.engine.config.pressure_lut = Some(Box::new(arr));
+        } else {
+            self.engine.config.pressure_lut = None;
+        }
     }
 
     /// Begins a stroke at (x, y) with pressure.
