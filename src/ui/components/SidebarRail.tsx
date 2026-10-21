@@ -77,7 +77,7 @@ export const SidebarRail: FC<SidebarRailProps> = ({
       initial={{ x: -80, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ type: "spring", damping: 25, stiffness: 220, delay: 0.15 }}
-      className="fixed left-0 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-4 py-4 px-2.5 rounded-r-2xl bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-r border-y border-zinc-200 dark:border-zinc-800/80 shadow-2xl select-none"
+      className="fixed left-0 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-4 py-4 px-2.5 rounded-r-2xl bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-r border-y border-zinc-200 dark:border-white/5 shadow-2xl select-none"
     >
       {/* 1. Brush Size Vertical Capsule Slider (No circular thumb) */}
       <div className="relative flex flex-col items-center">
@@ -147,7 +147,7 @@ export const SidebarRail: FC<SidebarRailProps> = ({
         onClick={onModifierClick}
         aria-label="Menu / Modifier Button"
         title="QuickMenu / Sub-Menu"
-        className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 active:scale-95 border border-zinc-300 dark:border-zinc-700 transition-all shadow-sm cursor-pointer"
+        className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 active:scale-95 border border-zinc-300 dark:border-white/5 transition-all shadow-sm cursor-pointer"
       />
 
       {/* 3. Brush Opacity Vertical Capsule Slider (No circular thumb) */}

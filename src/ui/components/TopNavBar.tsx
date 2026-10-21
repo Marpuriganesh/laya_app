@@ -17,7 +17,6 @@ import {
   Square,
   Sun,
   Moon,
-  ZoomIn,
   Keyboard,
 } from "lucide-react";
 import { useTheme } from "@/ui/theme/ThemeProvider";
@@ -168,7 +167,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
       data-tauri-drag-region
       data-native-ui="top-bar"
       onDoubleClick={handleHeaderDoubleClick}
-      className="h-14 px-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
+      className="h-14 px-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-white/5 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
       title="Double-click to toggle maximize • Drag to reposition"
     >
       {/* Left Control Cluster */}
@@ -234,9 +233,9 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           </button>
 
           {isActionsMenuOpen && (
-            <div className="absolute top-full mt-2 left-0 w-64 p-1.5 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute top-full mt-2 left-0 w-64 p-1.5 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-white/5 shadow-2xl z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-100">
               {/* Document Summary */}
-              <div className="px-2.5 py-1.5 border-b border-zinc-100 dark:border-zinc-800/80 mb-0.5">
+              <div className="px-2.5 py-1.5 border-b border-zinc-100 dark:border-white/5 mb-0.5">
                 <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">
                   {document.title}
                 </div>
@@ -290,7 +289,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
                 </button>
 
                 {isProofSubmenuOpen && (
-                  <div className="pl-3 pr-1 py-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100 bg-zinc-50/80 dark:bg-zinc-800/60 rounded-lg mt-0.5 border border-zinc-100 dark:border-zinc-800/60">
+                  <div className="pl-3 pr-1 py-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-100 bg-zinc-50/80 dark:bg-zinc-800/60 rounded-lg mt-0.5 border border-zinc-100 dark:border-white/5">
                     {SOFT_PROOF_OPTIONS.map((opt) => {
                       const isSelected = softProofMode === opt.id;
                       return (
@@ -372,7 +371,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
                     step="25"
                     value={holdThresholdMs}
                     onChange={(e) => setHoldThresholdMs(Number(e.target.value))}
-                    className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-800 accent-blue-600 rounded-lg cursor-pointer"
+                    className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-800 accent-blue-600 rounded-lg cursor-pointer border-0 outline-none"
                     title={`Spring-loaded shortcut hold threshold: ${holdThresholdMs}ms`}
                   />
                   <div className="flex justify-between text-[9px] text-zinc-400 dark:text-zinc-500 font-normal">
@@ -489,21 +488,6 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           }`}
         >
           <Eraser className="w-4 h-4" />
-        </button>
-
-        {/* Zoom (Z) */}
-        <button
-          type="button"
-          onClick={() => onSelectTool("zoom")}
-          aria-label="Zoom Tool (Z)"
-          title="Zoom Tool (Z) • Hold & drag stylus left/right to Scrubby Zoom"
-          className={`p-2 rounded-lg transition-colors ${
-            activeTool === "zoom"
-              ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
-              : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
-          }`}
-        >
-          <ZoomIn className="w-4 h-4" />
         </button>
 
         <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />

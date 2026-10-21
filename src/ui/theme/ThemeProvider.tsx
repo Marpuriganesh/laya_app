@@ -63,6 +63,7 @@ export const ThemeProvider: FC<ThemeProviderProps> = ({
     const active = resolveTheme(theme, isSystemDark);
 
     root.classList.add(active);
+    root.style.colorScheme = active;
     setResolvedTheme(active);
   }, [theme]);
 

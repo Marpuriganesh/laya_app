@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="en" class="dark" style="background-color: transparent;">
+<html lang="en" class="dark" style="background-color: transparent; color-scheme: dark;">
   <head>
     <meta charset="UTF-8" />
     <meta name="darkreader-lock" />
+    <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>sketch_app</title>
@@ -13,17 +14,21 @@
           if (stored === "light") {
             document.documentElement.classList.remove("dark");
             document.documentElement.classList.add("light");
+            document.documentElement.style.colorScheme = "light";
           } else if (stored === "dark") {
             document.documentElement.classList.remove("light");
             document.documentElement.classList.add("dark");
+            document.documentElement.style.colorScheme = "dark";
           } else {
             var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
             if (prefersDark === false) {
               document.documentElement.classList.remove("dark");
               document.documentElement.classList.add("light");
+              document.documentElement.style.colorScheme = "light";
             } else {
               document.documentElement.classList.remove("light");
               document.documentElement.classList.add("dark");
+              document.documentElement.style.colorScheme = "dark";
             }
           }
         } catch (e) {}

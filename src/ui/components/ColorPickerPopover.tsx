@@ -1509,7 +1509,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   >
                     {/* Visual Track Pill */}
                     <div
-                      className="w-full h-3 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm relative"
+                      className="w-full h-3 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-transparent shadow-sm relative"
                       style={{
                         background: "linear-gradient(to right, #000000 0%, #ffffff 100%)",
                         backgroundRepeat: "no-repeat",
@@ -1665,7 +1665,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                       className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
                       <div
-                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm"
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-transparent shadow-sm"
                         style={{
                           background:
                             "linear-gradient(to right, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%)",
@@ -1715,7 +1715,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                       className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
                       <div
-                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm"
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-transparent shadow-sm"
                         style={{
                           background: `linear-gradient(to right, rgb(${satStartR},${satStartG},${satStartB}) 0%, rgb(${satEndR},${satEndG},${satEndB}) 100%)`,
                           backgroundRepeat: "no-repeat",
@@ -1764,7 +1764,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                       className="relative w-full h-3 flex items-center cursor-pointer touch-none select-none"
                     >
                       <div
-                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-white/15 shadow-sm"
+                        className="w-full h-2 rounded-full overflow-hidden ring-1 ring-inset ring-zinc-300 dark:ring-transparent shadow-sm"
                         style={{
                           background: `linear-gradient(to right, #000000 0%, rgb(${brightEndR},${brightEndG},${brightEndB}) 100%)`,
                           backgroundRepeat: "no-repeat",
@@ -1787,7 +1787,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             <div className="flex items-center gap-2">
               <div
                 title={`Active Color: ${activeColor}`}
-                className="w-[41px] h-[41px] rounded-[7.1px] shadow-inner border border-zinc-300 dark:border-white/10 flex items-center justify-center shrink-0 transition-all duration-75"
+                className="w-[41px] h-[41px] rounded-[7.1px] shadow-inner border border-zinc-300 dark:border-white/5 flex items-center justify-center shrink-0 transition-all duration-75"
                 style={{ backgroundColor: activeColor }}
               />
               {initialColor.toUpperCase() !== activeColor.toUpperCase() && (
@@ -1803,7 +1803,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             </div>
 
             {/* Hex Input Badge (95x38px, rounded-[4.8px]) */}
-            <div className="w-[95px] h-[38px] rounded-[4.8px] bg-zinc-100 dark:bg-[#252527]/50 border border-zinc-300 dark:border-white/10 flex items-center px-2.5 focus-within:border-blue-500 dark:focus-within:border-blue-400/80 transition-colors">
+            <div className="w-[95px] h-[38px] rounded-[4.8px] bg-zinc-100 dark:bg-[#252527]/50 border border-zinc-300 dark:border-white/5 flex items-center px-2.5 focus-within:border-blue-500 dark:focus-within:border-blue-400/80 transition-colors">
               <span className="text-[14px] font-mono text-zinc-400 dark:text-zinc-500 mr-1 select-none">#</span>
               <input
                 type="text"
@@ -1845,7 +1845,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                         className={`flex-1 h-6 rounded-md border flex items-center justify-center transition-all cursor-pointer ${
                           isSelected
                             ? "border-zinc-900 dark:border-white shadow-md ring-1.5 ring-zinc-900 dark:ring-white scale-105"
-                            : "border-zinc-300 dark:border-white/15 hover:border-zinc-500 dark:hover:border-white/50"
+                            : "border-zinc-300 dark:border-white/5 hover:border-zinc-500 dark:hover:border-white/50"
                         }`}
                         style={{ backgroundColor: item.hex }}
                         title={`${item.label}: ${item.hex}`}
@@ -1873,13 +1873,13 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             className={
               isDetached
                 ? "absolute inset-x-3 top-20 z-[55] rounded-xl bg-white/95 dark:bg-zinc-900 border border-blue-400/40 shadow-xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
-                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
+                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
             }
           >
             {/* Draggable Header */}
             <div
               {...(isDetached ? {} : gamutHeaderDragProps)}
-              className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/10 cursor-grab active:cursor-grabbing select-none"
+              className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/5 cursor-grab active:cursor-grabbing select-none"
               title={isDetached ? "Gamut Mask settings" : "Drag header to move sub-window, double-click to snap next to picker"}
             >
               <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
@@ -1933,7 +1933,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
                   if (!isGamutMaskEnabled) setIsGamutMaskEnabled(true);
                   clampActiveColorToMask(newType, gamutMaskRotation);
                 }}
-                className="w-full bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-200 font-medium focus:outline-none focus:border-blue-500 dark:focus:border-blue-400/80 cursor-pointer"
+                className="w-full bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-white/5 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-200 font-medium focus:outline-none focus:border-blue-500 dark:focus:border-blue-400/80 cursor-pointer"
               >
                 {GAMUT_MASK_PRESETS.map((preset) => (
                   <option key={preset.id} value={preset.id} className="bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-200">
@@ -1969,7 +1969,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             </div>
 
             {/* Quick Turn Buttons */}
-            <div className="flex items-center justify-between pt-1 border-t border-zinc-200 dark:border-white/10 text-[9px]">
+            <div className="flex items-center justify-between pt-1 border-t border-zinc-200 dark:border-white/5 text-[9px]">
               <span className="text-zinc-500 dark:text-zinc-400 font-medium">Quick Turn:</span>
               <div className="flex gap-1">
                 {[0, 90, 180, 270].map((deg) => (
@@ -2006,13 +2006,13 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             className={
               isDetached
                 ? "absolute inset-x-3 top-20 z-[55] rounded-xl bg-white/95 dark:bg-zinc-900 border border-blue-400/40 shadow-xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5 backdrop-blur-md"
-                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
+                : "fixed right-4 top-16 z-[55] w-[250px] rounded-xl bg-white/95 dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 shadow-2xl p-3 text-zinc-900 dark:text-zinc-200 select-none flex flex-col gap-2.5"
             }
           >
             {/* Draggable Header */}
             <div
               {...(isDetached ? {} : gridHeaderDragProps)}
-              className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/10 cursor-grab active:cursor-grabbing select-none"
+              className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/5 cursor-grab active:cursor-grabbing select-none"
               title={isDetached ? "Discrete Grid levels" : "Drag header to move sub-window, double-click to snap next to picker"}
             >
               <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100">
@@ -2101,7 +2101,7 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
             </div>
 
             {/* Quick Presets */}
-            <div className="flex items-center justify-between pt-1 border-t border-zinc-200 dark:border-white/10 text-[9px]">
+            <div className="flex items-center justify-between pt-1 border-t border-zinc-200 dark:border-white/5 text-[9px]">
               <span className="text-zinc-500 dark:text-zinc-400 font-medium">Presets:</span>
               <div className="flex gap-1">
                 <button
