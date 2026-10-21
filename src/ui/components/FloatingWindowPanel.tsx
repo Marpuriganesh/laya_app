@@ -54,7 +54,7 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
     <div
       role="dialog"
       data-native-ui="floating-panel"
-      className={`${anchorClassName} rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xl flex flex-col overflow-hidden backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100 transition-colors`}
+      className={`${anchorClassName} rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-white/5 text-zinc-900 dark:text-zinc-100 shadow-2xl flex flex-col overflow-hidden backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100 transition-colors`}
       style={{
         width: `${width}px`,
         zIndex,
@@ -65,7 +65,7 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
       <div
         {...headerProps}
         title="Drag to reposition • Double-click to reset"
-        className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800/80 cursor-grab active:cursor-grabbing bg-zinc-50/60 hover:bg-zinc-100/60 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/60 transition-colors group"
+        className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-white/5 cursor-grab active:cursor-grabbing bg-zinc-50/60 hover:bg-zinc-100/60 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/60 transition-colors group"
       >
         <div className="flex items-center gap-2 pointer-events-none">
           <GripHorizontal className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-400 transition-colors" />
