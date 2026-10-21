@@ -130,6 +130,7 @@ pub extern "C" fn rust_native_init(width: u32, height: u32) {
         size_by_pressure: true,
         opacity_by_pressure: false,
         is_erase: false,
+        antialias: true,
     };
     *guard = Some(NativeBrushSession {
         canvas: CanvasView::new(width, height),

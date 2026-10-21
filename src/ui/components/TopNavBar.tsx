@@ -387,7 +387,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
       {/* Center Document Title & Theme Switcher */}
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[160px] sm:max-w-xs truncate hidden sm:inline">
+        <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-40 sm:max-w-xs truncate hidden sm:inline">
           {document.title}
         </span>
 
@@ -489,7 +489,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           className="p-1 rounded-full hover:scale-105 transition-transform relative"
         >
           <span
-            className={`block w-6 h-6 rounded-full overflow-hidden shadow-inner bg-zinc-950 flex items-center justify-center transition-all ${
+            className={`w-6 h-6 rounded-full overflow-hidden shadow-inner bg-zinc-950 flex items-center justify-center transition-all ${
               activePopover === "color" || detachedPanels?.color
                 ? "border-2 border-blue-500 ring-2 ring-blue-500/30"
                 : "border-2 border-zinc-700"

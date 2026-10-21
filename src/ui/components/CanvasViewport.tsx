@@ -808,7 +808,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        className="absolute top-3 left-3 z-20 flex items-center h-[31px] w-[114px] rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-700/80 shadow-md select-none overflow-hidden transition-colors"
+        className="absolute top-3 left-3 z-20 flex items-center h-7.75 w-28.5 rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-700/80 shadow-md select-none overflow-hidden transition-colors"
         title={`Zoom: ${Math.round(transform.scale * 100)}%`}
       >
         <button

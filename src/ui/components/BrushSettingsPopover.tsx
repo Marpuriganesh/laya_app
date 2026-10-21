@@ -82,7 +82,7 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
       onPopout={onDetach}
       anchorClassName="fixed right-4 top-16"
     >
-      <div className="p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 select-none overflow-y-auto max-h-[400px]">
+      <div className="p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 select-none overflow-y-auto max-h-100">
         {/* Brush Size */}
         <div className="flex flex-col gap-1.5">
           <div className="flex justify-between items-center text-xs">
