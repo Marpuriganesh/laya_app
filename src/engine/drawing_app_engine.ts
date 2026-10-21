@@ -15,6 +15,7 @@ import { parseKritaPreset } from "./brush/kpp_parser";
 import { parseKritaBundle } from "./brush/bundle_parser";
 import { globalRustBrushBridge } from "./brush/rust_brush_bridge";
 import { globalWasmBrushBridge } from "./wasm/wasm_brush_bridge";
+import { generateCurveLookupTable256, type CurvePoint } from "./math/dynamics_curve";
 
 /**
  * Creates default brush preset configuration.
@@ -376,6 +377,18 @@ export class DrawingAppEngine implements IDrawingEngine {
   }
   public getAntialias(): boolean {
     return this.brushAntialias;
+  }
+
+  private pressureLut: Float32Array | null = null;
+
+  public setPressureCurve(points: readonly CurvePoint[]): void {
+    this.pressureLut = generateCurveLookupTable256(points);
+    globalRustBrushBridge.setPressureLut(this.pressureLut);
+    globalWasmBrushBridge.setPressureLut(this.pressureLut);
+  }
+
+  public getPressureLut(): Float32Array | null {
+    return this.pressureLut;
   }
 
   public setCanvasSize(widthPx: number, heightPx: number): void {

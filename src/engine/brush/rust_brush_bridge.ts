@@ -50,6 +50,16 @@ export class RustBrushBridge {
     }
   }
 
+  public async setPressureLut(lut: Float32Array | number[]): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      const lutArray = Array.from(lut);
+      await this.invokeFn("rust_brush_set_pressure_lut", { lut: lutArray });
+    } catch (err) {
+      console.warn("Failed to sync pressure LUT to Rust:", err);
+    }
+  }
+
   public async setModalOpen(isOpen: boolean): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

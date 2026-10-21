@@ -79,7 +79,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   // Interaction States
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const panStartRef = useRef({ x: 0, y: 0 });
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isScrubbingZoom, setIsScrubbingZoom] = useState(false);
   const scrubbyZoomStateRef = useRef<{
@@ -415,10 +415,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   ) => {
     setIsPanning(true);
     isPanningRef.current = true;
-    setPanStart({
+    const startPoint = {
       x: clientX - transformRef.current.panX,
       y: clientY - transformRef.current.panY,
-    });
+    };
+    panStartRef.current = startPoint;
     try {
       targetElement.setPointerCapture(pointerId);
     } catch {
@@ -473,8 +474,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       return;
     }
 
-    // 2. Viewport pan if Hand tool, Spacebar, middle click, or primary drag on container
-    if (e.button === 0 || e.button === 1 || activeTool === "hand" || isSpaceDownRef.current || e.altKey) {
+    // 2. Viewport pan if Middle Click, Hand tool, Spacebar hold, Alt key, or primary drag on container
+    if (e.button === 1 || (e.buttons & 4) !== 0 || e.button === 0 || activeTool === "hand" || isSpaceDownRef.current || e.altKey) {
+      if (e.button === 1 || (e.buttons & 4) !== 0) {
+        e.preventDefault();
+      }
       startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
     }
   };
@@ -534,8 +538,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       return;
     }
 
-    // 3. Pan via Middle Click (button 1), Spacebar hold, Alt key, or Hand tool
-    if (e.button === 1 || e.buttons === 4 || isSpaceDownRef.current || e.altKey || activeTool === "hand") {
+    // 3. Pan via Middle Click (button 1 or buttons & 4), Spacebar hold, Alt key, or Hand tool
+    if (e.button === 1 || (e.buttons & 4) !== 0 || isSpaceDownRef.current || e.altKey || activeTool === "hand") {
+      e.preventDefault();
       startPanning(e.clientX, e.clientY, e.pointerId, e.currentTarget);
       return;
     }
@@ -628,12 +633,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       return;
     }
 
-    // 2. Viewport Panning
+    // 2. Viewport Panning (Middle click drag, Hand tool, Spacebar drag)
     if (isPanningRef.current) {
       const nextTransform: CanvasTransform = {
         ...transformRef.current,
-        panX: e.clientX - panStart.x,
-        panY: e.clientY - panStart.y,
+        panX: e.clientX - panStartRef.current.x,
+        panY: e.clientY - panStartRef.current.y,
         rotation: 0,
       };
       transformRef.current = nextTransform;
@@ -821,6 +826,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onAuxClick={(e) => {
+        if (e.button === 1) e.preventDefault();
+      }}
       onDoubleClick={() => fitToScreen()}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -892,6 +900,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
           <canvas
             ref={canvasRef}
             onPointerDown={handleCanvasPointerDown}
+            onAuxClick={(e) => {
+              if (e.button === 1) e.preventDefault();
+            }}
+            onContextMenu={(e) => {
+              if (e.button === 1) e.preventDefault();
+            }}
             onPointerMove={(e) => {
               e.stopPropagation();
               handlePointerMove(e);

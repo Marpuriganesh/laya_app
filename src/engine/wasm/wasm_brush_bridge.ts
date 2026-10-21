@@ -95,6 +95,14 @@ export class WasmBrushBridge {
     this.applyConfig();
   }
 
+  /**
+   * Sets a 256-sample lookup table for pressure response curve dynamics.
+   */
+  public setPressureLut(lut: Float32Array): void {
+    if (!this.engine) return;
+    this.engine.set_pressure_lut(lut);
+  }
+
   private applyConfig(): void {
     if (!this.engine) return;
     const c = this.currentConfig;

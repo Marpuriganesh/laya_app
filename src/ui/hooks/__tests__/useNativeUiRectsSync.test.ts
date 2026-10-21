@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   collectNativeUiRects,
+  triggerNativeUiRectsSync,
+  NATIVE_UI_SELECTOR,
   type QueryableDocument,
   type QueryableElement,
 } from "../useNativeUiRectsSync";
@@ -115,5 +117,15 @@ describe("collectNativeUiRects", () => {
     expect(rects[0]).toEqual([600, 64, 320, 520]);
     expect(rects[1]).toEqual([330, 64, 250, 220]);
     expect(rects[2]).toEqual([330, 300, 250, 180]);
+  });
+
+  it("includes role='menu' and other standard popup/menu selectors in NATIVE_UI_SELECTOR", () => {
+    expect(NATIVE_UI_SELECTOR).toContain('[role="menu"]');
+    expect(NATIVE_UI_SELECTOR).toContain('[role="dialog"]');
+    expect(NATIVE_UI_SELECTOR).toContain("[data-native-ui]");
+  });
+
+  it("safely handles triggerNativeUiRectsSync without error when not running in Tauri", () => {
+    expect(() => triggerNativeUiRectsSync()).not.toThrow();
   });
 });

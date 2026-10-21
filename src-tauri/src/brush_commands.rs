@@ -29,6 +29,7 @@ impl Default for BrushEngineState {
                     opacity_by_pressure: false,
                     is_erase: false,
                     antialias: true,
+                    pressure_lut: None,
                 }),
                 stroke_start_time: std::time::Instant::now(),
             }),
@@ -53,6 +54,7 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         opacity_by_pressure: false,
         is_erase: false,
         antialias: true,
+        pressure_lut: None,
     });
     // Transparent background: the React artboard paper div provides the white/checkerboard
     // surface behind the ink. The native canvas only holds painted stroke pixels.
@@ -128,6 +130,7 @@ unsafe extern "C" {
     pub fn trigger_native_overlay_repaint();
     pub fn set_ui_blocking_rects(rects: *const f32, count: u32);
     pub fn set_workspace_theme(is_dark: bool);
+    pub fn set_native_pressure_lut(lut: *const f32, count: i32);
 }
 
 #[tauri::command]
@@ -211,6 +214,7 @@ impl From<BrushConfigDto> for BrushConfig {
             opacity_by_pressure: dto.opacity_by_pressure,
             is_erase: dto.is_erase,
             antialias: dto.antialias,
+            pressure_lut: None,
         }
     }
 }
@@ -219,11 +223,39 @@ impl From<BrushConfigDto> for BrushConfig {
 pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String> {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
-        session.engine.config = config.into();
+        let existing_lut = session.engine.config.pressure_lut.take();
+        let mut new_config: BrushConfig = config.into();
+        new_config.pressure_lut = existing_lut;
+        session.engine.config = new_config;
     }
     #[cfg(target_os = "macos")]
     unsafe {
         trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_pressure_lut(lut: Vec<f32>) -> Result<(), String> {
+    {
+        let mut guard = GLOBAL_SESSION.lock().unwrap();
+        if let Some(session) = guard.as_mut() {
+            if lut.len() == 256 {
+                let mut arr = [0.0f32; 256];
+                arr.copy_from_slice(&lut);
+                session.engine.config.pressure_lut = Some(Box::new(arr));
+            } else {
+                session.engine.config.pressure_lut = None;
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        if lut.len() == 256 {
+            set_native_pressure_lut(lut.as_ptr(), 256);
+        } else {
+            set_native_pressure_lut(std::ptr::null(), 0);
+        }
     }
     Ok(())
 }

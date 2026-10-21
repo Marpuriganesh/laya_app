@@ -15,6 +15,18 @@ static NSRect g_ui_blocking_rects[MAX_UI_BLOCKING_RECTS];
 static uint32_t g_ui_blocking_count = 0;
 static BOOL g_is_dark_theme = YES;
 
+static float g_pressure_lut[256];
+static BOOL g_has_pressure_lut = NO;
+
+void set_native_pressure_lut(const float *lut, int count) {
+    if (lut != NULL && count == 256) {
+        memcpy(g_pressure_lut, lut, sizeof(float) * 256);
+        g_has_pressure_lut = YES;
+    } else {
+        g_has_pressure_lut = NO;
+    }
+}
+
 @interface NativeBackgroundWorkspaceView : NSView
 - (void)handleMouseDown:(NSEvent *)event;
 - (void)handleMouseDragged:(NSEvent *)event;
@@ -113,6 +125,10 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     if (!isTablet && pressure <= 0.001f) {
         pressure = 1.0f;
     }
+    if (g_has_pressure_lut) {
+        int idx = (int)fminf(255.0f, fmaxf(0.0f, roundf(pressure * 255.0f)));
+        pressure = g_pressure_lut[idx];
+    }
 
     g_last_pressure = pressure;
     g_is_drawing = YES;
@@ -132,6 +148,10 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     float pressure = (float)[event pressure];
     if (!isTablet && pressure <= 0.001f) {
         pressure = 1.0f;
+    }
+    if (g_has_pressure_lut) {
+        int idx = (int)fminf(255.0f, fmaxf(0.0f, roundf(pressure * 255.0f)));
+        pressure = g_pressure_lut[idx];
     }
 
     g_last_pressure = pressure;

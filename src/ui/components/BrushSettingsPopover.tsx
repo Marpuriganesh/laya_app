@@ -1,8 +1,9 @@
 import { useState, useEffect, type FC } from "react";
-import { SlidersHorizontal, Trash2, Activity } from "lucide-react";
+import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
+import { CurveEditor } from "@/ui/components/CurveEditor";
 
 interface BrushSettingsPopoverProps {
   isOpen: boolean;
@@ -16,7 +17,14 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
   onClose,
   onDetach,
 }) => {
-  const { brushSize, brushOpacity, setBrushSize, setBrushOpacity } = useDocumentStore();
+  const {
+    brushSize,
+    brushOpacity,
+    setBrushSize,
+    setBrushOpacity,
+    globalPressureCurve,
+    setGlobalPressureCurve,
+  } = useDocumentStore();
 
   const [softness, setSoftness] = useState(() => globalDrawingEngine.getBrushSoftness?.() ?? 0.45);
   const [spacing, setSpacing] = useState(() => (globalDrawingEngine.getBrushSpacing?.() ?? 0.08) * 100);
@@ -24,6 +32,7 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
   const [sizeDynamics, setSizeDynamics] = useState(() => globalDrawingEngine.getSizeDynamicsEnabled?.() ?? true);
   const [opacityDynamics, setOpacityDynamics] = useState(() => globalDrawingEngine.getOpacityDynamicsEnabled?.() ?? false);
   const [antialias, setAntialias] = useState(() => globalDrawingEngine.getAntialias?.() ?? true);
+  const [isCurveOpen, setIsCurveOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -207,6 +216,38 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
               className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
             />
           </label>
+
+          {/* Collapsible Curve Editor for Brush Dynamics */}
+          <button
+            type="button"
+            onClick={() => setIsCurveOpen(!isCurveOpen)}
+            className="flex items-center justify-between p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-1.5">
+              <Spline className="w-3.5 h-3.5 text-blue-500" />
+              <span>Pressure Response Curve</span>
+            </div>
+            <ChevronRight
+              className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-150 ${
+                isCurveOpen ? "rotate-90" : ""
+              }`}
+            />
+          </button>
+
+          {isCurveOpen && (
+            <div className="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
+              <CurveEditor
+                value={globalPressureCurve}
+                onChange={setGlobalPressureCurve}
+                width={270}
+                height={160}
+                inputLabel="Pressure"
+                outputLabel="Response"
+                showLiveTelemetry={true}
+                showPresets={true}
+              />
+            </div>
+          )}
         </div>
 
         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />

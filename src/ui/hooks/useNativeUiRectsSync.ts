@@ -17,9 +17,12 @@ export interface QueryableDocument {
   ): NodeListOf<Element> | QueryableElement[] | Iterable<QueryableElement>;
 }
 
+export const NATIVE_UI_SELECTOR =
+  '[data-native-ui], [role="dialog"], [role="menu"], [role="listbox"], [role="combobox"], [role="alertdialog"], [data-state="open"], dialog, .native-ui-block, .floating-panel';
+
 /**
  * Collects screen bounding rectangles for all active interactive UI elements
- * (elements marked with [data-native-ui], [role="dialog"], or [data-state="open"]).
+ * (elements marked with [data-native-ui], [role="dialog"], [role="menu"], etc.).
  */
 export function collectNativeUiRects(
   rootDocument?: QueryableDocument | null
@@ -31,8 +34,7 @@ export function collectNativeUiRects(
       : null);
   if (!doc) return [];
 
-  const selector = '[data-native-ui], [role="dialog"], [data-state="open"]';
-  const elements = doc.querySelectorAll(selector);
+  const elements = doc.querySelectorAll(NATIVE_UI_SELECTOR);
   const rects: Array<[number, number, number, number]> = [];
 
   Array.from(elements).forEach((el: unknown) => {
@@ -46,6 +48,17 @@ export function collectNativeUiRects(
   });
 
   return rects;
+}
+
+/**
+ * Programmatically forces an immediate synchronization of UI blocking rectangles
+ * with the native desktop overlay (useful when opening menus, popovers, or toggling modals).
+ */
+export function triggerNativeUiRectsSync(): void {
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    const rects = collectNativeUiRects();
+    globalRustBrushBridge.setUiBlockingRects(rects);
+  }
 }
 
 /**
@@ -79,7 +92,8 @@ export function useNativeUiRectsSync(activePopover: PopoverType): void {
     if (!isTauriApp || typeof window === "undefined") return;
 
     let rafId: number | null = null;
-    const debouncedSync = () => {
+    const immediateAndDebouncedSync = () => {
+      syncUiRects();
       if (rafId !== null) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         syncUiRects();
@@ -93,14 +107,15 @@ export function useNativeUiRectsSync(activePopover: PopoverType): void {
       setTimeout(syncUiRects, 35);
     };
 
-    window.addEventListener("resize", debouncedSync);
+    window.addEventListener("resize", immediateAndDebouncedSync);
+    window.addEventListener("native-ui-sync", syncUiRects);
     window.addEventListener("pointerup", handlePointerRelease, { capture: true });
     window.addEventListener("pointercancel", handlePointerRelease, { capture: true });
 
     let observer: MutationObserver | null = null;
     if (typeof MutationObserver !== "undefined" && document?.body) {
       observer = new MutationObserver(() => {
-        debouncedSync();
+        immediateAndDebouncedSync();
       });
       observer.observe(document.body, {
         childList: true,
@@ -115,7 +130,8 @@ export function useNativeUiRectsSync(activePopover: PopoverType): void {
 
     return () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", debouncedSync);
+      window.removeEventListener("resize", immediateAndDebouncedSync);
+      window.removeEventListener("native-ui-sync", syncUiRects);
       window.removeEventListener("pointerup", handlePointerRelease, { capture: true });
       window.removeEventListener("pointercancel", handlePointerRelease, { capture: true });
       if (observer) {

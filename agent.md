@@ -222,6 +222,22 @@ To guarantee that multiple agents can work in parallel without integration failu
   - **Asset Bundle**: Pre-built vector definitions are stored at `src/figcraft/assets/lucide-vectors.js` (`export const LucideVectors = ...`) and `src/figcraft/assets/lucide-paths.json`.
   - **MCP Tool Usage**: Call `create_node` on MCP server `figcraft` with `type: "vector"`, `path: <svgPath>`, `props: { fills: [], stroke: "#hex", strokeWeight: 2 }`.
 
+- **Native Desktop Overlay & Input Hijacking Prevention**:
+  - In desktop Tauri environments (macOS), the app runs a native AppKit drawing overlay behind WKWebView. To achieve zero-latency drawing without browser event loop lag, AppKit uses a synchronous local `NSEvent` monitor that intercepts pointer events on the artboard.
+  - **Mandatory Tagging**: Any React component rendering interactive UI over the canvas (menus, popovers, modals, toolbars, subwindows) must be tagged with `data-native-ui="<id>"` or standard accessible roles (`role="menu"`, `role="dialog"`, `role="listbox"`, `role="combobox"`).
+  - **Automatic Sync**: The global `useNativeUiRectsSync` hook queries `NATIVE_UI_SELECTOR` and automatically pushes bounding rects (`g_ui_blocking_rects`) to the native layer so AppKit passes clicks straight to WKWebView.
+  - **Synchronous Trigger**: If a menu or modal is opened/closed via local component state (not via global `activePopover`), call `triggerNativeUiRectsSync()` immediately in a `useEffect` on state change:
+    ```tsx
+    import { triggerNativeUiRectsSync } from "@/ui/hooks/useNativeUiRectsSync";
+
+    useEffect(() => {
+      triggerNativeUiRectsSync();
+      const timer = setTimeout(triggerNativeUiRectsSync, 50);
+      return () => clearTimeout(timer);
+    }, [isMenuOpen]);
+    ```
+  - **Pointer Event Propagation**: Always add `onPointerDown={(e) => e.stopPropagation()}` on floating panel containers so clicks do not bubble down to canvas handlers in WebKit.
+
 
 ---
 
@@ -352,4 +368,5 @@ When generating or modifying code in this repository, all AI agents must follow 
 - [ ] **Static/Offline Safety**: Does the feature function without any external server or network connectivity?
 - [ ] **Readability & Comments**: Are formulas and non-obvious algorithms accompanied by explanatory mathematical comments?
 - [ ] **Standardized Iconography**: Are all UI icons strictly imported from `lucide-react`?
+- [ ] **Native Overlay Protection**: Do any new menus, modals, or floating panels have `data-native-ui="..."` or `role="menu|dialog"` and trigger UI rect sync?
 - [ ] **Type Safety & Build**: Does the project pass TypeScript compilation (`npm run build`) without errors or warnings?

@@ -128,9 +128,20 @@ impl PixelBrushEngine {
     }
 
     #[inline]
+    fn map_pressure(pressure: f32, config: &BrushConfig) -> f32 {
+        if let Some(ref lut) = config.pressure_lut {
+            let idx = ((pressure.clamp(0.0, 1.0) * 255.0).round() as usize).min(255);
+            lut[idx]
+        } else {
+            pressure
+        }
+    }
+
+    #[inline]
     fn compute_diameter_impl(pressure: f32, config: &BrushConfig) -> f32 {
         if config.size_by_pressure {
-            config.diameter * pressure.max(0.05)
+            let mapped = Self::map_pressure(pressure, config);
+            config.diameter * mapped.max(0.05)
         } else {
             config.diameter
         }
@@ -174,7 +185,7 @@ impl PixelBrushEngine {
 
         let mut flow_opacity = config.flow * config.opacity;
         if config.opacity_by_pressure {
-            flow_opacity *= event.pressure;
+            flow_opacity *= Self::map_pressure(event.pressure, config);
         }
 
         blitter.blit_dab(

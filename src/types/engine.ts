@@ -56,6 +56,8 @@ export interface IDrawingEngine {
   getSizeDynamicsEnabled?(): boolean;
   setOpacityDynamicsEnabled?(enabled: boolean): void;
   getOpacityDynamicsEnabled?(): boolean;
+  setPressureCurve?(points: readonly { x: number; y: number }[]): void;
+  getPressureLut?(): Float32Array | null;
 
   // --- Canvas Configuration ---
   setCanvasSize(widthPx: number, heightPx: number): void;

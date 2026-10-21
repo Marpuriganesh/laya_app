@@ -191,4 +191,26 @@ describe("useDocumentStore (Zustand)", () => {
     expect(useDocumentStore.getState().wheelConfig.hueSectors).toBe(24);
     expect(useDocumentStore.getState().wheelConfig.isContinuous).toBe(true);
   });
+
+  it("manages global pressure curve and persists to storage", () => {
+    const { setGlobalPressureCurve } = useDocumentStore.getState();
+
+    // Default curve should have at least 2 endpoints (0,0) and (1,1)
+    const initialCurve = useDocumentStore.getState().globalPressureCurve;
+    expect(initialCurve.length).toBeGreaterThanOrEqual(2);
+    expect(initialCurve[0].x).toBe(0);
+    expect(initialCurve[initialCurve.length - 1].x).toBe(1);
+
+    // Update with custom S-curve points
+    const customPoints = [
+      { x: 0.0, y: 0.0 },
+      { x: 0.3, y: 0.15 },
+      { x: 0.7, y: 0.85 },
+      { x: 1.0, y: 1.0 },
+    ];
+    setGlobalPressureCurve(customPoints);
+
+    const updated = useDocumentStore.getState().globalPressureCurve;
+    expect(updated).toEqual(customPoints);
+  });
 });
