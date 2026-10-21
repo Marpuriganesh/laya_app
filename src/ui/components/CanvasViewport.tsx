@@ -804,6 +804,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
       {/* Floating Zoom Controls Pill (Zoom In, Zoom Out, Fit to Screen) */}
       <div
+        data-native-ui="zoom-pill"
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}

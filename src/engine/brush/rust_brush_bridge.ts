@@ -85,6 +85,15 @@ export class RustBrushBridge {
     }
   }
 
+  public async setUiBlockingRects(rects: Array<[number, number, number, number]>): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_set_ui_blocking_rects", { rects });
+    } catch (err) {
+      console.warn("Failed to set UI blocking rects:", err);
+    }
+  }
+
   public async clearCanvas(fillColor?: [number, number, number, number]): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

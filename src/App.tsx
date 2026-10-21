@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
 import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
+import { useNativeUiRectsSync } from "@/ui/hooks/useNativeUiRectsSync";
 import { detachPanelWindow, focusDetachedWindow } from "@/ui/window/window_manager";
 import { DETACHABLE_PANEL_CONFIGS, type DetachablePanelId } from "@/types/window";
 import { TopNavBar } from "@/ui/components/TopNavBar";
@@ -52,6 +53,8 @@ function MainWindow() {
     togglePopover,
     setSoftProofMode,
   } = useDocumentStore();
+
+  useNativeUiRectsSync(activePopover);
 
   const handleClosePopover = useCallback(() => {
     setActivePopover("none");

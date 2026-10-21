@@ -164,6 +164,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
   return (
     <header
       data-tauri-drag-region
+      data-native-ui="top-bar"
       onDoubleClick={handleHeaderDoubleClick}
       className="h-14 px-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
       title="Double-click to toggle maximize • Drag to reposition"

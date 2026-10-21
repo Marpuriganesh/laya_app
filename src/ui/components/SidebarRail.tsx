@@ -72,6 +72,7 @@ export const SidebarRail: FC<SidebarRailProps> = ({
 
   return (
     <motion.aside
+      data-native-ui="sidebar-rail"
       aria-label="Brush dynamics and history rail"
       initial={{ x: -80, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}

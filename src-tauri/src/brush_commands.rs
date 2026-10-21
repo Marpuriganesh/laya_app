@@ -124,6 +124,17 @@ unsafe extern "C" {
     pub fn set_native_overlay_pan_active(is_panning: bool);
     pub fn update_canvas_artboard_rect(x: f32, y: f32, width: f32, height: f32);
     pub fn trigger_native_overlay_repaint();
+    pub fn set_ui_blocking_rects(rects: *const f32, count: u32);
+}
+
+#[tauri::command]
+pub async fn rust_set_ui_blocking_rects(rects: Vec<[f32; 4]>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let flattened: Vec<f32> = rects.iter().flat_map(|r| r.iter().copied()).collect();
+        set_ui_blocking_rects(flattened.as_ptr(), rects.len() as u32);
+    }
+    Ok(())
 }
 
 #[tauri::command]

@@ -52,6 +52,8 @@ export const FloatingWindowPanel: FC<FloatingWindowPanelProps> = ({
 
   return (
     <div
+      role="dialog"
+      data-native-ui="floating-panel"
       className={`${anchorClassName} rounded-xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xl flex flex-col overflow-hidden backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100 transition-colors`}
       style={{
         width: `${width}px`,
