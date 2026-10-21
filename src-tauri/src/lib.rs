@@ -58,6 +58,14 @@ async fn set_always_on_top(
   window.set_always_on_top(always_on_top).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn close_window(
+  window: tauri::Window,
+) -> Result<(), String> {
+  let _ = window.destroy();
+  Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -86,6 +94,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       detach_panel,
       set_always_on_top,
+      close_window,
       rust_brush_set_config,
       rust_brush_set_modal_open,
       rust_brush_clear,

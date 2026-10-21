@@ -159,11 +159,19 @@ export async function toggleWindowAlwaysOnTop(alwaysOnTop: boolean): Promise<boo
 export async function closeCurrentWindow(): Promise<void> {
   if (isTauriEnvironment()) {
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      await getCurrentWindow().close();
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("close_window");
       return;
     } catch (err) {
-      console.warn("Failed to close Tauri window:", err);
+      console.warn("Failed to close Tauri window via invoke:", err);
+    }
+
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().destroy();
+      return;
+    } catch (err) {
+      console.warn("Failed to destroy Tauri window:", err);
     }
   }
 
