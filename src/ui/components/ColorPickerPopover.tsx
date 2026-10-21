@@ -1168,9 +1168,10 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
       {isOpen && (
         <>
           <motion.div
-          key="color-picker-popover-panel"
-          role="dialog"
-          aria-label="Color Picker"
+            key="color-picker-popover-panel"
+            role="dialog"
+            data-native-ui="color-picker"
+            aria-label="Color Picker"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -1861,6 +1862,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         {shapeMode === "circle" && isArtisticWheel && isGamutDrawerOpen && (
           <motion.div
             key="gamut-mask-subwindow"
+            role="dialog"
+            data-native-ui="color-picker-subwindow"
+            aria-label="Color Gamut Mask"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
@@ -1991,6 +1995,9 @@ export const ColorPickerPopover: FC<ColorPickerPopoverProps> = ({
         {shapeMode === "circle" && isArtisticWheel && isArtisticSettingsOpen && (
           <motion.div
             key="artistic-grid-subwindow"
+            role="dialog"
+            data-native-ui="color-picker-subwindow"
+            aria-label="Discrete Grid Levels"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}

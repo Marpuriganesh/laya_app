@@ -79,4 +79,41 @@ describe("collectNativeUiRects", () => {
     const rects = collectNativeUiRects(mockDoc);
     expect(rects).toEqual([]);
   });
+
+  it("gathers multiple overlapping or adjacent subwindows", () => {
+    const mainPicker: QueryableElement = {
+      getBoundingClientRect: () => ({
+        left: 600,
+        top: 64,
+        width: 320,
+        height: 520,
+      }),
+    };
+    const gamutSubwindow: QueryableElement = {
+      getBoundingClientRect: () => ({
+        left: 330,
+        top: 64,
+        width: 250,
+        height: 220,
+      }),
+    };
+    const gridSubwindow: QueryableElement = {
+      getBoundingClientRect: () => ({
+        left: 330,
+        top: 300,
+        width: 250,
+        height: 180,
+      }),
+    };
+
+    const mockDoc: QueryableDocument = {
+      querySelectorAll: () => [mainPicker, gamutSubwindow, gridSubwindow],
+    };
+
+    const rects = collectNativeUiRects(mockDoc);
+    expect(rects).toHaveLength(3);
+    expect(rects[0]).toEqual([600, 64, 320, 520]);
+    expect(rects[1]).toEqual([330, 64, 250, 220]);
+    expect(rects[2]).toEqual([330, 300, 250, 180]);
+  });
 });

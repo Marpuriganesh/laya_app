@@ -33,6 +33,11 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     if (loc.x <= 56.0f && loc.y < (winH - 48.0f)) {
         return YES;
     }
+    // Floating Zoom Controls Pill: [x: 56..200, y: (winH - 100)..(winH - 48)]
+    // Built-in guard ensures zoom pill is 100% immune to being captured by the artboard
+    if (loc.x >= 56.0f && loc.x <= 200.0f && loc.y >= (winH - 100.0f) && loc.y <= (winH - 48.0f)) {
+        return YES;
+    }
 
     // 2. Dynamic UI Rectangles registered by React (popovers, modals, zoom pill):
     for (uint32_t i = 0; i < g_ui_blocking_count; i++) {
@@ -275,33 +280,62 @@ void trigger_native_overlay_repaint(void) {
 
 void update_canvas_artboard_rect(float x, float y, float width, float height) {
     if (!g_active_workspace_view) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
+    void (^applyBlock)(void) = ^{
         NSWindow *window = [g_active_workspace_view window];
         if (!window) return;
         float winH = (float)window.contentView.bounds.size.height;
         // Invert Y for Cocoa window coordinates (0 is bottom-left):
         g_artboard_rect = NSMakeRect(x, winH - y - height, width, height);
         [g_active_workspace_view setNeedsDisplay:YES];
-    });
+    };
+
+    if ([NSThread isMainThread]) {
+        applyBlock();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), applyBlock);
+    }
 }
 
 void set_ui_blocking_rects(const float *rects, uint32_t count) {
     if (!g_active_workspace_view) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
+    uint32_t safeCount = (count < MAX_UI_BLOCKING_RECTS) ? count : MAX_UI_BLOCKING_RECTS;
+
+    if (safeCount == 0 || !rects) {
+        void (^clearBlock)(void) = ^{
+            g_ui_blocking_count = 0;
+        };
+        if ([NSThread isMainThread]) {
+            clearBlock();
+        } else {
+            dispatch_async(dispatch_get_main_queue(), clearBlock);
+        }
+        return;
+    }
+
+    // Retain rect data in NSData so we do not read from a dropped Rust buffer
+    NSData *data = [NSData dataWithBytes:rects length:(safeCount * 4 * sizeof(float))];
+    void (^applyBlock)(void) = ^{
         NSWindow *window = [g_active_workspace_view window];
         if (!window) return;
         float winH = (float)window.contentView.bounds.size.height;
 
-        g_ui_blocking_count = (count < MAX_UI_BLOCKING_RECTS) ? count : MAX_UI_BLOCKING_RECTS;
-        for (uint32_t i = 0; i < g_ui_blocking_count; i++) {
-            float rx = rects[i * 4 + 0];
-            float ry = rects[i * 4 + 1];
-            float rw = rects[i * 4 + 2];
-            float rh = rects[i * 4 + 3];
+        const float *r = (const float *)[data bytes];
+        g_ui_blocking_count = safeCount;
+        for (uint32_t i = 0; i < safeCount; i++) {
+            float rx = r[i * 4 + 0];
+            float ry = r[i * 4 + 1];
+            float rw = r[i * 4 + 2];
+            float rh = r[i * 4 + 3];
             // Convert Web top-left coords to Cocoa bottom-left coords:
             g_ui_blocking_rects[i] = NSMakeRect(rx, winH - ry - rh, rw, rh);
         }
-    });
+    };
+
+    if ([NSThread isMainThread]) {
+        applyBlock();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), applyBlock);
+    }
 }
 
 void set_workspace_theme(bool is_dark) {
@@ -373,6 +407,17 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                             return event; // Always pass hover to React UI
                         }
 
+                        // Active Drawing: If already drawing a stroke, drag and up must always continue/end the stroke
+                        if (g_is_drawing) {
+                            if ([event type] == NSEventTypeLeftMouseDragged) {
+                                [g_active_workspace_view handleMouseDragged:event];
+                                return nil;
+                            } else if ([event type] == NSEventTypeLeftMouseUp) {
+                                [g_active_workspace_view handleMouseUp:event];
+                                return nil;
+                            }
+                        }
+
                         // 1. If point is on React UI (top bar, sidebar rail, popover, modal, zoom pill):
                         // Pass event directly through to WKWebView!
                         if (is_point_in_ui(loc, winH)) {
@@ -388,14 +433,6 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                         // 3. If point is OUTSIDE the artboard paper:
                         // Pass event through to React for canvas panning and shortcuts!
                         if (!NSPointInRect(loc, g_artboard_rect)) {
-                            // If we were drawing and dragged outside the artboard boundary, continue stroke
-                            if (g_is_drawing && [event type] == NSEventTypeLeftMouseDragged) {
-                                [g_active_workspace_view handleMouseDragged:event];
-                                return nil;
-                            } else if (g_is_drawing && [event type] == NSEventTypeLeftMouseUp) {
-                                [g_active_workspace_view handleMouseUp:event];
-                                return nil;
-                            }
                             return event;
                         }
 
@@ -403,12 +440,6 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                         // Draw via Native Rust Brush Engine with zero latency!
                         if ([event type] == NSEventTypeLeftMouseDown) {
                             [g_active_workspace_view handleMouseDown:event];
-                            return nil;
-                        } else if ([event type] == NSEventTypeLeftMouseDragged) {
-                            [g_active_workspace_view handleMouseDragged:event];
-                            return nil;
-                        } else if ([event type] == NSEventTypeLeftMouseUp) {
-                            [g_active_workspace_view handleMouseUp:event];
                             return nil;
                         }
                     } @catch (id ex) {

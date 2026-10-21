@@ -65,22 +65,62 @@ export function useNativeUiRectsSync(activePopover: PopoverType): void {
   }, [isTauriApp]);
 
   useEffect(() => {
-    // Sync when popovers open or close (give DOM a tick to layout)
-    const timer = setTimeout(syncUiRects, 30);
-    return () => clearTimeout(timer);
+    // Immediate sync and follow-up syncs after animations/layout settle
+    syncUiRects();
+    const timer1 = setTimeout(syncUiRects, 30);
+    const timer2 = setTimeout(syncUiRects, 180);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
   }, [activePopover, syncUiRects]);
 
   useEffect(() => {
-    if (!isTauriApp) return;
+    if (!isTauriApp || typeof window === "undefined") return;
 
-    const handleResize = () => {
-      syncUiRects();
+    let rafId: number | null = null;
+    const debouncedSync = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        syncUiRects();
+        rafId = null;
+      });
     };
 
-    window.addEventListener("resize", handleResize);
+    const handlePointerRelease = () => {
+      syncUiRects();
+      // Sync again after panel drag release finishes settling
+      setTimeout(syncUiRects, 35);
+    };
+
+    window.addEventListener("resize", debouncedSync);
+    window.addEventListener("pointerup", handlePointerRelease, { capture: true });
+    window.addEventListener("pointercancel", handlePointerRelease, { capture: true });
+
+    let observer: MutationObserver | null = null;
+    if (typeof MutationObserver !== "undefined" && document?.body) {
+      observer = new MutationObserver(() => {
+        debouncedSync();
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["style", "class", "data-state", "hidden"],
+      });
+    }
+
     // Initial sync on mount
     syncUiRects();
 
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", debouncedSync);
+      window.removeEventListener("pointerup", handlePointerRelease, { capture: true });
+      window.removeEventListener("pointercancel", handlePointerRelease, { capture: true });
+      if (observer) {
+        observer.disconnect();
+      }
+    };
   }, [isTauriApp, syncUiRects]);
 }
