@@ -60,6 +60,29 @@ export class RustBrushBridge {
     }
   }
 
+  public async setPullStringConfig(config: {
+    enabled: boolean;
+    maxStringLength: number;
+    velocityMultiplier: number;
+    catchUpSpeed: number;
+    baseDeadzone: number;
+    connectToTipOnRelease: boolean;
+  }): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_set_pull_string_config", {
+        enabled: config.enabled,
+        maxStringLength: config.maxStringLength,
+        velocityMultiplier: config.velocityMultiplier,
+        catchUpSpeed: config.catchUpSpeed,
+        baseDeadzone: config.baseDeadzone,
+        connectToTipOnRelease: config.connectToTipOnRelease,
+      });
+    } catch (err) {
+      console.warn("Failed to sync pull string config to Rust:", err);
+    }
+  }
+
   public async setModalOpen(isOpen: boolean): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

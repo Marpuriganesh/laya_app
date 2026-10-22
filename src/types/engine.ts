@@ -4,7 +4,7 @@
  * raster targets, and preset management.
  */
 
-import type { BrushPreset, StrokeSmoothingConfig } from "./brush";
+import type { BrushPreset, StrokeSmoothingConfig, PullStringConfig } from "./brush";
 import type { IRasterTarget } from "./raster";
 import type { StrokePoint } from "./stroke";
 
@@ -34,6 +34,8 @@ export interface IDrawingEngine {
   setBlendMode(blendMode: import("./raster").BlendMode): void;
   setSmoothingConfig(config: StrokeSmoothingConfig): void;
   getSmoothingConfig?(): StrokeSmoothingConfig;
+  setPullStringConfig?(config: PullStringConfig): void;
+  getPullStringConfig?(): PullStringConfig;
 
   // --- Spline & Curve Settings ---
   setSplineInterpolationMode?(mode: "catmullRom" | "midpoint"): void;

@@ -8,6 +8,7 @@
 import initWasm, { WasmBrushEngine } from "./pkg/sketch_core.js";
 import wasmUrl from "./pkg/sketch_core_bg.wasm?url";
 import type { StrokePoint } from "@/types/stroke";
+import type { PullStringConfig } from "@/types/brush";
 
 export interface WasmBrushConfig {
   diameter: number;
@@ -103,6 +104,21 @@ export class WasmBrushBridge {
     this.engine.set_pressure_lut(lut);
   }
 
+  /**
+   * Sets dynamic pulled string (leash) stroke stabilization configuration.
+   */
+  public setPullStringConfig(config: PullStringConfig): void {
+    if (!this.engine) return;
+    this.engine.set_pull_string_config(
+      config.enabled,
+      config.maxStringLength,
+      config.velocityMultiplier,
+      config.catchUpSpeed,
+      config.baseDeadzone,
+      config.connectToTipOnRelease
+    );
+  }
+
   private applyConfig(): void {
     if (!this.engine) return;
     const c = this.currentConfig;
@@ -129,7 +145,8 @@ export class WasmBrushBridge {
   public beginStroke(point: StrokePoint, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
     const pressure = typeof point.pressure === "number" ? Math.max(0.05, Math.min(1.0, point.pressure)) : 1.0;
-    const dirty = this.engine.begin_stroke(point.canvasX, point.canvasY, pressure);
+    const timeSec = point.timeMs ? point.timeMs * 0.001 : 0.0;
+    const dirty = this.engine.begin_stroke(point.canvasX, point.canvasY, pressure, timeSec);
     if (dirty) {
       this.blitDirtyRect(dirty, ctx);
     }
@@ -141,7 +158,8 @@ export class WasmBrushBridge {
   public extendStroke(point: StrokePoint, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
     const pressure = typeof point.pressure === "number" ? Math.max(0.05, Math.min(1.0, point.pressure)) : 1.0;
-    const dirty = this.engine.paint_to(point.canvasX, point.canvasY, pressure);
+    const timeSec = point.timeMs ? point.timeMs * 0.001 : 0.0;
+    const dirty = this.engine.paint_to(point.canvasX, point.canvasY, pressure, timeSec);
     if (dirty) {
       this.blitDirtyRect(dirty, ctx);
     }
@@ -153,18 +171,19 @@ export class WasmBrushBridge {
   public extendStrokeBatch(points: readonly StrokePoint[], ctx: CanvasRenderingContext2D): void {
     if (!this.engine || points.length === 0) return;
 
-    const requiredLen = points.length * 3;
+    const requiredLen = points.length * 4;
     if (this.flatEventsScratch.length < requiredLen) {
       this.flatEventsScratch = new Float32Array(Math.max(requiredLen, this.flatEventsScratch.length * 2));
     }
 
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
-      const offset = i * 3;
+      const offset = i * 4;
       this.flatEventsScratch[offset] = p.canvasX;
       this.flatEventsScratch[offset + 1] = p.canvasY;
       this.flatEventsScratch[offset + 2] =
         typeof p.pressure === "number" ? Math.max(0.05, Math.min(1.0, p.pressure)) : 1.0;
+      this.flatEventsScratch[offset + 3] = p.timeMs ? p.timeMs * 0.001 : 0.0;
     }
 
     const slice = this.flatEventsScratch.subarray(0, requiredLen);

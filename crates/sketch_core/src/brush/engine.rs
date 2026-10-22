@@ -4,6 +4,7 @@ use crate::brush::config::BrushConfig;
 use crate::brush::rasterizer::MaskRasterizer;
 use crate::brush::rect::Rect;
 use crate::stroke::event::StrokeEvent;
+use crate::stroke::pull_string::PullStringStabilizer;
 use crate::stroke::trajectory::StrokeTrajectory;
 
 /// Orchestrates stroke stepping along midpoint quadratic Bézier splines,
@@ -12,6 +13,7 @@ use crate::stroke::trajectory::StrokeTrajectory;
 pub struct PixelBrushEngine {
     pub config: BrushConfig,
     pub trajectory: StrokeTrajectory,
+    pub pull_string: PullStringStabilizer,
     pub rasterizer: MaskRasterizer,
     pub blitter: CanvasBlitter,
     scratch_mask: Vec<u8>,
@@ -23,6 +25,7 @@ impl PixelBrushEngine {
         Self {
             config,
             trajectory: StrokeTrajectory::new(),
+            pull_string: PullStringStabilizer::new(),
             rasterizer: MaskRasterizer::new(),
             blitter: CanvasBlitter::new(),
             scratch_mask: Vec::with_capacity(4096),
@@ -41,7 +44,9 @@ impl PixelBrushEngine {
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
 
-        self.trajectory.begin_stroke(start_event, |dab| {
+        let seed_event = self.pull_string.begin_stroke(start_event, &self.config.pull_string);
+
+        self.trajectory.begin_stroke(seed_event, |dab| {
             dirty = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas);
         });
 
@@ -51,26 +56,30 @@ impl PixelBrushEngine {
     /// Paints from the current stroke trajectory to `next_event` using continuous
     /// Midpoint Quadratic Bézier Spline interpolation (C¹ smooth tangent continuity).
     pub fn paint_to(&mut self, next_event: StrokeEvent, canvas: &mut CanvasView) -> Option<Rect> {
-        let mut dirty_rect: Option<Rect> = None;
-        let config = &self.config;
-        let rasterizer = &self.rasterizer;
-        let blitter = &self.blitter;
-        let scratch = &mut self.scratch_mask;
+        if let Some(stabilized_event) = self.pull_string.add_event(next_event, &self.config.pull_string) {
+            let mut dirty_rect: Option<Rect> = None;
+            let config = &self.config;
+            let rasterizer = &self.rasterizer;
+            let blitter = &self.blitter;
+            let scratch = &mut self.scratch_mask;
 
-        self.trajectory.add_event(
-            next_event,
-            |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
-            |dab| {
-                if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
-                    dirty_rect = match dirty_rect {
-                        None => Some(r),
-                        Some(d) => Some(d.expand_to_include(Some(&r))),
-                    };
-                }
-            },
-        );
+            self.trajectory.add_event(
+                stabilized_event,
+                |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
+                |dab| {
+                    if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
+                        dirty_rect = match dirty_rect {
+                            None => Some(r),
+                            Some(d) => Some(d.expand_to_include(Some(&r))),
+                        };
+                    }
+                },
+            );
 
-        dirty_rect
+            dirty_rect
+        } else {
+            None
+        }
     }
 
     /// Paints an entire batch of coalesced pointer events received in a single frame.
@@ -95,6 +104,8 @@ impl PixelBrushEngine {
     }
 
     /// Finishes the stroke by stamping the final segment from the last midpoint to the final event.
+    /// If pull string smoothing is enabled and tip connection is active, advances the brush tip
+    /// to the exact stylus release position before sealing the trajectory.
     pub fn finish_stroke(&mut self, canvas: &mut CanvasView) -> Option<Rect> {
         let mut dirty_rect: Option<Rect> = None;
         let config = &self.config;
@@ -102,6 +113,23 @@ impl PixelBrushEngine {
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
 
+        // 1. If pull string has remaining slack, advance stroke to the final stylus position
+        if let Some(final_event) = self.pull_string.finish_stroke(&self.config.pull_string) {
+            self.trajectory.add_event(
+                final_event,
+                |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
+                |dab| {
+                    if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
+                        dirty_rect = match dirty_rect {
+                            None => Some(r),
+                            Some(d) => Some(d.expand_to_include(Some(&r))),
+                        };
+                    }
+                },
+            );
+        }
+
+        // 2. Finish remaining trajectory segment to the final event
         self.trajectory.finish_stroke(
             |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
             |dab| {
@@ -119,6 +147,7 @@ impl PixelBrushEngine {
 
     /// Completes the current stroke and clears active trajectory state.
     pub fn end_stroke(&mut self) {
+        self.pull_string.reset();
         self.trajectory.end_stroke();
     }
 

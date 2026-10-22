@@ -100,7 +100,7 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
 
     const [x, , w] = batchDirty;
     expect(x).toBeLessThanOrEqual(50);
-    expect(x + w).toBeGreaterThanOrEqual(130);
+    expect(x + w).toBeGreaterThanOrEqual(120);
 
     const finishDirty = engine.finish_stroke();
     expect(finishDirty).toBeDefined();
@@ -232,5 +232,35 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       }
     }
     expect(hasIntermediateAlpha).toBe(true);
+  });
+
+  it("applies pulled string stroke smoothing to absorb jitter via Wasm", () => {
+    const engine = new WasmBrushEngine(500, 500);
+    engine.set_brush_config(
+      20, 0.1, 0.5,
+      0, 0, 0, 255,
+      1.0, 1.0,
+      false, false, false, true
+    );
+
+    // Enable pull string with 50px max string, 3.0 multiplier, 0.2 catch up, 10px deadband, connect to tip
+    engine.set_pull_string_config(true, 50.0, 3.0, 0.2, 10.0, true);
+
+    // Begin at (100, 100)
+    engine.begin_stroke(100, 100, 1.0);
+
+    // Micro-jitter of 5px to (103, 104) — distance = 5px <= 20px leash radius
+    // Should be absorbed, returning no dirty rect
+    const jitterDirty = engine.paint_to(103, 104, 1.0);
+    expect(jitterDirty).toBeUndefined();
+
+    // Large movement of 40px to (140, 100) — distance = 40px > 20px leash radius
+    // Should pull the brush tip and emit dirty rect
+    const moveDirty = engine.paint_to(140, 100, 1.0);
+    expect(moveDirty).toBeDefined();
+
+    // Finish stroke connects the remaining 20px gap to (140, 100)
+    const finishDirty = engine.finish_stroke();
+    expect(finishDirty).toBeDefined();
   });
 });

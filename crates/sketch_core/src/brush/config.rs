@@ -23,6 +23,8 @@ pub struct BrushConfig {
     pub antialias: bool,
     /// Optional 256-entry lookup table mapping normalized pressure [0.0..1.0] to response curve output.
     pub pressure_lut: Option<Box<[f32; 256]>>,
+    /// Pulled string (leash) stroke smoothing configuration.
+    pub pull_string: crate::stroke::PullStringConfig,
 }
 
 impl Default for BrushConfig {
@@ -39,6 +41,7 @@ impl Default for BrushConfig {
             is_erase: false,
             antialias: true,
             pressure_lut: None,
+            pull_string: crate::stroke::PullStringConfig::default(),
         }
     }
 }

@@ -3,9 +3,9 @@ use tauri::Manager;
 pub mod brush_commands;
 use brush_commands::{
   rust_brush_clear, rust_brush_set_config, rust_brush_set_modal_open,
-  rust_brush_set_pan_active, rust_brush_set_pressure_lut, rust_set_document_size,
-  rust_set_ui_blocking_rects, rust_set_workspace_theme, rust_update_artboard_rect,
-  BrushEngineState,
+  rust_brush_set_pan_active, rust_brush_set_pressure_lut, rust_brush_set_pull_string_config,
+  rust_set_document_size, rust_set_ui_blocking_rects, rust_set_workspace_theme,
+  rust_update_artboard_rect, BrushEngineState,
 };
 
 #[tauri::command]
@@ -98,6 +98,7 @@ pub fn run() {
       close_window,
       rust_brush_set_config,
       rust_brush_set_pressure_lut,
+      rust_brush_set_pull_string_config,
       rust_brush_set_modal_open,
       rust_brush_clear,
       rust_update_artboard_rect,

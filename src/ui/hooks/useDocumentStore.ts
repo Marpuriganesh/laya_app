@@ -16,6 +16,7 @@ import {
   DEFAULT_DISCRETE_WHEEL_CONFIG,
 } from "@/engine/color/discrete_wheel";
 import { createLinearCurve, type CurvePoint } from "@/engine/math/dynamics_curve";
+import { type PullStringConfig, DEFAULT_PULL_STRING_CONFIG } from "@/types/brush";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 
 export interface DocumentState {
@@ -34,6 +35,7 @@ export interface DocumentState {
   wheelConfig: DiscreteWheelConfig;
   holdThresholdMs: number;
   globalPressureCurve: CurvePoint[];
+  pullStringConfig: PullStringConfig;
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
@@ -48,6 +50,7 @@ export interface DocumentState {
   togglePalmRejection: () => void;
   setHoldThresholdMs: (ms: number) => void;
   setGlobalPressureCurve: (points: CurvePoint[]) => void;
+  setPullStringConfig: (config: Partial<PullStringConfig>) => void;
   resetTransform: () => void;
   setLayerStack: (layerStack: LayerStack) => void;
   setGamutMask: (mask: Partial<GamutMaskConfiguration>) => void;
@@ -133,6 +136,22 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     return createLinearCurve();
   })(),
+  pullStringConfig: (() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("sketch-pull-string-config");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && typeof parsed === "object") {
+            const merged: PullStringConfig = { ...DEFAULT_PULL_STRING_CONFIG, ...parsed };
+            setTimeout(() => globalDrawingEngine.setPullStringConfig?.(merged), 0);
+            return merged;
+          }
+        }
+      } catch {}
+    }
+    return DEFAULT_PULL_STRING_CONFIG;
+  })(),
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -165,6 +184,18 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     globalDrawingEngine.setPressureCurve?.(points);
     set({ globalPressureCurve: points });
+  },
+  setPullStringConfig: (config: Partial<PullStringConfig>) => {
+    set((state) => {
+      const updated: PullStringConfig = { ...state.pullStringConfig, ...config };
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("sketch-pull-string-config", JSON.stringify(updated));
+        } catch {}
+      }
+      globalDrawingEngine.setPullStringConfig?.(updated);
+      return { pullStringConfig: updated };
+    });
   },
   resetTransform: () =>
     set({

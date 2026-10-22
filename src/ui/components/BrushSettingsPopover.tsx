@@ -1,5 +1,5 @@
 import { useState, useEffect, type FC } from "react";
-import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight } from "lucide-react";
+import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
@@ -24,6 +24,8 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
     setBrushOpacity,
     globalPressureCurve,
     setGlobalPressureCurve,
+    pullStringConfig,
+    setPullStringConfig,
   } = useDocumentStore();
 
   const [softness, setSoftness] = useState(() => globalDrawingEngine.getBrushSoftness?.() ?? 0.45);
@@ -86,7 +88,7 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       width={320}
-      height={460}
+      height={520}
       allowPopout={true}
       onPopout={onDetach}
       anchorClassName="fixed right-4 top-16"
@@ -246,6 +248,112 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
                 showLiveTelemetry={true}
                 showPresets={true}
               />
+            </div>
+          )}
+        </div>
+
+        <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
+
+        {/* Stroke Stabilization (Pull String) */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Waves className="w-3.5 h-3.5 text-blue-500" />
+              Stroke Smoothing (Pull String)
+            </span>
+            <input
+              type="checkbox"
+              checked={pullStringConfig.enabled}
+              onChange={(e) => setPullStringConfig({ enabled: e.target.checked })}
+              className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+              title="Toggle pull string stroke smoothing"
+            />
+          </div>
+
+          {pullStringConfig.enabled && (
+            <div className="flex flex-col gap-3 p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
+              {/* Max String Length */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Max String Length</span>
+                  <span className="font-mono text-zinc-500">{pullStringConfig.maxStringLength}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={120}
+                  step={2}
+                  value={pullStringConfig.maxStringLength}
+                  onChange={(e) => setPullStringConfig({ maxStringLength: Number(e.target.value) })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="Maximum leash length in pixels at high velocity"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-400">
+                  <span>10px (Agile)</span>
+                  <span>Elastic leash</span>
+                  <span>120px (Maximum)</span>
+                </div>
+              </div>
+
+              {/* Velocity Multiplier */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Velocity Scaling</span>
+                  <span className="font-mono text-zinc-500">{pullStringConfig.velocityMultiplier.toFixed(1)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={6.0}
+                  step={0.1}
+                  value={pullStringConfig.velocityMultiplier}
+                  onChange={(e) => setPullStringConfig({ velocityMultiplier: Number(e.target.value) })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="Expands leash length dynamically based on stroke speed"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-400">
+                  <span>0.5x (Subtle)</span>
+                  <span>Speed sensitivity</span>
+                  <span>6.0x (Heavy)</span>
+                </div>
+              </div>
+
+              {/* Catch-Up Speed */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Catch-Up Responsiveness</span>
+                  <span className="font-mono text-zinc-500">{Math.round(pullStringConfig.catchUpSpeed * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.05}
+                  max={0.50}
+                  step={0.01}
+                  value={pullStringConfig.catchUpSpeed}
+                  onChange={(e) => setPullStringConfig({ catchUpSpeed: Number(e.target.value) })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="How fast the leash contracts to zero when slowing down into corners"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-400">
+                  <span>5% (Flowy)</span>
+                  <span>Contracts in corners</span>
+                  <span>50% (Instant)</span>
+                </div>
+              </div>
+
+              {/* Connect Tip on Release */}
+              <label className="flex items-center justify-between cursor-pointer pt-1 border-t border-zinc-200/60 dark:border-white/5">
+                <div className="flex flex-col text-left">
+                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Connect Tip on Release</span>
+                  <span className="text-[9px] text-zinc-400">Seals stroke all the way to stylus lift point</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={pullStringConfig.connectToTipOnRelease}
+                  onChange={(e) => setPullStringConfig({ connectToTipOnRelease: e.target.checked })}
+                  className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+                />
+              </label>
             </div>
           )}
         </div>

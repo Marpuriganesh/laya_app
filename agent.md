@@ -94,36 +94,33 @@ This project is a **production-ready, high-performance digital painting and draw
 
 ---
 
-## 3. Performance & Evolution Roadmap
+## 3. Canonical Architecture: Single Source of Truth (`crates/sketch_core`)
 
-The codebase follows a three-phase performance trajectory:
+The application uses **one single canonical core engine** written in Rust: **`crates/sketch_core`**.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 1: Pure TypeScript Engine                             │
-│ - Clean, 1:1 translatable algorithms                        │
-│ - HTML5 Canvas 2D / WebGL2 / WebGPU pipelines               │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 2: Targeted WebAssembly (Wasm) & WebGPU Acceleration   │
-│ - Performance hotspots (dab stamping, dual brush textures,  │
-│   blend modes, Gaussian blur filters) written in C++/Rust   │
-│ - Compiled to Wasm + WebGPU Compute Shaders                  │
-│ - TypeScript remains the high-level orchestrator            │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 3: Complete Native Core Rewrite (Optional Target)     │
-│ - Complete engine rewritten in C++ or Rust                  │
-│ - Compiled to native desktop/mobile binaries or full Wasm   │
-│ - 1:1 function parity ensures painless translation          │
-└─────────────────────────────────────────────────────────────┘
+                           ┌───────────────────────────┐
+                           │   crates/sketch_core      │
+                           │   (Single Rust Core)      │
+                           └─────────────┬─────────────┘
+                                         │
+                    ┌────────────────────┴────────────────────┐
+                    ▼                                         ▼
+    ┌───────────────────────────────┐         ┌───────────────────────────────┐
+    │  WebAssembly Target (Browser) │         │  Native C/Rust Target (Tauri) │
+    │  - wasm-pack build --target web│         │  - High-frequency AppKit view │
+    │  - Direct WASM pixel buffer   │         │  - 120Hz-240Hz NSEvent monitor│
+    │  - Zero JS drawing duplicate  │         │  - Sub-millisecond latency    │
+    └───────────────────────────────┘         └───────────────────────────────┘
 ```
 
-Because the TypeScript engine is written with strict SRP and 1:1 translatability from Day 1, moving code from Phase 1 to Phase 2 or Phase 3 requires **no architectural refactoring**—only syntax translation.
+### Key Architectural Tenets:
+1. **Single Source for Drawing**:
+   - There are **never two parallel drawing engines**. All dab stamping, trajectory calculation, and brush rasterization live solely in `crates/sketch_core`.
+   - The TypeScript layer (`src/engine/wasm`, `src/ui`) is strictly an orchestration, input normalization, and UI presentation shell.
+2. **Strict Stroke / Engine Decoupling**:
+   - Stroke stabilization and trajectory algorithms in `crates/sketch_core/src/stroke` (such as `PullStringStabilizer`, `StrokeTrajectory`, and `StrokeStepper`) are **completely decoupled** from `PixelBrushEngine`.
+   - Smoothing operates on pure `StrokeEvent` streams. Any existing or future brush engine (pixel brush, smudge/wet mixer, vector inking, airbrush) consumes smoothed events without duplicating stabilization logic.
 
 ---
 

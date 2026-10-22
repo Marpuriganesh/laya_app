@@ -30,6 +30,7 @@ impl Default for BrushEngineState {
                     is_erase: false,
                     antialias: true,
                     pressure_lut: None,
+                    pull_string: sketch_core::stroke::PullStringConfig::default(),
                 }),
                 stroke_start_time: std::time::Instant::now(),
             }),
@@ -55,6 +56,7 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         is_erase: false,
         antialias: true,
         pressure_lut: None,
+        pull_string: sketch_core::stroke::PullStringConfig::default(),
     });
     // Transparent background: the React artboard paper div provides the white/checkerboard
     // surface behind the ink. The native canvas only holds painted stroke pixels.
@@ -89,6 +91,7 @@ pub extern "C" fn rust_overlay_paint_event(x: f32, y: f32, pressure: f32) {
 pub extern "C" fn rust_overlay_end_stroke() {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
+        let _ = session.engine.finish_stroke(&mut session.canvas);
         session.engine.end_stroke();
     }
 }
@@ -215,6 +218,7 @@ impl From<BrushConfigDto> for BrushConfig {
             is_erase: dto.is_erase,
             antialias: dto.antialias,
             pressure_lut: None,
+            pull_string: sketch_core::stroke::PullStringConfig::default(),
         }
     }
 }
@@ -224,13 +228,38 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         let existing_lut = session.engine.config.pressure_lut.take();
+        let existing_pull_string = session.engine.config.pull_string;
         let mut new_config: BrushConfig = config.into();
         new_config.pressure_lut = existing_lut;
+        new_config.pull_string = existing_pull_string;
         session.engine.config = new_config;
     }
     #[cfg(target_os = "macos")]
     unsafe {
         trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_pull_string_config(
+    enabled: bool,
+    max_string_length: f32,
+    velocity_multiplier: f32,
+    catch_up_speed: f32,
+    base_deadzone: f32,
+    connect_to_tip_on_release: bool,
+) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.pull_string = sketch_core::stroke::PullStringConfig {
+            enabled,
+            max_string_length,
+            velocity_multiplier,
+            catch_up_speed,
+            base_deadzone,
+            connect_to_tip_on_release,
+        };
     }
     Ok(())
 }

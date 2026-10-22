@@ -65,6 +65,27 @@ export interface PredefinedBrushTip {
 export type BrushTip = GeneratedBrushTip | PredefinedBrushTip;
 
 /**
+ * Dynamic Pulled String (Leash / Lazy Mouse) configuration.
+ */
+export interface PullStringConfig {
+  readonly enabled: boolean;
+  readonly maxStringLength: number;        // Maximum leash length in pixels [10..250] (default: 60)
+  readonly velocityMultiplier: number;     // Velocity scaling multiplier [0..10] (default: 3.0)
+  readonly catchUpSpeed: number;           // Leash catch-up rate [0.05..1.0] (default: 0.20)
+  readonly baseDeadzone: number;           // Base deadzone radius in pixels (default: 0)
+  readonly connectToTipOnRelease: boolean; // Connect brush tip on release (default: true)
+}
+
+export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
+  enabled: true,
+  maxStringLength: 60,
+  velocityMultiplier: 3.0,
+  catchUpSpeed: 0.20,
+  baseDeadzone: 0.0,
+  connectToTipOnRelease: true,
+};
+
+/**
  * Selectable stroke smoothing algorithm.
  */
 export type SmoothingMode = "streamline" | "movingAverage" | "predictiveBezier" | "none";
@@ -74,6 +95,8 @@ export type SmoothingMode = "streamline" | "movingAverage" | "predictiveBezier" 
  */
 export interface StrokeSmoothingConfig {
   readonly mode: SmoothingMode;
+  /** Pulled String configuration */
+  readonly pullString?: PullStringConfig;
   /** Streamline: catch-up pull string radius in pixels (1 to 150, default 20) */
   readonly streamlineStringRadiusPx: number;
   /** Streamline: base smoothing factor at zero velocity (0.0 to 1.0, default 0.1) */
@@ -90,6 +113,7 @@ export interface StrokeSmoothingConfig {
 
 export const DEFAULT_STROKE_SMOOTHING_CONFIG: StrokeSmoothingConfig = {
   mode: "movingAverage",
+  pullString: DEFAULT_PULL_STRING_CONFIG,
   streamlineStringRadiusPx: 4.0,
   streamlineBaseSmoothing: 0.15,
   streamlineMaxSmoothing: 0.5,

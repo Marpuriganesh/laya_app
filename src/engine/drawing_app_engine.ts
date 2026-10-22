@@ -4,8 +4,8 @@
  * with the drawing canvas.
  */
 
-import type { BrushPreset, PixelBrushParameters, StrokeSmoothingConfig } from "@/types/brush";
-import { DEFAULT_STROKE_SMOOTHING_CONFIG } from "@/types/brush";
+import type { BrushPreset, PixelBrushParameters, StrokeSmoothingConfig, PullStringConfig } from "@/types/brush";
+import { DEFAULT_STROKE_SMOOTHING_CONFIG, DEFAULT_PULL_STRING_CONFIG } from "@/types/brush";
 import type { IDrawingEngine } from "@/types/engine";
 import type { BlendMode, IRasterTarget } from "@/types/raster";
 import type { StrokePoint } from "@/types/stroke";
@@ -93,6 +93,7 @@ export class DrawingAppEngine implements IDrawingEngine {
 
   private lastPoint: StrokePoint | null = null;
   private smoothingConfig: StrokeSmoothingConfig = { ...DEFAULT_STROKE_SMOOTHING_CONFIG };
+  private pullStringConfig: PullStringConfig = { ...DEFAULT_PULL_STRING_CONFIG };
 
   constructor(widthPx = 2048, heightPx = 2048) {
     this.rasterTarget = new MemoryRasterBuffer(widthPx, heightPx);
@@ -283,6 +284,9 @@ export class DrawingAppEngine implements IDrawingEngine {
       isErase,
       antialias: this.brushAntialias,
     });
+
+    globalWasmBrushBridge.setPullStringConfig(this.pullStringConfig);
+    void globalRustBrushBridge.setPullStringConfig(this.pullStringConfig);
   }
 
   // --- Real-time Adjustments ---
@@ -309,10 +313,26 @@ export class DrawingAppEngine implements IDrawingEngine {
 
   public setSmoothingConfig(config: StrokeSmoothingConfig): void {
     this.smoothingConfig = config;
+    if (config.pullString) {
+      this.setPullStringConfig(config.pullString);
+    }
   }
 
   public getSmoothingConfig(): StrokeSmoothingConfig {
-    return this.smoothingConfig;
+    return {
+      ...this.smoothingConfig,
+      pullString: this.pullStringConfig,
+    };
+  }
+
+  public setPullStringConfig(config: PullStringConfig): void {
+    this.pullStringConfig = config;
+    globalWasmBrushBridge.setPullStringConfig(config);
+    void globalRustBrushBridge.setPullStringConfig(config);
+  }
+
+  public getPullStringConfig(): PullStringConfig {
+    return this.pullStringConfig;
   }
 
   public setSplineInterpolationMode(_mode: "catmullRom" | "midpoint"): void {}

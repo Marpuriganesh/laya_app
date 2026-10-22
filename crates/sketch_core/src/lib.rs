@@ -80,6 +80,10 @@ mod tests {
             softness: 0.5,
             color: [255, 0, 0, 255],
             size_by_pressure: false,
+            pull_string: crate::stroke::PullStringConfig {
+                enabled: false,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let mut engine = PixelBrushEngine::new(config);

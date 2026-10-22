@@ -54,6 +54,7 @@ impl WasmBrushEngine {
         antialias: bool,
     ) {
         let existing_lut = self.engine.config.pressure_lut.take();
+        let existing_pull_string = self.engine.config.pull_string;
         self.engine.config = BrushConfig {
             diameter,
             spacing,
@@ -66,6 +67,27 @@ impl WasmBrushEngine {
             is_erase,
             antialias,
             pressure_lut: existing_lut,
+            pull_string: existing_pull_string,
+        };
+    }
+
+    /// Configures the dynamic pulled string (leash) stroke stabilizer.
+    pub fn set_pull_string_config(
+        &mut self,
+        enabled: bool,
+        max_string_length: f32,
+        velocity_multiplier: f32,
+        catch_up_speed: f32,
+        base_deadzone: f32,
+        connect_to_tip_on_release: bool,
+    ) {
+        self.engine.config.pull_string = crate::stroke::PullStringConfig {
+            enabled,
+            max_string_length,
+            velocity_multiplier,
+            catch_up_speed,
+            base_deadzone,
+            connect_to_tip_on_release,
         };
     }
 
@@ -81,31 +103,49 @@ impl WasmBrushEngine {
         }
     }
 
-    /// Begins a stroke at (x, y) with pressure.
+    /// Begins a stroke at (x, y) with pressure and optional timestamp in seconds.
     /// Returns [x, y, w, h] dirty rect as Int32Array, or undefined if no pixels modified.
-    pub fn begin_stroke(&mut self, x: f32, y: f32, pressure: f32) -> Option<Box<[i32]>> {
-        let event = StrokeEvent::new(x, y, pressure, 0.0);
+    pub fn begin_stroke(
+        &mut self,
+        x: f32,
+        y: f32,
+        pressure: f32,
+        time: Option<f32>,
+    ) -> Option<Box<[i32]>> {
+        let event = StrokeEvent::new(x, y, pressure, time.unwrap_or(0.0));
         self.engine.begin_stroke(event, &mut self.canvas).map(rect_to_boxed_slice)
     }
 
-    /// Extends a stroke to (x, y) with pressure using midpoint quadratic Bézier splines.
+    /// Extends a stroke to (x, y) with pressure and optional timestamp in seconds using midpoint quadratic Bézier splines.
     /// Returns [x, y, w, h] dirty rect as Int32Array, or undefined if no dabs stamped.
-    pub fn paint_to(&mut self, x: f32, y: f32, pressure: f32) -> Option<Box<[i32]>> {
-        let event = StrokeEvent::new(x, y, pressure, 0.0);
+    pub fn paint_to(
+        &mut self,
+        x: f32,
+        y: f32,
+        pressure: f32,
+        time: Option<f32>,
+    ) -> Option<Box<[i32]>> {
+        let event = StrokeEvent::new(x, y, pressure, time.unwrap_or(0.0));
         self.engine.paint_to(event, &mut self.canvas).map(rect_to_boxed_slice)
     }
 
-    /// Paints a batch of coalesced pointer events flatly laid out as [x0, y0, p0, x1, y1, p1, ...].
+    /// Paints a batch of coalesced pointer events flatly laid out as [x0, y0, p0, ...], or [x0, y0, p0, t0, ...].
     /// Returns the combined bounding dirty rectangle enclosing all stamped dabs.
     pub fn paint_batch(&mut self, flat_events: &[f32]) -> Option<Box<[i32]>> {
         let mut combined: Option<Rect> = None;
-        let count = flat_events.len() / 3;
+        let stride = if !flat_events.is_empty() && flat_events.len() % 4 == 0 {
+            4
+        } else {
+            3
+        };
+        let count = flat_events.len() / stride;
         for i in 0..count {
-            let offset = i * 3;
+            let offset = i * stride;
             let x = flat_events[offset];
             let y = flat_events[offset + 1];
             let p = flat_events[offset + 2];
-            let event = StrokeEvent::new(x, y, p, 0.0);
+            let t = if stride == 4 { flat_events[offset + 3] } else { 0.0 };
+            let event = StrokeEvent::new(x, y, p, t);
             if let Some(r) = self.engine.paint_to(event, &mut self.canvas) {
                 combined = match combined {
                     None => Some(r),
