@@ -124,6 +124,39 @@ pub extern "C" fn rust_overlay_get_size_dynamics() -> bool {
     guard.as_ref().map(|s| s.engine.config.size_by_pressure).unwrap_or(true)
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_get_smoothed_tip(out_x: *mut f32, out_y: *mut f32) -> bool {
+    let guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(ref session) = *guard {
+        if let Some((x, y)) = session.engine.pull_string.smoothed_tip {
+            if !out_x.is_null() && !out_y.is_null() {
+                unsafe {
+                    *out_x = x;
+                    *out_y = y;
+                }
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_get_brush_color(out_rgba: *mut u8) {
+    let guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(ref session) = *guard {
+        if !out_rgba.is_null() {
+            let color = session.engine.config.color;
+            unsafe {
+                *out_rgba.add(0) = color[0];
+                *out_rgba.add(1) = color[1];
+                *out_rgba.add(2) = color[2];
+                *out_rgba.add(3) = color[3];
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     pub fn setup_native_canvas_overlay(ns_window_ptr: *mut std::ffi::c_void, ns_view_ptr: *mut std::ffi::c_void);

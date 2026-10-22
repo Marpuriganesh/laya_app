@@ -340,20 +340,6 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
                   <span>50% (Instant)</span>
                 </div>
               </div>
-
-              {/* Connect Tip on Release */}
-              <label className="flex items-center justify-between cursor-pointer pt-1 border-t border-zinc-200/60 dark:border-white/5">
-                <div className="flex flex-col text-left">
-                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Connect Tip on Release</span>
-                  <span className="text-[9px] text-zinc-400">Seals stroke all the way to stylus lift point</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={pullStringConfig.connectToTipOnRelease}
-                  onChange={(e) => setPullStringConfig({ connectToTipOnRelease: e.target.checked })}
-                  className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
-                />
-              </label>
             </div>
           )}
         </div>

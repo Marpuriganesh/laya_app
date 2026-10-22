@@ -113,6 +113,24 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     return NSMakePoint(x, y);
 }
 
+- (NSPoint)windowPointFromCanvasPoint:(NSPoint)canvasPoint {
+    int32_t bufW = 0;
+    int32_t bufH = 0;
+    rust_overlay_get_pixels(&bufW, &bufH);
+
+    float scaleX = (g_artboard_rect.size.width > 0 && bufW > 0) ? ((float)bufW / g_artboard_rect.size.width) : 1.0f;
+    float scaleY = (g_artboard_rect.size.height > 0 && bufH > 0) ? ((float)bufH / g_artboard_rect.size.height) : 1.0f;
+
+    float localX = canvasPoint.x / scaleX;
+    float invY = canvasPoint.y / scaleY;
+    float localY = g_artboard_rect.size.height - invY;
+
+    float winX = g_artboard_rect.origin.x + localX;
+    float winY = g_artboard_rect.origin.y + localY;
+
+    return NSMakePoint(winX, winY);
+}
+
 - (void)handleMouseDown:(NSEvent *)event {
     NSPoint loc = [event locationInWindow];
     g_cursor_x = (float)loc.x;
@@ -252,6 +270,50 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
             CGDataProviderRelease(provider);
         }
         CGColorSpaceRelease(colorSpace);
+    }
+
+    // 3.5. Attach the last point to the brush tip with same pressure and size
+    if (g_is_drawing && g_cursor_x >= 0 && g_cursor_y >= 0) {
+        float tipX = 0, tipY = 0;
+        if (rust_overlay_get_smoothed_tip(&tipX, &tipY)) {
+            NSPoint tipWin = [self windowPointFromCanvasPoint:NSMakePoint(tipX, tipY)];
+            NSPoint curWin = NSMakePoint(g_cursor_x, g_cursor_y);
+
+            float dx = curWin.x - tipWin.x;
+            float dy = curWin.y - tipWin.y;
+            if (dx * dx + dy * dy > 0.25f) {
+                CGContextSaveGState(ctx);
+                [paperPath addClip]; // Clip strokes to artboard paper boundary
+
+                float diameter = rust_overlay_get_diameter();
+                bool sizeDyn = rust_overlay_get_size_dynamics();
+                float scaleX = (bufferWidth > 0 && g_artboard_rect.size.width > 0) ? (g_artboard_rect.size.width / (float)bufferWidth) : 1.0f;
+                float effectiveWidth = diameter * scaleX;
+                if (sizeDyn && g_last_pressure > 0.001f) {
+                    effectiveWidth *= fmaxf(0.08f, g_last_pressure);
+                }
+                effectiveWidth = fmaxf(effectiveWidth, 1.0f);
+
+                uint8_t rgba[4] = {24, 24, 27, 255};
+                rust_overlay_get_brush_color(rgba);
+                float r = rgba[0] / 255.0f;
+                float g = rgba[1] / 255.0f;
+                float b = rgba[2] / 255.0f;
+                float a = rgba[3] / 255.0f;
+
+                CGContextSetRGBStrokeColor(ctx, r, g, b, a);
+                CGContextSetLineWidth(ctx, effectiveWidth);
+                CGContextSetLineCap(ctx, kCGLineCapRound);
+                CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+                CGContextBeginPath(ctx);
+                CGContextMoveToPoint(ctx, tipWin.x, tipWin.y);
+                CGContextAddLineToPoint(ctx, curWin.x, curWin.y);
+                CGContextStrokePath(ctx);
+
+                CGContextRestoreGState(ctx);
+            }
+        }
     }
 
     // 4. Draw Live Brush Reticle under the pen nib

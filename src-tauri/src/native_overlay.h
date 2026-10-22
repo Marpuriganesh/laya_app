@@ -16,6 +16,8 @@ void rust_overlay_end_stroke(void);
 const uint8_t* rust_overlay_get_pixels(int32_t* out_width, int32_t* out_height);
 float rust_overlay_get_diameter(void);
 bool rust_overlay_get_size_dynamics(void);
+bool rust_overlay_get_smoothed_tip(float* out_x, float* out_y);
+void rust_overlay_get_brush_color(uint8_t* out_rgba);
 
 // Exported by Objective-C (native_overlay.m)
 void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr);
