@@ -50,7 +50,12 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   onTransformChange,
   stylusOnlyMode: initialStylusOnlyMode,
 }) => {
-  const isTauriApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  // Only macOS Tauri runs the AppKit NSView drawing overlay.
+  // Windows, Linux, and Web use the universal high-performance Wasm canvas pipeline.
+  const isMacNativeOverlay =
+    typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in window &&
+    /macintosh|mac os x/i.test(navigator.userAgent);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,7 +63,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   const artboardRef = useRef<HTMLDivElement>(null);
 
   const syncNativeArtboard = useCallback(() => {
-    if (!isTauriApp || !artboardRef.current) return;
+    if (!isMacNativeOverlay || !artboardRef.current) return;
     const rect = artboardRef.current.getBoundingClientRect();
     globalRustBrushBridge.updateArtboardRect(
       rect.left,
@@ -66,7 +71,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       rect.width,
       rect.height
     );
-  }, [isTauriApp]);
+  }, [isMacNativeOverlay]);
 
   const { palmRejection } = useDocumentStore();
   const stylusOnlyMode = initialStylusOnlyMode ?? palmRejection;
@@ -256,14 +261,14 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
   // Synchronize document dimensions to native Rust canvas engine
   useEffect(() => {
-    if (isTauriApp) {
+    if (isMacNativeOverlay) {
       globalRustBrushBridge.setDocumentSize(doc.width, doc.height);
     }
-  }, [doc.width, doc.height, isTauriApp]);
+  }, [doc.width, doc.height, isMacNativeOverlay]);
 
   // Synchronize pan and tool navigation state to native AppKit overlay
   useEffect(() => {
-    if (isTauriApp) {
+    if (isMacNativeOverlay) {
       const isNavigating =
         isSpaceDown ||
         isPanning ||
@@ -272,7 +277,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         activeTool === "hand";
       globalRustBrushBridge.setPanActive(isNavigating);
     }
-  }, [isSpaceDown, isPanning, isScrubbingZoom, activeTool, isTauriApp]);
+  }, [isSpaceDown, isPanning, isScrubbingZoom, activeTool, isMacNativeOverlay]);
 
   // Listen for window resize
   useEffect(() => {
@@ -834,7 +839,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`flex-1 w-full h-full relative overflow-hidden ${
-        isTauriApp ? "bg-transparent" : "bg-zinc-200 dark:bg-[#1e1e22]"
+        isMacNativeOverlay ? "bg-transparent" : "bg-zinc-200 dark:bg-[#1e1e22]"
       } select-none touch-none ${getContainerCursorClass()}`}
     >
       {/* Hidden SVG Filter definition for 100% mathematically exact sRGB isoluminant soft proofing */}
@@ -872,20 +877,20 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         <div
           ref={artboardRef}
           className={`relative rounded-sm border ${
-            isTauriApp ? "border-transparent" : "border-zinc-700/80 shadow-md"
+            isMacNativeOverlay ? "border-transparent" : "border-zinc-700/80 shadow-md"
           } overflow-hidden`}
           style={{
             width: doc.width,
             height: doc.height,
             backgroundColor:
-              isTauriApp || doc.backgroundColor === "transparent"
+              isMacNativeOverlay || doc.backgroundColor === "transparent"
                 ? "transparent"
                 : doc.backgroundColor,
             filter: getCssFilterForSoftProof(softProofMode),
           }}
         >
           {/* Transparency checkerboard when transparent background in browser */}
-          {!isTauriApp && doc.backgroundColor === "transparent" && (
+          {!isMacNativeOverlay && doc.backgroundColor === "transparent" && (
             <div
               className="absolute inset-0 pointer-events-none opacity-20"
               style={{
@@ -919,13 +924,13 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
               handlePointerUp(e);
             }}
             className={`block touch-none ${getCanvasCursorClass()} ${
-              isTauriApp ? "pointer-events-none" : ""
+              isMacNativeOverlay ? "pointer-events-none" : ""
             }`}
             style={{
               width: doc.width,
               height: doc.height,
               imageRendering: "auto",
-              display: isTauriApp ? "none" : "block",
+              display: isMacNativeOverlay ? "none" : "block",
             }}
           />
         </div>
