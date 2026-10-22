@@ -23,6 +23,9 @@ pub struct PullStringConfig {
     /// Whether the stroke automatically completes the remaining leash segment to the
     /// exact stylus lift position on stroke release, guaranteeing zero gaps.
     pub connect_to_tip_on_release: bool,
+    /// Pressure response smoothing factor [0.0..1.0] (default: 0.35).
+    /// 0.0 = raw 1:1 stylus pressure; higher values filter out jitter and pressure steps.
+    pub pressure_smoothing: f32,
 }
 
 impl Default for PullStringConfig {
@@ -34,6 +37,7 @@ impl Default for PullStringConfig {
             catch_up_speed: 0.20,
             base_deadzone: 0.0,
             connect_to_tip_on_release: true,
+            pressure_smoothing: 0.35,
         }
     }
 }
@@ -65,8 +69,10 @@ pub struct PullStringStabilizer {
     pub current_string_length: f32,
     /// Previous event timestamp in seconds.
     pub last_time: f32,
-    /// Last received pressure.
+    /// Last received / smoothed pressure.
     pub last_pressure: f32,
+    /// Smoothed pressure accumulator.
+    pub smoothed_pressure: f32,
     /// Whether a stroke is currently active.
     pub is_active: bool,
 }
@@ -80,6 +86,7 @@ impl PullStringStabilizer {
             current_string_length: 0.0,
             last_time: 0.0,
             last_pressure: 1.0,
+            smoothed_pressure: 1.0,
             is_active: false,
         }
     }
@@ -91,6 +98,7 @@ impl PullStringStabilizer {
         self.current_string_length = 0.0;
         self.last_time = 0.0;
         self.last_pressure = 1.0;
+        self.smoothed_pressure = 1.0;
         self.is_active = false;
     }
 
@@ -103,6 +111,7 @@ impl PullStringStabilizer {
         self.current_string_length = 0.0;
         self.last_time = start_event.time;
         self.last_pressure = start_event.pressure;
+        self.smoothed_pressure = start_event.pressure;
         self.is_active = true;
 
         start_event
@@ -132,12 +141,22 @@ impl PullStringStabilizer {
 
         self.prev_cursor = Some(current_cursor);
         self.last_time = event.time;
-        self.last_pressure = event.pressure;
+
+        // Smooth pressure response
+        let smoothed_p = if config.enabled && config.pressure_smoothing > 0.001 {
+            let p_rate = ((1.0 - config.pressure_smoothing.clamp(0.0, 0.98)) * (effective_dt / 0.01667)).clamp(0.02, 1.0);
+            self.smoothed_pressure += (event.pressure - self.smoothed_pressure) * p_rate;
+            self.smoothed_pressure
+        } else {
+            self.smoothed_pressure = event.pressure;
+            event.pressure
+        };
+        self.last_pressure = smoothed_p;
 
         if !config.enabled || config.max_string_length <= 0.0 {
             self.smoothed_tip = Some(current_cursor);
             self.current_string_length = 0.0;
-            return Some(event);
+            return Some(StrokeEvent::new(current_cursor.0, current_cursor.1, smoothed_p, event.time));
         }
 
         let target_string_length = (velocity * config.velocity_multiplier)
@@ -160,7 +179,7 @@ impl PullStringStabilizer {
 
             self.smoothed_tip = Some((new_tip_x, new_tip_y));
 
-            Some(StrokeEvent::new(new_tip_x, new_tip_y, event.pressure, event.time))
+            Some(StrokeEvent::new(new_tip_x, new_tip_y, smoothed_p, event.time))
         } else {
             None
         }
@@ -247,6 +266,7 @@ mod tests {
             max_string_length: 40.0,
             velocity_multiplier: 3.0,
             connect_to_tip_on_release: true,
+            pressure_smoothing: 0.0,
             ..Default::default()
         };
 
@@ -280,5 +300,28 @@ mod tests {
         let out = stabilizer.add_event(p1, &config).expect("Must pass raw event when disabled");
         assert_eq!(out.x, 12.0);
         assert_eq!(out.y, 12.0);
+    }
+
+    #[test]
+    fn test_pressure_smoothing_filters_spikes() {
+        let mut stabilizer = PullStringStabilizer::new();
+        let config = PullStringConfig {
+            enabled: true,
+            max_string_length: 50.0,
+            pressure_smoothing: 0.5,
+            ..Default::default()
+        };
+
+        // Start at 0.2 pressure
+        let p0 = StrokeEvent::new(0.0, 0.0, 0.2, 0.0);
+        stabilizer.begin_stroke(p0, &config);
+
+        // Instant pressure jump to 1.0
+        let p1 = StrokeEvent::new(100.0, 0.0, 1.0, 0.01667);
+        let out1 = stabilizer.add_event(p1, &config).expect("Must emit stabilized event");
+
+        // Smoothed pressure should not jump to 1.0 instantly; it should be damped
+        assert!(out1.pressure > 0.2 && out1.pressure < 1.0, "Pressure should be smoothly damped: got {}", out1.pressure);
+        assert!((out1.pressure - 0.6).abs() < 0.15, "Expected around ~0.6, got {}", out1.pressure);
     }
 }

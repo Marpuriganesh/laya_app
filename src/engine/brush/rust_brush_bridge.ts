@@ -67,6 +67,7 @@ export class RustBrushBridge {
     catchUpSpeed: number;
     baseDeadzone: number;
     connectToTipOnRelease: boolean;
+    pressureSmoothing?: number;
   }): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
@@ -77,6 +78,7 @@ export class RustBrushBridge {
         catchUpSpeed: config.catchUpSpeed,
         baseDeadzone: config.baseDeadzone,
         connectToTipOnRelease: config.connectToTipOnRelease,
+        pressureSmoothing: config.pressureSmoothing ?? 0.35,
       });
     } catch (err) {
       console.warn("Failed to sync pull string config to Rust:", err);

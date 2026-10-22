@@ -340,6 +340,29 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
                   <span>50% (Instant)</span>
                 </div>
               </div>
+
+              {/* Pressure Smoothing */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Pressure Smoothing</span>
+                  <span className="font-mono text-zinc-500">{Math.round((pullStringConfig.pressureSmoothing ?? 0.35) * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.90}
+                  step={0.02}
+                  value={pullStringConfig.pressureSmoothing ?? 0.35}
+                  onChange={(e) => setPullStringConfig({ pressureSmoothing: Number(e.target.value) })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="Smooths pressure transitions and filters out stylus pressure step jitter"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-400">
+                  <span>0% (Raw 1:1)</span>
+                  <span>Smooth pressure</span>
+                  <span>90% (Silky)</span>
+                </div>
+              </div>
             </div>
           )}
         </div>

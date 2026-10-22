@@ -74,6 +74,7 @@ export interface PullStringConfig {
   readonly catchUpSpeed: number;           // Leash catch-up rate [0.05..1.0] (default: 0.20)
   readonly baseDeadzone: number;           // Base deadzone radius in pixels (default: 0)
   readonly connectToTipOnRelease: boolean; // Connect brush tip on release (default: true)
+  readonly pressureSmoothing: number;      // Pressure response smoothing [0..1] (default: 0.35)
 }
 
 export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
@@ -83,6 +84,7 @@ export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
   catchUpSpeed: 0.20,
   baseDeadzone: 0.0,
   connectToTipOnRelease: true,
+  pressureSmoothing: 0.35,
 };
 
 /**

@@ -121,6 +121,9 @@ The application uses **one single canonical core engine** written in Rust: **`cr
 2. **Strict Stroke / Engine Decoupling**:
    - Stroke stabilization and trajectory algorithms in `crates/sketch_core/src/stroke` (such as `PullStringStabilizer`, `StrokeTrajectory`, and `StrokeStepper`) are **completely decoupled** from `PixelBrushEngine`.
    - Smoothing operates on pure `StrokeEvent` streams. Any existing or future brush engine (pixel brush, smudge/wet mixer, vector inking, airbrush) consumes smoothed events without duplicating stabilization logic.
+3. **Platform Differences (Native Tauri Desktop vs Web/Wasm)**:
+   - **Native Desktop (macOS AppKit via Tauri)**: Input is handled by a high-frequency AppKit local `NSEvent` monitor and rendered in an `NSView` overlay using native CoreGraphics directly over the Rust framebuffer. The live stroke connection to the pen nib is drawn instantaneously in `drawRect:`.
+   - **Web Target (Wasm & Canvas2D)**: Drawing runs purely through the compiled WebAssembly module (`wasm-bindgen`) and is blitted into a Canvas2D rendering context without the native Cocoa AppKit view overlay. Any live preview overlays on the web operate within the React/Canvas presentation shell.
 
 ---
 

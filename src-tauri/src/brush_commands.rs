@@ -282,6 +282,7 @@ pub async fn rust_brush_set_pull_string_config(
     catch_up_speed: f32,
     base_deadzone: f32,
     connect_to_tip_on_release: bool,
+    pressure_smoothing: Option<f32>,
 ) -> Result<(), String> {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
@@ -292,6 +293,7 @@ pub async fn rust_brush_set_pull_string_config(
             catch_up_speed,
             base_deadzone,
             connect_to_tip_on_release,
+            pressure_smoothing: pressure_smoothing.unwrap_or(0.35),
         };
     }
     Ok(())

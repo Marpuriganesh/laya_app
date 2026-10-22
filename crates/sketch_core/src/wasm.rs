@@ -80,6 +80,7 @@ impl WasmBrushEngine {
         catch_up_speed: f32,
         base_deadzone: f32,
         connect_to_tip_on_release: bool,
+        pressure_smoothing: f32,
     ) {
         self.engine.config.pull_string = crate::stroke::PullStringConfig {
             enabled,
@@ -88,6 +89,7 @@ impl WasmBrushEngine {
             catch_up_speed,
             base_deadzone,
             connect_to_tip_on_release,
+            pressure_smoothing,
         };
     }
 

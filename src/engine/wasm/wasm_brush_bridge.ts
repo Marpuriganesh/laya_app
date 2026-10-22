@@ -115,7 +115,8 @@ export class WasmBrushBridge {
       config.velocityMultiplier,
       config.catchUpSpeed,
       config.baseDeadzone,
-      config.connectToTipOnRelease
+      config.connectToTipOnRelease,
+      config.pressureSmoothing ?? 0.35
     );
   }
 

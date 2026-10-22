@@ -243,8 +243,8 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       false, false, false, true
     );
 
-    // Enable pull string with 50px max string, 3.0 multiplier, 0.2 catch up, 10px deadband, connect to tip
-    engine.set_pull_string_config(true, 50.0, 3.0, 0.2, 10.0, true);
+    // Enable pull string with 50px max string, 3.0 multiplier, 0.2 catch up, 10px deadband, connect to tip, 0.35 pressure smoothing
+    engine.set_pull_string_config(true, 50.0, 3.0, 0.2, 10.0, true, 0.35);
 
     // Begin at (100, 100)
     engine.begin_stroke(100, 100, 1.0);
