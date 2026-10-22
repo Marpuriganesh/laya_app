@@ -122,11 +122,14 @@ impl StrokeTrajectory {
     }
 
     /// Finishes the stroke by stepping from the last midpoint to the final event.
+    /// Always ensures the final dab at the exact brush tip (release position) is stamped.
     pub fn finish_stroke<S, F>(&mut self, mut spacing_fn: S, mut yield_dab: F)
     where
         S: FnMut(&StrokeEvent) -> f32,
         F: FnMut(StrokeEvent),
     {
+        let mut last_dab_pos: Option<(f32, f32)> = None;
+
         if let (Some(m_prev), Some(p_last)) = (self.prev_midpoint, self.prev_event) {
             let seg_len = StrokeStepper::linear_length(&m_prev, &p_last);
             let mut current_t = 0.0;
@@ -138,10 +141,27 @@ impl StrokeTrajectory {
                     current_t = next_t;
                     current_dab = StrokeEvent::lerp(&m_prev, &p_last, current_t);
                     yield_dab(current_dab);
+                    last_dab_pos = Some((current_dab.x, current_dab.y));
                 } else {
                     break;
                 }
             }
+
+            // Always ensure the final dab at the exact brush tip (p_last) is stamped on release
+            let should_stamp_tip = match last_dab_pos {
+                Some((lx, ly)) => {
+                    let dx = p_last.x - lx;
+                    let dy = p_last.y - ly;
+                    dx * dx + dy * dy > 0.01
+                }
+                None => true,
+            };
+
+            if should_stamp_tip {
+                yield_dab(p_last);
+            }
+        } else if let Some(p_last) = self.prev_event {
+            yield_dab(p_last);
         }
 
         self.end_stroke();
@@ -188,5 +208,9 @@ mod tests {
         traj.finish_stroke(|_| 20.0, |d| dabs.push(d));
         assert!(traj.prev_event.is_none());
         assert_eq!(traj.stepper.accum_distance, 0.0);
+        // Verify the final release dab at the brush tip (100, 100) is guaranteed to be stamped
+        let last_dab = dabs.last().unwrap();
+        assert!((last_dab.x - 100.0).abs() < 1e-3);
+        assert!((last_dab.y - 100.0).abs() < 1e-3);
     }
 }

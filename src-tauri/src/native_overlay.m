@@ -179,6 +179,24 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
 }
 
 - (void)handleMouseUp:(NSEvent *)event {
+    NSPoint loc = [event locationInWindow];
+    g_cursor_x = (float)loc.x;
+    g_cursor_y = (float)loc.y;
+
+    NSPoint cp = [self canvasPointFromWindowPoint:loc];
+    BOOL isTablet = ([event subtype] == NSEventSubtypeTabletPoint);
+
+    float pressure = (float)[event pressure];
+    if (!isTablet && pressure <= 0.001f) {
+        pressure = (g_last_pressure > 0.001f) ? g_last_pressure : 1.0f;
+    }
+    if (g_has_pressure_lut) {
+        int idx = (int)fminf(255.0f, fmaxf(0.0f, roundf(pressure * 255.0f)));
+        pressure = g_pressure_lut[idx];
+    }
+    g_last_pressure = pressure;
+
+    rust_overlay_paint_event((float)cp.x, (float)cp.y, pressure);
     g_is_drawing = NO;
     rust_overlay_end_stroke();
     [self setNeedsDisplay:YES];
