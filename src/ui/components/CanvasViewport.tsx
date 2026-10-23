@@ -59,6 +59,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const liveOverlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
 
@@ -227,6 +228,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     canvas.width = doc.width;
     canvas.height = doc.height;
 
+    if (liveOverlayCanvasRef.current) {
+      liveOverlayCanvasRef.current.width = doc.width;
+      liveOverlayCanvasRef.current.height = doc.height;
+    }
+
     globalDrawingEngine.mountToCanvas(canvas);
 
     const ctx = canvas.getContext("2d");
@@ -243,6 +249,86 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       globalDrawingEngine.unmount();
     };
   }, [doc.id, doc.width, doc.height, doc.backgroundColor]);
+
+  const clearLiveOverlay = useCallback(() => {
+    const canvas = liveOverlayCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, []);
+
+  const updateLiveOverlay = useCallback(
+    (currentPoint: StrokePoint) => {
+      if (isMacNativeOverlay) return;
+      const overlayCanvas = liveOverlayCanvasRef.current;
+      if (!overlayCanvas) return;
+      const ctx = overlayCanvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      if (!isDrawingRef.current) return;
+
+      const smoothedTip = globalDrawingEngine.getSmoothedTip?.();
+      if (!smoothedTip) return;
+
+      const [tipX, tipY] = smoothedTip;
+      const curX = currentPoint.canvasX;
+      const curY = currentPoint.canvasY;
+
+      const dx = curX - tipX;
+      const dy = curY - tipY;
+      if (dx * dx + dy * dy < 0.25) return;
+
+      const pullConfig = globalDrawingEngine.getPullStringConfig?.();
+      const isPullEnabled = pullConfig?.enabled && pullConfig.maxStringLength > 0;
+
+      if (isPullEnabled) {
+        // Draw delicate pulled-string leash line from smoothed tip to current pen nib
+        ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(100, 116, 139, 0.65)";
+        ctx.lineWidth = 1.25;
+        ctx.setLineDash([4, 3]);
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(curX, curY);
+        ctx.stroke();
+
+        // Small guide dot at smoothed tip
+        ctx.beginPath();
+        ctx.setLineDash([]);
+        ctx.arc(tipX, tipY, 3, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(59, 130, 246, 0.85)";
+        ctx.fill();
+        ctx.restore();
+      } else {
+        if (activeTool === "eraser") return;
+
+        // Draw live connecting ink segment from last committed tip to current pen nib
+        ctx.save();
+        const baseDiameter = globalDrawingEngine.getBrushSize ? globalDrawingEngine.getBrushSize() : 24;
+        const sizeDyn = globalDrawingEngine.getSizeDynamicsEnabled ? globalDrawingEngine.getSizeDynamicsEnabled() : true;
+        const pressure = typeof currentPoint.pressure === "number" ? Math.max(0.05, currentPoint.pressure) : 1.0;
+        const effectiveWidth = sizeDyn ? Math.max(1, baseDiameter * pressure) : baseDiameter;
+
+        const rgb = hexToRgb(activeColor) ?? [24, 24, 27];
+
+        ctx.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${brushOpacity})`;
+        ctx.lineWidth = effectiveWidth;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(curX, curY);
+        ctx.stroke();
+        ctx.restore();
+      }
+    },
+    [isMacNativeOverlay, activeColor, brushOpacity, activeTool]
+  );
 
   // Synchronize brush parameters & active tool mode to drawing engine
   useEffect(() => {
@@ -509,6 +595,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         drawingPointerTypeRef.current = null;
         lastStrokePointRef.current = null;
         globalDrawingEngine.endStroke();
+        clearLiveOverlay();
       }
       if (isPanningRef.current) {
         isPanningRef.current = false;
@@ -583,6 +670,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const effectiveTransform = getEffectiveTransform();
     const strokePoint = normalizePointerEvent(e.nativeEvent, effectiveTransform);
     lastStrokePointRef.current = strokePoint;
+    clearLiveOverlay();
     globalDrawingEngine.beginStroke(strokePoint);
   };
 
@@ -668,6 +756,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       globalDrawingEngine.extendStrokeBatch(points);
       if (points.length > 0) {
         lastStrokePointRef.current = points[points.length - 1];
+        updateLiveOverlay(lastStrokePointRef.current);
       }
     } else {
       for (const point of points) {
@@ -680,6 +769,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         }
         globalDrawingEngine.extendStroke(point);
         lastStrokePointRef.current = point;
+      }
+      if (lastStrokePointRef.current) {
+        updateLiveOverlay(lastStrokePointRef.current);
       }
     }
   };
@@ -746,6 +838,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       drawingPointerTypeRef.current = null;
       lastStrokePointRef.current = null;
       globalDrawingEngine.endStroke();
+      clearLiveOverlay();
       try {
         if (canvasRef.current?.hasPointerCapture(e.pointerId)) {
           canvasRef.current.releasePointerCapture(e.pointerId);
@@ -933,6 +1026,20 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
               display: isMacNativeOverlay ? "none" : "block",
             }}
           />
+
+          {/* Live Tip Connection & Stabilizer Reticle Overlay (Web / Non-macOS) */}
+          {!isMacNativeOverlay && (
+            <canvas
+              ref={liveOverlayCanvasRef}
+              width={doc.width}
+              height={doc.height}
+              className="absolute inset-0 pointer-events-none select-none z-10"
+              style={{
+                width: doc.width,
+                height: doc.height,
+              }}
+            />
+          )}
         </div>
       </div>
 

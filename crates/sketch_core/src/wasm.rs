@@ -186,7 +186,18 @@ impl WasmBrushEngine {
 
     /// Returns the current smoothed tip coordinates [x, y] or undefined if not active.
     pub fn get_smoothed_tip(&self) -> Option<Box<[f32]>> {
-        self.engine.pull_string.smoothed_tip.map(|(x, y)| Box::new([x, y]) as Box<[f32]>)
+        if self.engine.config.pull_string.enabled {
+            if let Some((x, y)) = self.engine.pull_string.smoothed_tip {
+                return Some(Box::new([x, y]));
+            }
+        }
+        if let Some(m) = self.engine.trajectory.prev_midpoint {
+            return Some(Box::new([m.x, m.y]));
+        }
+        if let Some(e) = self.engine.trajectory.prev_event {
+            return Some(Box::new([e.x, e.y]));
+        }
+        None
     }
 
     /// Returns a raw pointer to the canvas RGBA8 pixel buffer in WebAssembly memory.

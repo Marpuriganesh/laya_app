@@ -26,10 +26,12 @@ export interface IDrawingEngine {
   extendStroke(point: StrokePoint): void;
   extendStrokeBatch?(points: readonly StrokePoint[]): void;
   endStroke(): void;
+  getSmoothedTip?(): [number, number] | null;
 
   // --- Real-time Brush Adjustments ---
   setForegroundColor(r: number, g: number, b: number, a?: number): void;
   setBrushSize(sizePx: number): void;
+  getBrushSize?(): number;
   setBrushOpacity(opacityNormalized: number): void;
   setBlendMode(blendMode: import("./raster").BlendMode): void;
   setSmoothingConfig(config: StrokeSmoothingConfig): void;

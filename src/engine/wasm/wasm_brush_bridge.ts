@@ -226,6 +226,17 @@ export class WasmBrushBridge {
   }
 
   /**
+   * Returns the current leading tip of the painted stroke [x, y] in canvas coordinates,
+   * or null if no stroke is currently active.
+   */
+  public getSmoothedTip(): [number, number] | null {
+    if (!this.engine) return null;
+    const tip = this.engine.get_smoothed_tip();
+    if (!tip || tip.length < 2) return null;
+    return [tip[0], tip[1]];
+  }
+
+  /**
    * Blits only the modified sub-rectangle from Wasm memory into the Canvas2D context.
    */
   private blitDirtyRect(rect: Int32Array, ctx: CanvasRenderingContext2D): void {

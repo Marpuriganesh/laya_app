@@ -137,9 +137,30 @@ export function normalizeCoalescedPointerEvents(
 
   const normalizedPoints: StrokePoint[] = [];
   let currentPrevious = lastKnownPoint;
+  const count = coalesced.length;
+  const eventTime = event.timeStamp ?? Date.now();
+  const prevTime = lastKnownPoint?.timeMs ?? (eventTime - count * 8);
+  const timeDelta = Math.max(eventTime - prevTime, count * 4);
 
-  for (const subEvent of coalesced) {
-    const point = normalizePointerEvent(subEvent, transform, currentPrevious);
+  // Check if coalesced events have distinct, strictly increasing timestamps
+  let hasValidDistinctTimestamps = true;
+  let lastTimestamp = prevTime;
+  for (const sub of coalesced) {
+    const t = sub.timeStamp;
+    if (typeof t !== "number" || t <= lastTimestamp || t > eventTime + 5) {
+      hasValidDistinctTimestamps = false;
+      break;
+    }
+    lastTimestamp = t;
+  }
+
+  for (let i = 0; i < count; i++) {
+    const subEvent = coalesced[i];
+    const customTime = hasValidDistinctTimestamps
+      ? (subEvent.timeStamp as number)
+      : prevTime + ((i + 1) / count) * timeDelta;
+
+    const point = normalizePointerEvent(subEvent, transform, currentPrevious, customTime);
     normalizedPoints.push(point);
     currentPrevious = point;
   }

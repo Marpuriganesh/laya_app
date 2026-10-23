@@ -113,7 +113,14 @@ impl MovingAverageStabilizer {
         let max_window = config.window_size.clamp(2, 32);
 
         // 1. Calculate instantaneous velocity (pixels per second)
-        let dt = (next_event.time - self.last_time).clamp(0.001, 0.1);
+        let raw_dt = next_event.time - self.last_time;
+        let dt = if raw_dt > 0.002 {
+            raw_dt.min(0.1)
+        } else {
+            // When events arrive unclocked or with identical coalesced timestamps,
+            // assume standard ~120Hz interval (0.0083s) to prevent artificial velocity explosion
+            0.00833
+        };
         let velocity = if let Some((px, py)) = self.prev_raw {
             let dx = next_event.x - px;
             let dy = next_event.y - py;

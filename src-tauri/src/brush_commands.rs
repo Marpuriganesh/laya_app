@@ -130,11 +130,31 @@ pub extern "C" fn rust_overlay_get_size_dynamics() -> bool {
 pub extern "C" fn rust_overlay_get_smoothed_tip(out_x: *mut f32, out_y: *mut f32) -> bool {
     let guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(ref session) = *guard {
-        if let Some((x, y)) = session.engine.pull_string.smoothed_tip {
+        if session.engine.config.pull_string.enabled {
+            if let Some((x, y)) = session.engine.pull_string.smoothed_tip {
+                if !out_x.is_null() && !out_y.is_null() {
+                    unsafe {
+                        *out_x = x;
+                        *out_y = y;
+                    }
+                    return true;
+                }
+            }
+        }
+        if let Some(m) = session.engine.trajectory.prev_midpoint {
             if !out_x.is_null() && !out_y.is_null() {
                 unsafe {
-                    *out_x = x;
-                    *out_y = y;
+                    *out_x = m.x;
+                    *out_y = m.y;
+                }
+                return true;
+            }
+        }
+        if let Some(e) = session.engine.trajectory.prev_event {
+            if !out_x.is_null() && !out_y.is_null() {
+                unsafe {
+                    *out_x = e.x;
+                    *out_y = e.y;
                 }
                 return true;
             }

@@ -130,7 +130,7 @@ impl PullStringStabilizer {
         let current_cursor = (event.x, event.y);
         let prev = self.prev_cursor.unwrap_or(current_cursor);
         let dt = event.time - self.last_time;
-        let effective_dt = if dt > 1e-4 && dt < 0.5 { dt } else { 0.00833 };
+        let effective_dt = if dt > 0.002 && dt < 0.5 { dt } else { 0.00833 };
 
         // 1. Calculate Cursor Velocity & Target String Length
         let vx = current_cursor.0 - prev.0;
@@ -142,8 +142,8 @@ impl PullStringStabilizer {
         self.prev_cursor = Some(current_cursor);
         self.last_time = event.time;
 
-        // Smooth pressure response
-        let smoothed_p = if config.enabled && config.pressure_smoothing > 0.001 {
+        // Smooth pressure response (independent of whether spatial string leash is enabled)
+        let smoothed_p = if config.pressure_smoothing > 0.001 {
             let p_rate = ((1.0 - config.pressure_smoothing.clamp(0.0, 0.98)) * (effective_dt / 0.01667)).clamp(0.02, 1.0);
             self.smoothed_pressure += (event.pressure - self.smoothed_pressure) * p_rate;
             self.smoothed_pressure
@@ -323,5 +323,29 @@ mod tests {
         // Smoothed pressure should not jump to 1.0 instantly; it should be damped
         assert!(out1.pressure > 0.2 && out1.pressure < 1.0, "Pressure should be smoothly damped: got {}", out1.pressure);
         assert!((out1.pressure - 0.6).abs() < 0.15, "Expected around ~0.6, got {}", out1.pressure);
+    }
+
+    #[test]
+    fn test_pressure_smoothing_active_when_spatial_leash_disabled() {
+        let mut stabilizer = PullStringStabilizer::new();
+        let config = PullStringConfig {
+            enabled: false, // Spatial leash OFF
+            max_string_length: 50.0,
+            pressure_smoothing: 0.5,
+            ..Default::default()
+        };
+
+        let p0 = StrokeEvent::new(0.0, 0.0, 0.2, 0.0);
+        stabilizer.begin_stroke(p0, &config);
+
+        // Instant pressure jump to 1.0 at raw position (20.0, 20.0)
+        let p1 = StrokeEvent::new(20.0, 20.0, 1.0, 0.01667);
+        let out1 = stabilizer.add_event(p1, &config).expect("Must emit event");
+
+        // Position must be raw (1:1, no leash lag)
+        assert_eq!(out1.x, 20.0);
+        assert_eq!(out1.y, 20.0);
+        // Pressure must still be smoothly filtered!
+        assert!(out1.pressure > 0.2 && out1.pressure < 1.0, "Pressure smoothing must work with leash disabled: got {}", out1.pressure);
     }
 }

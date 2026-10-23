@@ -304,6 +304,14 @@ export class DrawingAppEngine implements IDrawingEngine {
     this.syncBrushConfigToRust();
   }
 
+  public getBrushSize(): number {
+    return this.brushSize;
+  }
+
+  public getSmoothedTip(): [number, number] | null {
+    return globalWasmBrushBridge.getSmoothedTip();
+  }
+
   public setBrushOpacity(opacityNormalized: number): void {
     this.brushOpacity = Math.max(0, Math.min(1, opacityNormalized));
     this.syncBrushConfigToRust();
