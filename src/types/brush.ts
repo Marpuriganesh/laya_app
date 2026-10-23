@@ -78,7 +78,7 @@ export interface PullStringConfig {
 }
 
 export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
-  enabled: true,
+  enabled: false,
   maxStringLength: 60,
   velocityMultiplier: 3.0,
   catchUpSpeed: 0.20,

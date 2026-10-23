@@ -31,7 +31,7 @@ pub struct PullStringConfig {
 impl Default for PullStringConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             max_string_length: 60.0,
             velocity_multiplier: 3.0,
             catch_up_speed: 0.20,

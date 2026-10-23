@@ -218,10 +218,10 @@ describe("useDocumentStore (Zustand)", () => {
     const { setPullStringConfig } = useDocumentStore.getState();
 
     const initial = useDocumentStore.getState().pullStringConfig;
-    expect(initial.enabled).toBe(true);
+    expect(initial.enabled).toBe(false);
     expect(initial.maxStringLength).toBe(60);
 
-    setPullStringConfig({ maxStringLength: 80, velocityMultiplier: 4.0 });
+    setPullStringConfig({ enabled: true, maxStringLength: 80, velocityMultiplier: 4.0 });
     const updated = useDocumentStore.getState().pullStringConfig;
     expect(updated.maxStringLength).toBe(80);
     expect(updated.velocityMultiplier).toBe(4.0);

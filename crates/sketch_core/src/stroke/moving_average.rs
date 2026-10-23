@@ -164,22 +164,11 @@ impl MovingAverageStabilizer {
         Some(StrokeEvent::new(smoothed_x, smoothed_y, next_event.pressure, next_event.time))
     }
 
-    /// Flushes and completes the stroke, connecting to the final cursor release position.
-    pub fn finish_stroke(&mut self, config: &MovingAverageConfig) -> Option<StrokeEvent> {
-        if !self.is_active {
-            return None;
-        }
-
-        self.is_active = false;
-        let final_raw = self.last_raw_event.take();
-        self.history.clear();
-
-        if !config.enabled {
-            return None;
-        }
-
-        // Return the exact final release point so the trajectory terminates precisely at the pen nib
-        final_raw
+    /// Resets internal stabilizer tracking for a concluded stroke.
+    /// Does not inject an artificial jump to raw cursor coordinates, preventing snap-on-release artifacts.
+    pub fn finish_stroke(&mut self, _config: &MovingAverageConfig) -> Option<StrokeEvent> {
+        self.reset();
+        None
     }
 }
 
@@ -258,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn test_moving_average_finish_connects_to_nib() {
+    fn test_moving_average_finish_resets_cleanly() {
         let mut stabilizer = MovingAverageStabilizer::new();
         let config = MovingAverageConfig {
             enabled: true,
@@ -270,8 +259,8 @@ mod tests {
         stabilizer.add_event(StrokeEvent::new(50.0, 50.0, 0.6, 0.016), &config);
         stabilizer.add_event(StrokeEvent::new(100.0, 100.0, 0.7, 0.032), &config);
 
-        let finish = stabilizer.finish_stroke(&config).expect("Must yield final connection");
-        assert_eq!((finish.x, finish.y), (100.0, 100.0), "Must connect to exact final stylus position");
-        assert_eq!(finish.pressure, 0.7);
+        let finish = stabilizer.finish_stroke(&config);
+        assert!(finish.is_none(), "Must not inject an artificial jump point on release");
+        assert!(!stabilizer.is_active);
     }
 }

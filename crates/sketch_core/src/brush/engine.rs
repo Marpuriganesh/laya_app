@@ -114,8 +114,7 @@ impl PixelBrushEngine {
     }
 
     /// Finishes the stroke by stamping the final segment from the last midpoint to the final event.
-    /// If smoothing is enabled, advances the brush tip to the exact stylus release position
-    /// before sealing the trajectory.
+    /// Resets smoothing filter state and cleanly completes the trajectory without artificial snap artifacts.
     pub fn finish_stroke(&mut self, canvas: &mut CanvasView) -> Option<Rect> {
         let mut dirty_rect: Option<Rect> = None;
         let config = &self.config;
@@ -123,41 +122,10 @@ impl PixelBrushEngine {
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
 
-        // 1. If moving average has remaining final release position, pass it down through the pipeline
-        if let Some(final_avg_event) = self.moving_average.finish_stroke(&self.config.moving_average) {
-            if let Some(stabilized_event) = self.pull_string.add_event(final_avg_event, &self.config.pull_string) {
-                self.trajectory.add_event(
-                    stabilized_event,
-                    |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
-                    |dab| {
-                        if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
-                            dirty_rect = match dirty_rect {
-                                None => Some(r),
-                                Some(d) => Some(d.expand_to_include(Some(&r))),
-                            };
-                        }
-                    },
-                );
-            }
-        }
+        self.moving_average.reset();
+        self.pull_string.reset();
 
-        // 2. If pull string has remaining slack, advance stroke to the final stylus position
-        if let Some(final_event) = self.pull_string.finish_stroke(&self.config.pull_string) {
-            self.trajectory.add_event(
-                final_event,
-                |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
-                |dab| {
-                    if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
-                        dirty_rect = match dirty_rect {
-                            None => Some(r),
-                            Some(d) => Some(d.expand_to_include(Some(&r))),
-                        };
-                    }
-                },
-            );
-        }
-
-        // 3. Finish remaining trajectory segment to the final event
+        // Finish remaining trajectory segment to the final smoothed event
         self.trajectory.finish_stroke(
             |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
             |dab| {
