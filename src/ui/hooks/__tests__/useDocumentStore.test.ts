@@ -69,6 +69,25 @@ describe("useDocumentStore (Zustand)", () => {
     expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
   });
 
+  it("manages isBrushStudioOpen independently from activePopover", () => {
+    const { togglePopover, setBrushStudioOpen } = useDocumentStore.getState();
+
+    // Open brushLibrary
+    togglePopover("brushLibrary");
+    expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
+
+    // Open brush studio alongside brushLibrary
+    setBrushStudioOpen(true);
+    expect(useDocumentStore.getState().isBrushStudioOpen).toBe(true);
+    // brushLibrary popover must remain active and open!
+    expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
+
+    // Close brush studio
+    setBrushStudioOpen(false);
+    expect(useDocumentStore.getState().isBrushStudioOpen).toBe(false);
+    expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
+  });
+
   it("updates and resets transform", () => {
     const { setTransform, resetTransform } = useDocumentStore.getState();
 

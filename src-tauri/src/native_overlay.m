@@ -518,9 +518,15 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                             return event;
                         }
 
+                        NSWindow *mainCanvasWin = [g_active_workspace_view window];
+                        // If event occurred in another window (e.g. detached secondary panel window),
+                        // never intercept as canvas drawing: always pass through to WebKit!
+                        if (!mainCanvasWin || [event window] != mainCanvasWin) {
+                            return event;
+                        }
+
                         NSPoint loc = [event locationInWindow];
-                        NSWindow *win = [g_active_workspace_view window];
-                        float winH = win ? (float)win.contentView.bounds.size.height : 900.0f;
+                        float winH = (float)mainCanvasWin.contentView.bounds.size.height;
 
                         // Hover tracking for brush reticle
                         if ([event type] == NSEventTypeMouseMoved) {

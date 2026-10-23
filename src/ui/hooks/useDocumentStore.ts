@@ -32,6 +32,7 @@ export interface DocumentState {
   brushOpacity: number;
   transform: CanvasTransform;
   activePopover: PopoverType;
+  isBrushStudioOpen: boolean;
   softProofMode: SoftProofMode;
   palmRejection: boolean;
   layerStack: LayerStack;
@@ -50,6 +51,7 @@ export interface DocumentState {
   setBrushOpacity: (opacity: number) => void;
   setTransform: (transform: CanvasTransform) => void;
   setActivePopover: (popover: PopoverType) => void;
+  setBrushStudioOpen: (open: boolean) => void;
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
   setPalmRejection: (enabled: boolean) => void;
@@ -98,6 +100,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     panY: 0,
   },
   activePopover: "none",
+  isBrushStudioOpen: false,
   softProofMode: "none",
   palmRejection: true,
   layerStack: createDefaultLayerStack(),
@@ -182,10 +185,18 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   setBrushSize: (brushSize) => set({ brushSize }),
   setBrushOpacity: (brushOpacity) => set({ brushOpacity }),
   setTransform: (transform) => set({ transform }),
-  setActivePopover: (activePopover) => set({ activePopover }),
+  setActivePopover: (activePopover) =>
+    set({
+      activePopover,
+      ...(activePopover === "brushSettings" ? { isBrushStudioOpen: true } : {}),
+    }),
+  setBrushStudioOpen: (open) => set({ isBrushStudioOpen: open }),
   togglePopover: (popover) =>
     set((state) => ({
       activePopover: state.activePopover === popover ? "none" : popover,
+      ...(popover === "brushSettings"
+        ? { isBrushStudioOpen: state.activePopover !== "brushSettings" }
+        : {}),
     })),
   setSoftProofMode: (softProofMode) => set({ softProofMode }),
   setPalmRejection: (palmRejection) => set({ palmRejection }),

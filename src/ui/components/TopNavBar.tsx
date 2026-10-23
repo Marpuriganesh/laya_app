@@ -452,11 +452,11 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
         <button
           type="button"
-          onClick={() => onTogglePopover("brushSettings")}
-          aria-label="Brush Settings & Studio"
-          title="Brush Settings & Studio"
+          onClick={() => onTogglePopover("adjustments")}
+          aria-label="Adjustments & Filters"
+          title="Adjustments & Filters"
           className={`p-2 rounded-lg transition-colors ${
-            activePopover === "brushSettings"
+            activePopover === "adjustments"
               ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40"
               : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}

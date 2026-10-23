@@ -1,22 +1,17 @@
-import { useState, useEffect, type FC } from "react";
+import { useState, useEffect, useCallback, type FC } from "react";
 import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves, PenLine } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { CurveEditor } from "@/ui/components/CurveEditor";
+import { BrushScratchpad } from "@/ui/components/BrushScratchpad";
+import type { BrushPreset } from "@/types/brush";
 
-interface BrushSettingsPopoverProps {
-  isOpen: boolean;
-  onClose: () => void;
+export interface BrushStudioContentProps {
   activeColor?: string;
-  onDetach?: () => void;
 }
 
-export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
-  isOpen,
-  onClose,
-  onDetach,
-}) => {
+export const BrushStudioContent: FC<BrushStudioContentProps> = ({ activeColor = "#18181b" }) => {
   const {
     brushSize,
     brushOpacity,
@@ -30,38 +25,58 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
     setPullStringConfig,
   } = useDocumentStore();
 
+  const [activeBrush, setActiveBrush] = useState<BrushPreset | null>(() =>
+    globalDrawingEngine.getActiveBrush?.()
+  );
+
   const [softness, setSoftness] = useState(() => globalDrawingEngine.getBrushSoftness?.() ?? 0.45);
   const [spacing, setSpacing] = useState(() => (globalDrawingEngine.getBrushSpacing?.() ?? 0.08) * 100);
   const [flow, setFlow] = useState(() => (globalDrawingEngine.getBrushFlow?.() ?? 1.0) * 100);
   const [sizeDynamics, setSizeDynamics] = useState(() => globalDrawingEngine.getSizeDynamicsEnabled?.() ?? true);
   const [opacityDynamics, setOpacityDynamics] = useState(() => globalDrawingEngine.getOpacityDynamicsEnabled?.() ?? false);
   const [antialias, setAntialias] = useState(() => globalDrawingEngine.getAntialias?.() ?? true);
+
   const [isCurveOpen, setIsCurveOpen] = useState(false);
 
-  useEffect(() => {
-    if (isOpen) {
-      setSoftness(globalDrawingEngine.getBrushSoftness?.() ?? 0.45);
-      setSpacing((globalDrawingEngine.getBrushSpacing?.() ?? 0.08) * 100);
-      setFlow((globalDrawingEngine.getBrushFlow?.() ?? 1.0) * 100);
-      setSizeDynamics(globalDrawingEngine.getSizeDynamicsEnabled?.() ?? true);
-      setOpacityDynamics(globalDrawingEngine.getOpacityDynamicsEnabled?.() ?? false);
-      setAntialias(globalDrawingEngine.getAntialias?.() ?? true);
+  const syncFromActiveBrush = useCallback(() => {
+    const brush = globalDrawingEngine.getActiveBrush?.();
+    setActiveBrush(brush);
+    if (!brush) return;
+
+    if (brush.engineParameters && brush.engineParameters.engineId === "pixelbrush") {
+      const p = brush.engineParameters;
+      if (typeof p.softness === "number") setSoftness(p.softness);
+      if (typeof p.spacingFraction === "number") setSpacing(Math.round(p.spacingFraction * 100));
+      if (typeof p.baseFlow === "number") setFlow(Math.round(p.baseFlow * 100));
+      if (typeof p.baseSizePx === "number") setBrushSize(p.baseSizePx);
+      if (typeof p.baseOpacity === "number") setBrushOpacity(p.baseOpacity);
+      if (p.sizeDynamics) setSizeDynamics(p.sizeDynamics.isEnabled);
+      if (p.opacityDynamics) setOpacityDynamics(p.opacityDynamics.isEnabled);
     }
-  }, [isOpen]);
+  }, [setBrushSize, setBrushOpacity]);
+
+  useEffect(() => {
+    syncFromActiveBrush();
+  }, [syncFromActiveBrush]);
 
   const handleSoftnessChange = (val: number) => {
     setSoftness(val);
     globalDrawingEngine.setBrushSoftness?.(val);
+    globalDrawingEngine.updateActivePreset?.({ softness: val });
   };
 
   const handleSpacingChange = (valPercent: number) => {
     setSpacing(valPercent);
-    globalDrawingEngine.setBrushSpacing?.(valPercent / 100);
+    const frac = valPercent / 100;
+    globalDrawingEngine.setBrushSpacing?.(frac);
+    globalDrawingEngine.updateActivePreset?.({ spacingFraction: frac });
   };
 
   const handleFlowChange = (valPercent: number) => {
     setFlow(valPercent);
-    globalDrawingEngine.setBrushFlow?.(valPercent / 100);
+    const fl = valPercent / 100;
+    globalDrawingEngine.setBrushFlow?.(fl);
+    globalDrawingEngine.updateActivePreset?.({ baseFlow: fl });
   };
 
   const handleSizeDynamicsToggle = (enabled: boolean) => {
@@ -84,18 +99,28 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
   };
 
   return (
-    <FloatingWindowPanel
-      title="Brush Studio & Engine"
-      icon={<SlidersHorizontal className="w-4 h-4 text-blue-500" />}
-      isOpen={isOpen}
-      onClose={onClose}
-      width={320}
-      height={520}
-      allowPopout={true}
-      onPopout={onDetach}
-      anchorClassName="fixed right-4 top-16"
-    >
-      <div className="p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 select-none overflow-y-auto max-h-100">
+    <div className="flex h-130 w-full overflow-hidden select-none">
+      {/* Left Column: Scrollable Settings Inspector */}
+      <div className="flex-1 p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 overflow-y-auto border-r border-zinc-200 dark:border-white/5">
+        {/* Active Brush Header */}
+        <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-lg bg-blue-600 text-white shrink-0">
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                {activeBrush?.displayName ?? "Studio Pen"}
+              </span>
+              <span className="text-[10px] text-zinc-400 truncate">
+                {activeBrush?.tags?.join(" • ") ?? "Active Preset Parameters"}
+              </span>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 font-semibold shrink-0">
+            Live Tuned
+          </span>
+        </div>
         {/* Brush Size */}
         <div className="flex flex-col gap-1.5">
           <div className="flex justify-between items-center text-xs">
@@ -266,7 +291,7 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
               <CurveEditor
                 value={globalPressureCurve}
                 onChange={setGlobalPressureCurve}
-                width={270}
+                width={360}
                 height={160}
                 inputLabel="Pressure"
                 outputLabel="Response"
@@ -450,6 +475,51 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
           Clear Canvas Paper
         </button>
       </div>
+
+      {/* Right Column: Embedded Live Scratchpad */}
+      <div className="w-68 p-3 flex flex-col items-center justify-center bg-zinc-50/60 dark:bg-zinc-900/40 shrink-0">
+        <BrushScratchpad
+          activeColor={activeColor}
+          brushSize={brushSize}
+          brushOpacity={brushOpacity}
+          softness={softness}
+          spacing={spacing}
+          sizeDynamics={sizeDynamics}
+          opacityDynamics={opacityDynamics}
+          width={248}
+          height={460}
+        />
+      </div>
+    </div>
+  );
+};
+
+interface BrushSettingsPopoverProps {
+  isOpen: boolean;
+  onClose: () => void;
+  activeColor?: string;
+  onDetach?: () => void;
+}
+
+export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
+  isOpen,
+  onClose,
+  activeColor = "#18181b",
+  onDetach,
+}) => {
+  return (
+    <FloatingWindowPanel
+      title="Brush Studio & Engine"
+      icon={<SlidersHorizontal className="w-4 h-4 text-blue-500" />}
+      isOpen={isOpen}
+      onClose={onClose}
+      width={720}
+      height={540}
+      allowPopout={true}
+      onPopout={onDetach}
+      anchorClassName="fixed right-4 top-16"
+    >
+      <BrushStudioContent activeColor={activeColor} />
     </FloatingWindowPanel>
   );
 };

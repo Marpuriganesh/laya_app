@@ -9,6 +9,8 @@ import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { LayersPanelContent } from "@/ui/components/LayersPanelContent";
 import { GamutMaskPanelContent } from "@/ui/components/GamutMaskPanelContent";
 import { DiscreteGridPanelContent } from "@/ui/components/DiscreteGridPanelContent";
+import { BrushStudioContent } from "@/ui/components/BrushSettingsPopover";
+import { BrushLibraryContent } from "@/ui/components/BrushLibraryContent";
 
 export interface DetachedWindowRootProps {
   panelId: DetachablePanelId;
@@ -91,13 +93,16 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >
-        <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-500 dark:text-zinc-400 h-full select-none">
-          <Brush className="w-8 h-8 text-zinc-400 dark:text-zinc-600 mb-1" />
-          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Brush Library</p>
-          <p className="text-xs text-zinc-500">
-            Clean slate ready for Rust-powered preset library.
-          </p>
-        </div>
+        <BrushLibraryContent
+          activeColor={activeColor}
+          onOpenSettings={() => {
+            // Can open brush studio in detached mode
+            const studioConfig = DETACHABLE_PANEL_CONFIGS.brushSettings;
+            import("@/ui/window/window_manager").then(({ detachPanelWindow }) => {
+              void detachPanelWindow(studioConfig);
+            });
+          }}
+        />
       </DetachedWindowLayout>
     );
   }
@@ -105,20 +110,14 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
   if (panelId === "brushSettings") {
     return (
       <DetachedWindowLayout
-        title="Brush Settings"
+        title="Brush Studio"
         defaultWidth={config?.defaultWidth}
         defaultHeight={config?.defaultHeight}
-        icon={<SlidersHorizontal className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />}
+        icon={<SlidersHorizontal className="w-4 h-4 text-blue-400" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >
-        <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-500 dark:text-zinc-400 h-full select-none">
-          <SlidersHorizontal className="w-8 h-8 text-zinc-400 dark:text-zinc-600 mb-1" />
-          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Brush Settings</p>
-          <p className="text-xs text-zinc-500">
-            Clean slate ready for Rust brush dynamics & presets.
-          </p>
-        </div>
+        <BrushStudioContent activeColor={activeColor} />
       </DetachedWindowLayout>
     );
   }

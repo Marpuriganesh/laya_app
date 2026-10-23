@@ -1,38 +1,49 @@
+/**
+ * Brush Library Popover
+ * Spacious floating window displaying categorized brush presets with Procreate-style
+ * live stroke previews and gear icons to open the Brush Studio without closing the library.
+ */
+
 import type { FC } from "react";
 import { Brush } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
+import { BrushLibraryContent } from "@/ui/components/BrushLibraryContent";
+import type { BrushPreset } from "@/types/brush";
 
 interface BrushLibraryPopoverProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectPreset?: (presetName: string) => void;
-  onOpenSettings?: () => void;
+  onOpenSettings?: (preset?: BrushPreset) => void;
   onDetach?: () => void;
+  activeColor?: string;
 }
 
 export const BrushLibraryPopover: FC<BrushLibraryPopoverProps> = ({
   isOpen,
   onClose,
+  onOpenSettings,
   onDetach,
+  activeColor,
 }) => {
   return (
     <FloatingWindowPanel
       title="Brush Library"
-      icon={<Brush className="w-4 h-4 text-zinc-300" />}
+      icon={<Brush className="w-4 h-4 text-blue-500" />}
       isOpen={isOpen}
       onClose={onClose}
-      width={300}
-      height={320}
+      width={480}
+      height={620}
+      initialOffset={{ x: -260, y: 0 }}
       allowPopout={true}
       onPopout={onDetach}
-      anchorClassName="fixed right-4 top-16"
+      anchorClassName="fixed right-6 top-16"
     >
-      <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-zinc-500 dark:text-zinc-400 h-full select-none">
-        <Brush className="w-8 h-8 text-zinc-400 dark:text-zinc-600 mb-1" />
-        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Brush Library</p>
-        <p className="text-xs text-zinc-500">
-          Clean slate ready for Rust-powered preset library.
-        </p>
+      <div className="h-145 w-full flex flex-col">
+        <BrushLibraryContent
+          onOpenSettings={onOpenSettings}
+          activeColor={activeColor}
+        />
       </div>
     </FloatingWindowPanel>
   );
