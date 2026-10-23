@@ -8,11 +8,10 @@
 
 import { useRef, useEffect, useCallback, useState, type FC, type PointerEvent } from "react";
 import { Trash2, Sparkles } from "lucide-react";
-import { hexToRgb } from "@/engine/color/color_conversions";
+import { useTheme } from "@/ui/theme/ThemeProvider";
 import { WasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
 
 export interface BrushScratchpadProps {
-  activeColor?: string;
   brushSize: number;
   brushOpacity: number;
   softness?: number;
@@ -31,7 +30,6 @@ interface PointWithPressure {
 }
 
 export const BrushScratchpad: FC<BrushScratchpadProps> = ({
-  activeColor = "#18181b",
   brushSize,
   brushOpacity,
   softness = 0.45,
@@ -45,6 +43,7 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bridgeRef = useRef<WasmBrushBridge | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const { resolvedTheme } = useTheme();
 
   const isDrawingRef = useRef(false);
   const pointsRef = useRef<PointWithPressure[]>([]);
@@ -85,15 +84,16 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     };
   }, [width, height, clearCanvas]);
 
-  // Sync brush parameters to Wasm bridge whenever they change
+  // Sync brush parameters to Wasm bridge whenever they change:
+  // Always pure white in dark mode, pure black in light mode (no need to follow selected color)
   useEffect(() => {
     if (!bridgeRef.current) return;
-    const rgb = hexToRgb(activeColor) ?? [24, 24, 27];
+    const strokeRgb: [number, number, number] = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
     bridgeRef.current.setBrushConfig({
       diameter: Math.max(1, brushSize),
       spacing: Math.max(0.01, (spacing ?? 8) / 100),
       softness: Math.max(0, Math.min(1, softness ?? 0.45)),
-      color: [rgb[0], rgb[1], rgb[2], 255],
+      color: [strokeRgb[0], strokeRgb[1], strokeRgb[2], 255],
       opacity: Math.max(0, Math.min(1, brushOpacity)),
       flow: 1.0,
       sizeByPressure: sizeDynamics ?? true,
@@ -101,7 +101,7 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
       isErase: false,
       antialias: true,
     });
-  }, [brushSize, brushOpacity, softness, spacing, sizeDynamics, opacityDynamics, activeColor]);
+  }, [brushSize, brushOpacity, softness, spacing, sizeDynamics, opacityDynamics, resolvedTheme]);
 
   const handlePointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
     e.stopPropagation();
@@ -131,13 +131,13 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
         ctx
       );
     } else {
-      // Spline fallback: Stamp single initial dab
-      const rgb = hexToRgb(activeColor) ?? [24, 24, 27];
+      // Spline fallback: Stamp single initial dab (white in dark mode, black in light mode)
+      const strokeRgb = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
       const effSize = sizeDynamics ? Math.max(1, brushSize * pressure) : brushSize;
       const effAlpha = opacityDynamics ? brushOpacity * pressure : brushOpacity;
 
       ctx.save();
-      ctx.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${effAlpha})`;
+      ctx.fillStyle = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha})`;
       ctx.beginPath();
       ctx.arc(x, y, effSize * 0.5, 0, Math.PI * 2);
       ctx.fill();
@@ -187,17 +187,17 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
         const avgPressure = (p1.pressure + p2.pressure) * 0.5;
         const effSize = sizeDynamics ? Math.max(1, brushSize * avgPressure) : brushSize;
         const effAlpha = opacityDynamics ? brushOpacity * avgPressure : brushOpacity;
-        const rgb = hexToRgb(activeColor) ?? [24, 24, 27];
+        const strokeRgb = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
 
         ctx.save();
-        ctx.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${effAlpha})`;
+        ctx.strokeStyle = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha})`;
         ctx.lineWidth = effSize;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
         if (softness > 0.05) {
           ctx.shadowBlur = effSize * softness * 0.6;
-          ctx.shadowColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${effAlpha * 0.5})`;
+          ctx.shadowColor = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha * 0.5})`;
         }
 
         ctx.beginPath();

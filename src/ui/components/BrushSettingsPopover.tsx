@@ -1,22 +1,24 @@
-import { useState, useEffect, useCallback, type FC } from "react";
+import { useState, useEffect, useCallback, useRef, type FC } from "react";
 import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves, PenLine } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { CurveEditor } from "@/ui/components/CurveEditor";
 import { BrushScratchpad } from "@/ui/components/BrushScratchpad";
+import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
 import type { BrushPreset } from "@/types/brush";
 
 export interface BrushStudioContentProps {
   activeColor?: string;
 }
 
-export const BrushStudioContent: FC<BrushStudioContentProps> = ({ activeColor = "#18181b" }) => {
+export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   const {
     brushSize,
     brushOpacity,
     setBrushSize,
     setBrushOpacity,
+    activePresetId,
     globalPressureCurve,
     setGlobalPressureCurve,
     movingAverageConfig,
@@ -37,6 +39,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = ({ activeColor = 
   const [antialias, setAntialias] = useState(() => globalDrawingEngine.getAntialias?.() ?? true);
 
   const [isCurveOpen, setIsCurveOpen] = useState(false);
+  const lastPresetIdRef = useRef<string | null>(null);
 
   const syncFromActiveBrush = useCallback(() => {
     const brush = globalDrawingEngine.getActiveBrush?.();
@@ -55,9 +58,13 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = ({ activeColor = 
     }
   }, [setBrushSize, setBrushOpacity]);
 
+  // Only re-sync parameters when activePresetId actually changes (preventing slider overwrites on color change or re-renders)
   useEffect(() => {
-    syncFromActiveBrush();
-  }, [syncFromActiveBrush]);
+    if (activePresetId !== lastPresetIdRef.current) {
+      lastPresetIdRef.current = activePresetId;
+      syncFromActiveBrush();
+    }
+  }, [activePresetId, syncFromActiveBrush]);
 
   const handleSoftnessChange = (val: number) => {
     setSoftness(val);
@@ -82,11 +89,21 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = ({ activeColor = 
   const handleSizeDynamicsToggle = (enabled: boolean) => {
     setSizeDynamics(enabled);
     globalDrawingEngine.setSizeDynamicsEnabled?.(enabled);
+    globalDrawingEngine.updateActivePreset?.({
+      sizeDynamics: enabled
+        ? { sensorInput: "pressure", curvePoints: [{ inputValue: 0, outputValue: 0.1 }, { inputValue: 1, outputValue: 1 }], isEnabled: true }
+        : null,
+    });
   };
 
   const handleOpacityDynamicsToggle = (enabled: boolean) => {
     setOpacityDynamics(enabled);
     globalDrawingEngine.setOpacityDynamicsEnabled?.(enabled);
+    globalDrawingEngine.updateActivePreset?.({
+      opacityDynamics: enabled
+        ? { sensorInput: "pressure", curvePoints: [{ inputValue: 0, outputValue: 0.1 }, { inputValue: 1, outputValue: 1 }], isEnabled: true }
+        : null,
+    });
   };
 
   const handleAntialiasToggle = (enabled: boolean) => {
@@ -99,27 +116,40 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = ({ activeColor = 
   };
 
   return (
-    <div className="flex h-130 w-full overflow-hidden select-none">
+    <div className="flex h-135 w-full overflow-hidden select-none">
       {/* Left Column: Scrollable Settings Inspector */}
       <div className="flex-1 p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 overflow-y-auto border-r border-zinc-200 dark:border-white/5">
-        {/* Active Brush Header */}
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-1.5 rounded-lg bg-blue-600 text-white shrink-0">
-              <SlidersHorizontal className="w-3.5 h-3.5" />
+        {/* Active Brush Header Card with Display Name & Procreate-Style Stroke Thumbnail */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/50 shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-blue-600 text-white shrink-0 shadow-xs">
+              <SlidersHorizontal className="w-4 h-4" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                {activeBrush?.displayName ?? "Studio Pen"}
-              </span>
-              <span className="text-[10px] text-zinc-400 truncate">
-                {activeBrush?.tags?.join(" • ") ?? "Active Preset Parameters"}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-zinc-950 dark:text-white truncate">
+                  {activeBrush?.displayName ?? "Studio Pen"}
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 font-semibold shrink-0">
+                  Active
+                </span>
+              </div>
+              <span className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                {activeBrush?.tags?.join(" • ") ?? "Preset Parameters"}
               </span>
             </div>
           </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 font-semibold shrink-0">
-            Live Tuned
-          </span>
+
+          {/* Stroke Preview Thumbnail */}
+          {activeBrush && (
+            <div className="shrink-0 pl-2">
+              <BrushStrokePreview
+                preset={activeBrush}
+                width={160}
+                height={34}
+              />
+            </div>
+          )}
         </div>
         {/* Brush Size */}
         <div className="flex flex-col gap-1.5">
@@ -476,10 +506,9 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = ({ activeColor = 
         </button>
       </div>
 
-      {/* Right Column: Embedded Live Scratchpad */}
+      {/* Right Column: Embedded Live Scratchpad (white in dark mode, black in light mode) */}
       <div className="w-68 p-3 flex flex-col items-center justify-center bg-zinc-50/60 dark:bg-zinc-900/40 shrink-0">
         <BrushScratchpad
-          activeColor={activeColor}
           brushSize={brushSize}
           brushOpacity={brushOpacity}
           softness={softness}
@@ -504,22 +533,25 @@ interface BrushSettingsPopoverProps {
 export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
   isOpen,
   onClose,
-  activeColor = "#18181b",
   onDetach,
 }) => {
+  const activeBrush = globalDrawingEngine.getActiveBrush?.();
+  const windowTitle = activeBrush ? `Brush Studio: ${activeBrush.displayName}` : "Brush Studio";
+
   return (
     <FloatingWindowPanel
-      title="Brush Studio & Engine"
+      title={windowTitle}
       icon={<SlidersHorizontal className="w-4 h-4 text-blue-500" />}
       isOpen={isOpen}
       onClose={onClose}
       width={720}
-      height={540}
+      height={550}
       allowPopout={true}
       onPopout={onDetach}
-      anchorClassName="fixed right-4 top-16"
+      anchorClassName="fixed right-132 top-16"
+      initialOffset={{ x: 0, y: 0 }}
     >
-      <BrushStudioContent activeColor={activeColor} />
+      <BrushStudioContent />
     </FloatingWindowPanel>
   );
 };

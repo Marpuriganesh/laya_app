@@ -115,6 +115,12 @@ export interface WindowSyncPayload {
   readonly layerStack: LayerStack;
   readonly gamutMask?: GamutMaskConfiguration;
   readonly wheelConfig?: DiscreteWheelConfig;
+  readonly activePresetId?: string;
+  readonly brushSoftness?: number;
+  readonly brushSpacing?: number;
+  readonly brushFlow?: number;
+  readonly sizeDynamics?: boolean;
+  readonly opacityDynamics?: boolean;
 }
 
 /**
@@ -130,6 +136,8 @@ export type WindowSyncMessage =
   | { readonly type: "SET_ACTIVE_TOOL"; readonly tool: ActiveTool }
   | { readonly type: "SET_BRUSH_SIZE"; readonly size: number }
   | { readonly type: "SET_BRUSH_OPACITY"; readonly opacity: number }
+  | { readonly type: "SET_ACTIVE_PRESET"; readonly presetId: string }
+  | { readonly type: "SET_BRUSH_SETTINGS"; readonly softness: number; readonly spacing: number; readonly flow: number; readonly sizeDynamics: boolean; readonly opacityDynamics: boolean }
   | { readonly type: "SET_LAYER_STACK"; readonly layerStack: LayerStack }
   | { readonly type: "SET_GAMUT_MASK"; readonly gamutMask: GamutMaskConfiguration }
   | { readonly type: "SET_WHEEL_CONFIG"; readonly wheelConfig: DiscreteWheelConfig };

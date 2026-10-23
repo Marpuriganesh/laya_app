@@ -11,6 +11,7 @@ import { GamutMaskPanelContent } from "@/ui/components/GamutMaskPanelContent";
 import { DiscreteGridPanelContent } from "@/ui/components/DiscreteGridPanelContent";
 import { BrushStudioContent } from "@/ui/components/BrushSettingsPopover";
 import { BrushLibraryContent } from "@/ui/components/BrushLibraryContent";
+import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 
 export interface DetachedWindowRootProps {
   panelId: DetachablePanelId;
@@ -94,7 +95,6 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
         onClose={closeDetachedWindow}
       >
         <BrushLibraryContent
-          activeColor={activeColor}
           onOpenSettings={() => {
             // Can open brush studio in detached mode
             const studioConfig = DETACHABLE_PANEL_CONFIGS.brushSettings;
@@ -108,16 +108,19 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
   }
 
   if (panelId === "brushSettings") {
+    const activeBrush = globalDrawingEngine.getActiveBrush?.();
+    const dynamicTitle = activeBrush ? `Brush Studio: ${activeBrush.displayName}` : (config?.title ?? "Brush Studio");
+
     return (
       <DetachedWindowLayout
-        title="Brush Studio"
+        title={dynamicTitle}
         defaultWidth={config?.defaultWidth}
         defaultHeight={config?.defaultHeight}
         icon={<SlidersHorizontal className="w-4 h-4 text-blue-400" />}
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >
-        <BrushStudioContent activeColor={activeColor} />
+        <BrushStudioContent />
       </DetachedWindowLayout>
     );
   }

@@ -7,14 +7,12 @@
 
 import { useRef, useEffect, type FC } from "react";
 import type { BrushPreset } from "@/types/brush";
-import { hexToRgb } from "@/engine/color/color_conversions";
 import { useTheme } from "@/ui/theme/ThemeProvider";
 
 export interface BrushStrokePreviewProps {
   preset: BrushPreset;
   width?: number;
   height?: number;
-  activeColor?: string;
   className?: string;
 }
 
@@ -22,7 +20,6 @@ export const BrushStrokePreview: FC<BrushStrokePreviewProps> = ({
   preset,
   width = 170,
   height = 36,
-  activeColor,
   className = "",
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,12 +62,8 @@ export const BrushStrokePreview: FC<BrushStrokePreviewProps> = ({
     const previewScale = Math.min(1.0, 22 / Math.max(1, baseSize));
     const effectiveDiameter = Math.max(2.5, Math.min(22, baseSize * previewScale));
 
-    // Choose contrasting stroke color
-    let strokeRgb: [number, number, number] = resolvedTheme === "dark" ? [228, 228, 231] : [39, 39, 42];
-    if (activeColor) {
-      const parsed = hexToRgb(activeColor);
-      if (parsed) strokeRgb = parsed;
-    }
+    // Pure white in dark mode, pure black in light mode (independent of selected activeColor)
+    const strokeRgb: [number, number, number] = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
 
     // Generate smooth parametric S-curve stroke points with pressure ramp
     // S-curve: x(t) = w * (0.08 + 0.84 * t)
@@ -118,7 +111,7 @@ export const BrushStrokePreview: FC<BrushStrokePreviewProps> = ({
     }
 
     ctx.restore();
-  }, [preset, width, height, activeColor, resolvedTheme]);
+  }, [preset, width, height, resolvedTheme]);
 
   return (
     <canvas

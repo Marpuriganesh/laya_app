@@ -33,6 +33,7 @@ export interface DocumentState {
   transform: CanvasTransform;
   activePopover: PopoverType;
   isBrushStudioOpen: boolean;
+  activePresetId: string;
   softProofMode: SoftProofMode;
   palmRejection: boolean;
   layerStack: LayerStack;
@@ -52,6 +53,7 @@ export interface DocumentState {
   setTransform: (transform: CanvasTransform) => void;
   setActivePopover: (popover: PopoverType) => void;
   setBrushStudioOpen: (open: boolean) => void;
+  setActivePresetId: (id: string) => void;
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
   setPalmRejection: (enabled: boolean) => void;
@@ -101,6 +103,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   },
   activePopover: "none",
   isBrushStudioOpen: false,
+  activePresetId: "default-studio-pen",
   softProofMode: "none",
   palmRejection: true,
   layerStack: createDefaultLayerStack(),
@@ -191,6 +194,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       ...(activePopover === "brushSettings" ? { isBrushStudioOpen: true } : {}),
     }),
   setBrushStudioOpen: (open) => set({ isBrushStudioOpen: open }),
+  setActivePresetId: (activePresetId) => set({ activePresetId }),
   togglePopover: (popover) =>
     set((state) => ({
       activePopover: state.activePopover === popover ? "none" : popover,

@@ -164,13 +164,11 @@ function MainWindow() {
         onClose={handleClosePopover}
         onOpenSettings={() => setBrushStudioOpen(true)}
         onDetach={() => handleDetachPanel("brushLibrary")}
-        activeColor={activeColor}
       />
 
       <BrushSettingsPopover
         isOpen={isBrushStudioOpen && !detachedPanels.brushSettings}
         onClose={() => setBrushStudioOpen(false)}
-        activeColor={activeColor}
         onDetach={() => handleDetachPanel("brushSettings")}
       />
 

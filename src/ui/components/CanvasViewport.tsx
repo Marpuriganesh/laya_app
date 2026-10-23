@@ -319,14 +319,26 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     [isMacNativeOverlay, activeColor, brushOpacity, activeTool]
   );
 
-  // Synchronize brush parameters & active tool mode to drawing engine
+  // Synchronize foreground color strictly on activeColor change
   useEffect(() => {
     const rgb = hexToRgb(activeColor) ?? [0, 0, 0];
     globalDrawingEngine.setForegroundColor(rgb[0], rgb[1], rgb[2], 1.0);
+  }, [activeColor]);
+
+  // Synchronize brush size strictly on brushSize change
+  useEffect(() => {
     globalDrawingEngine.setBrushSize(brushSize);
+  }, [brushSize]);
+
+  // Synchronize brush opacity strictly on brushOpacity change
+  useEffect(() => {
     globalDrawingEngine.setBrushOpacity(brushOpacity);
+  }, [brushOpacity]);
+
+  // Synchronize eraser / normal blend mode strictly on activeTool change
+  useEffect(() => {
     globalDrawingEngine.setBlendMode(activeTool === "eraser" ? "erase" : "normal");
-  }, [activeColor, brushSize, brushOpacity, activeTool]);
+  }, [activeTool]);
 
   // Center canvas on initial mount or when document dimension changes
   useEffect(() => {

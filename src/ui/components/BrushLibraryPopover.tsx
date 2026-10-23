@@ -16,7 +16,6 @@ interface BrushLibraryPopoverProps {
   onSelectPreset?: (presetName: string) => void;
   onOpenSettings?: (preset?: BrushPreset) => void;
   onDetach?: () => void;
-  activeColor?: string;
 }
 
 export const BrushLibraryPopover: FC<BrushLibraryPopoverProps> = ({
@@ -24,7 +23,6 @@ export const BrushLibraryPopover: FC<BrushLibraryPopoverProps> = ({
   onClose,
   onOpenSettings,
   onDetach,
-  activeColor,
 }) => {
   return (
     <FloatingWindowPanel
@@ -34,7 +32,7 @@ export const BrushLibraryPopover: FC<BrushLibraryPopoverProps> = ({
       onClose={onClose}
       width={480}
       height={620}
-      initialOffset={{ x: -260, y: 0 }}
+      initialOffset={{ x: 0, y: 0 }}
       allowPopout={true}
       onPopout={onDetach}
       anchorClassName="fixed right-6 top-16"
@@ -42,7 +40,6 @@ export const BrushLibraryPopover: FC<BrushLibraryPopoverProps> = ({
       <div className="h-145 w-full flex flex-col">
         <BrushLibraryContent
           onOpenSettings={onOpenSettings}
-          activeColor={activeColor}
         />
       </div>
     </FloatingWindowPanel>

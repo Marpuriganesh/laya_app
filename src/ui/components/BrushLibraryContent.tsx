@@ -20,28 +20,25 @@ import {
 } from "lucide-react";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
+import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import type { BrushPreset } from "@/types/brush";
 
 export interface BrushLibraryContentProps {
   onOpenSettings?: (preset: BrushPreset) => void;
-  activeColor?: string;
 }
 
 const CATEGORIES = ["All", "Inking", "Pencils", "Painting", "Airbrush", "Imported"] as const;
 
 export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
   onOpenSettings,
-  activeColor,
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { activePresetId, setActivePresetId, setBrushSize, setBrushOpacity } = useDocumentStore();
 
   // Read loaded presets from drawing engine
   const [presets, setPresets] = useState<readonly BrushPreset[]>(() =>
     globalDrawingEngine.getLoadedPresets?.() ?? []
-  );
-  const [activePresetId, setActivePresetId] = useState<string>(() =>
-    globalDrawingEngine.getActiveBrush?.()?.presetId ?? "default-studio-pen"
   );
 
   const refreshPresets = () => {
@@ -60,6 +57,11 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
   const handleSelectBrush = (preset: BrushPreset) => {
     globalDrawingEngine.setActiveBrush(preset);
     setActivePresetId(preset.presetId);
+    if (preset.engineParameters && preset.engineParameters.engineId === "pixelbrush") {
+      const p = preset.engineParameters;
+      if (typeof p.baseSizePx === "number") setBrushSize(p.baseSizePx);
+      if (typeof p.baseOpacity === "number") setBrushOpacity(p.baseOpacity);
+    }
   };
 
   const handleOpenStudioForBrush = (preset: BrushPreset) => {
@@ -157,13 +159,12 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
                   </div>
                 </div>
 
-                {/* Center / Procreate-Style Stroke Preview */}
+                {/* Center / Procreate-Style Stroke Preview (White in Dark Mode, Black in Light Mode) */}
                 <div className="hidden sm:flex items-center justify-center px-2 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
                   <BrushStrokePreview
                     preset={preset}
                     width={160}
                     height={34}
-                    activeColor={activeColor}
                   />
                 </div>
 
