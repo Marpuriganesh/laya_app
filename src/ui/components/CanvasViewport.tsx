@@ -282,48 +282,37 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       const dy = curY - tipY;
       if (dx * dx + dy * dy < 0.25) return;
 
+      if (activeTool === "eraser") return;
+
+      // 1. Draw live connecting ink segment from last committed tip directly to current pen nib
+      ctx.save();
+      const baseDiameter = globalDrawingEngine.getBrushSize ? globalDrawingEngine.getBrushSize() : 24;
+      const sizeDyn = globalDrawingEngine.getSizeDynamicsEnabled ? globalDrawingEngine.getSizeDynamicsEnabled() : true;
+      const pressure = typeof currentPoint.pressure === "number" ? Math.max(0.05, currentPoint.pressure) : 1.0;
+      const effectiveWidth = sizeDyn ? Math.max(1, baseDiameter * pressure) : baseDiameter;
+
+      const rgb = hexToRgb(activeColor) ?? [24, 24, 27];
+
+      ctx.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${brushOpacity})`;
+      ctx.lineWidth = effectiveWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(curX, curY);
+      ctx.stroke();
+      ctx.restore();
+
+      // 2. If Pull String is enabled, render a subtle indicator dot at the smoothed anchor tip
       const pullConfig = globalDrawingEngine.getPullStringConfig?.();
       const isPullEnabled = pullConfig?.enabled && pullConfig.maxStringLength > 0;
-
       if (isPullEnabled) {
-        // Draw delicate pulled-string leash line from smoothed tip to current pen nib
         ctx.save();
         ctx.beginPath();
-        ctx.strokeStyle = "rgba(100, 116, 139, 0.65)";
-        ctx.lineWidth = 1.25;
-        ctx.setLineDash([4, 3]);
-        ctx.moveTo(tipX, tipY);
-        ctx.lineTo(curX, curY);
-        ctx.stroke();
-
-        // Small guide dot at smoothed tip
-        ctx.beginPath();
-        ctx.setLineDash([]);
         ctx.arc(tipX, tipY, 3, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(59, 130, 246, 0.85)";
         ctx.fill();
-        ctx.restore();
-      } else {
-        if (activeTool === "eraser") return;
-
-        // Draw live connecting ink segment from last committed tip to current pen nib
-        ctx.save();
-        const baseDiameter = globalDrawingEngine.getBrushSize ? globalDrawingEngine.getBrushSize() : 24;
-        const sizeDyn = globalDrawingEngine.getSizeDynamicsEnabled ? globalDrawingEngine.getSizeDynamicsEnabled() : true;
-        const pressure = typeof currentPoint.pressure === "number" ? Math.max(0.05, currentPoint.pressure) : 1.0;
-        const effectiveWidth = sizeDyn ? Math.max(1, baseDiameter * pressure) : baseDiameter;
-
-        const rgb = hexToRgb(activeColor) ?? [24, 24, 27];
-
-        ctx.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${brushOpacity})`;
-        ctx.lineWidth = effectiveWidth;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-
-        ctx.beginPath();
-        ctx.moveTo(tipX, tipY);
-        ctx.lineTo(curX, curY);
-        ctx.stroke();
         ctx.restore();
       }
     },

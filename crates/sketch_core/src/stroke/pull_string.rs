@@ -32,9 +32,9 @@ impl Default for PullStringConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            max_string_length: 60.0,
-            velocity_multiplier: 3.0,
-            catch_up_speed: 0.20,
+            max_string_length: 36.0,
+            velocity_multiplier: 1.5,
+            catch_up_speed: 0.35,
             base_deadzone: 0.0,
             connect_to_tip_on_release: true,
             pressure_smoothing: 0.35,

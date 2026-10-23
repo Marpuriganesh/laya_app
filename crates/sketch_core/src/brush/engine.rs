@@ -122,6 +122,22 @@ impl PixelBrushEngine {
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
 
+        // If pull string stabilizer has connect_to_tip_on_release enabled, bridge remaining leash slack
+        if let Some(final_event) = self.pull_string.finish_stroke(&self.config.pull_string) {
+            self.trajectory.add_event(
+                final_event,
+                |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
+                |dab| {
+                    if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
+                        dirty_rect = match dirty_rect {
+                            None => Some(r),
+                            Some(d) => Some(d.expand_to_include(Some(&r))),
+                        };
+                    }
+                },
+            );
+        }
+
         self.moving_average.reset();
         self.pull_string.reset();
 
