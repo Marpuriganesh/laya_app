@@ -149,38 +149,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     return createLinearCurve();
   })(),
-  movingAverageConfig: (() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("sketch-moving-average-config");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed && typeof parsed === "object") {
-            const merged: MovingAverageConfig = { ...DEFAULT_MOVING_AVERAGE_CONFIG, ...parsed };
-            setTimeout(() => globalDrawingEngine.setMovingAverageConfig?.(merged), 0);
-            return merged;
-          }
-        }
-      } catch {}
-    }
-    return DEFAULT_MOVING_AVERAGE_CONFIG;
-  })(),
-  pullStringConfig: (() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("sketch-pull-string-config");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed && typeof parsed === "object") {
-            const merged: PullStringConfig = { ...DEFAULT_PULL_STRING_CONFIG, ...parsed };
-            setTimeout(() => globalDrawingEngine.setPullStringConfig?.(merged), 0);
-            return merged;
-          }
-        }
-      } catch {}
-    }
-    return DEFAULT_PULL_STRING_CONFIG;
-  })(),
+  movingAverageConfig: globalDrawingEngine.getMovingAverageConfig?.() ?? DEFAULT_MOVING_AVERAGE_CONFIG,
+  pullStringConfig: globalDrawingEngine.getPullStringConfig?.() ?? DEFAULT_PULL_STRING_CONFIG,
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -226,11 +196,6 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   setMovingAverageConfig: (config: Partial<MovingAverageConfig>) => {
     set((state) => {
       const updated: MovingAverageConfig = { ...state.movingAverageConfig, ...config };
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("sketch-moving-average-config", JSON.stringify(updated));
-        } catch {}
-      }
       globalDrawingEngine.setMovingAverageConfig?.(updated);
       return { movingAverageConfig: updated };
     });
@@ -238,11 +203,6 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   setPullStringConfig: (config: Partial<PullStringConfig>) => {
     set((state) => {
       const updated: PullStringConfig = { ...state.pullStringConfig, ...config };
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("sketch-pull-string-config", JSON.stringify(updated));
-        } catch {}
-      }
       globalDrawingEngine.setPullStringConfig?.(updated);
       return { pullStringConfig: updated };
     });
@@ -438,3 +398,17 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       },
     })),
 }));
+
+// Wire drawing engine preset change notifications directly into Zustand store
+if (typeof globalDrawingEngine !== "undefined" && globalDrawingEngine?.setOnPresetChangedListener) {
+  globalDrawingEngine.setOnPresetChangedListener((preset) => {
+    const isPixel = preset.engineParameters.engineId === "pixelbrush";
+    useDocumentStore.setState({
+      activePresetId: preset.presetId,
+      brushSize: isPixel ? (preset.engineParameters.baseSizePx ?? 24) : 24,
+      brushOpacity: isPixel ? (preset.engineParameters.baseOpacity ?? 1.0) : 1.0,
+      movingAverageConfig: globalDrawingEngine.getMovingAverageConfig?.() ?? DEFAULT_MOVING_AVERAGE_CONFIG,
+      pullStringConfig: globalDrawingEngine.getPullStringConfig?.() ?? DEFAULT_PULL_STRING_CONFIG,
+    });
+  });
+}

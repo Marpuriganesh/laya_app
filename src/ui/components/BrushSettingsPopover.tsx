@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type FC } from "react";
-import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves, PenLine } from "lucide-react";
+import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves, PenLine, Save, Check } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
@@ -39,7 +39,64 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   const [antialias, setAntialias] = useState(() => globalDrawingEngine.getAntialias?.() ?? true);
 
   const [isCurveOpen, setIsCurveOpen] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const lastPresetIdRef = useRef<string | null>(null);
+
+  const handleSave = () => {
+    // Explicitly commit all current settings to the active preset in the engine
+    globalDrawingEngine.updateActivePreset?.(
+      {
+        softness,
+        spacingFraction: spacing / 100,
+        baseFlow: flow / 100,
+        baseSizePx: brushSize,
+        baseOpacity: brushOpacity,
+        sizeDynamics: sizeDynamics
+          ? {
+              sensorInput: "pressure",
+              curvePoints: [
+                { inputValue: 0, outputValue: 0.1 },
+                { inputValue: 1, outputValue: 1 },
+              ],
+              isEnabled: true,
+            }
+          : null,
+        opacityDynamics: opacityDynamics
+          ? {
+              sensorInput: "pressure",
+              curvePoints: [
+                { inputValue: 0, outputValue: 0.1 },
+                { inputValue: 1, outputValue: 1 },
+              ],
+              isEnabled: true,
+            }
+          : null,
+      },
+      {
+        pullString: pullStringConfig,
+        mode: pullStringConfig.enabled
+          ? "streamline"
+          : movingAverageConfig.enabled
+          ? "movingAverage"
+          : "none",
+      }
+    );
+
+    // Save smoothing configurations to local storage & engine
+    globalDrawingEngine.setMovingAverageConfig?.(movingAverageConfig);
+    globalDrawingEngine.setPullStringConfig?.(pullStringConfig);
+
+    // Refresh active preset reference to re-render preview thumbnail
+    const updated = globalDrawingEngine.getActiveBrush?.();
+    if (updated) {
+      setActiveBrush({ ...updated });
+    }
+
+    setIsSaved(true);
+    setTimeout(() => {
+      setIsSaved(false);
+    }, 2000);
+  };
 
   const syncFromActiveBrush = useCallback(() => {
     const brush = globalDrawingEngine.getActiveBrush?.();
@@ -56,7 +113,12 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
       if (p.sizeDynamics) setSizeDynamics(p.sizeDynamics.isEnabled);
       if (p.opacityDynamics) setOpacityDynamics(p.opacityDynamics.isEnabled);
     }
-  }, [setBrushSize, setBrushOpacity]);
+
+    const mv = globalDrawingEngine.getMovingAverageConfig?.();
+    if (mv) setMovingAverageConfig(mv);
+    const ps = globalDrawingEngine.getPullStringConfig?.();
+    if (ps) setPullStringConfig(ps);
+  }, [setBrushSize, setBrushOpacity, setMovingAverageConfig, setPullStringConfig]);
 
   // Only re-sync parameters when activePresetId actually changes (preventing slider overwrites on color change or re-renders)
   useEffect(() => {
@@ -140,16 +202,29 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
             </div>
           </div>
 
-          {/* Stroke Preview Thumbnail */}
-          {activeBrush && (
-            <div className="shrink-0 pl-2">
+          {/* Stroke Preview Thumbnail & Quick Save Button */}
+          <div className="flex items-center gap-2 shrink-0 pl-2">
+            {activeBrush && (
               <BrushStrokePreview
                 preset={activeBrush}
-                width={160}
+                width={140}
                 height={34}
               />
-            </div>
-          )}
+            )}
+            <button
+              type="button"
+              onClick={handleSave}
+              title={`Save settings for ${activeBrush?.displayName ?? "brush"}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-all cursor-pointer ${
+                isSaved
+                  ? "bg-emerald-600 text-white"
+                  : "bg-blue-600 hover:bg-blue-500 active:scale-95 text-white"
+              }`}
+            >
+              {isSaved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+              <span>{isSaved ? "Saved!" : "Save"}</span>
+            </button>
+          </div>
         </div>
         {/* Brush Size */}
         <div className="flex flex-col gap-1.5">
@@ -495,15 +570,34 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
 
         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
 
-        {/* Clear Canvas Action */}
-        <button
-          type="button"
-          onClick={handleClear}
-          className="w-full py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 active:scale-98 transition-all cursor-pointer"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          Clear Canvas Paper
-        </button>
+        {/* Action Buttons: Save Settings & Clear Canvas Paper */}
+        <div className="flex flex-col gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handleSave}
+            className={`w-full py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold shadow-md transition-all cursor-pointer ${
+              isSaved
+                ? "bg-emerald-600 text-white shadow-emerald-500/25"
+                : "bg-blue-600 hover:bg-blue-500 active:scale-98 text-white shadow-blue-500/25"
+            }`}
+          >
+            {isSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            <span>
+              {isSaved
+                ? "Settings Saved to Preset!"
+                : `Save Settings for ${activeBrush?.displayName ?? "Preset"}`}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClear}
+            className="w-full py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 active:scale-98 transition-all cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear Canvas Paper
+          </button>
+        </div>
       </div>
 
       {/* Right Column: Embedded Live Scratchpad (white in dark mode, black in light mode) */}

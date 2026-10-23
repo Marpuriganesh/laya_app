@@ -60,7 +60,15 @@ export function createDefaultStudioPenPreset(): BrushPreset {
     smoothingConfig: {
       ...DEFAULT_STROKE_SMOOTHING_CONFIG,
       mode: "movingAverage",
-      movingAverageWindowSize: 3,
+      movingAverage: {
+        enabled: true,
+        windowSize: 8,
+        velocityMultiplier: 1.5,
+      },
+      pullString: {
+        ...DEFAULT_PULL_STRING_CONFIG,
+        enabled: false,
+      },
     },
     tags: ["Inking", "Default"],
   };
@@ -111,7 +119,15 @@ export function createDefaultTechnicalPencilPreset(): BrushPreset {
     smoothingConfig: {
       ...DEFAULT_STROKE_SMOOTHING_CONFIG,
       mode: "movingAverage",
-      movingAverageWindowSize: 2,
+      movingAverage: {
+        enabled: true,
+        windowSize: 2,
+        velocityMultiplier: 1.0,
+      },
+      pullString: {
+        ...DEFAULT_PULL_STRING_CONFIG,
+        enabled: false,
+      },
     },
     tags: ["Pencils"],
   };
@@ -155,6 +171,15 @@ export function createDefaultSoftAirbrushPreset(): BrushPreset {
     smoothingConfig: {
       ...DEFAULT_STROKE_SMOOTHING_CONFIG,
       mode: "none",
+      movingAverage: {
+        enabled: false,
+        windowSize: 4,
+        velocityMultiplier: 1.0,
+      },
+      pullString: {
+        ...DEFAULT_PULL_STRING_CONFIG,
+        enabled: false,
+      },
     },
     tags: ["Airbrush"],
   };
@@ -197,6 +222,12 @@ export function createDefaultCalligraphyPenPreset(): BrushPreset {
     },
     smoothingConfig: {
       ...DEFAULT_STROKE_SMOOTHING_CONFIG,
+      mode: "streamline",
+      movingAverage: {
+        enabled: false,
+        windowSize: 4,
+        velocityMultiplier: 1.0,
+      },
       pullString: {
         ...DEFAULT_PULL_STRING_CONFIG,
         enabled: true,
@@ -303,6 +334,12 @@ export class DrawingAppEngine implements IDrawingEngine {
     return [];
   }
 
+  private onPresetChangedListener: ((preset: BrushPreset) => void) | null = null;
+
+  public setOnPresetChangedListener(listener: ((preset: BrushPreset) => void) | null): void {
+    this.onPresetChangedListener = listener;
+  }
+
   public setActiveBrush(preset: BrushPreset): void {
     // If this preset exists in loadedPresets, use the persisted modified instance
     const existing = this.loadedPresets.find((p) => p.presetId === preset.presetId);
@@ -322,11 +359,36 @@ export class DrawingAppEngine implements IDrawingEngine {
       if (p.opacityDynamics) this.opacityByPressure = p.opacityDynamics.isEnabled;
     }
 
-    if (targetPreset.smoothingConfig?.pullString) {
-      this.pullStringConfig = { ...targetPreset.smoothingConfig.pullString };
+    // Per-brush smoothing configuration
+    if (targetPreset.smoothingConfig) {
+      if (targetPreset.smoothingConfig.movingAverage) {
+        this.movingAverageConfig = { ...targetPreset.smoothingConfig.movingAverage };
+      } else {
+        this.movingAverageConfig = {
+          enabled: targetPreset.smoothingConfig.mode === "movingAverage",
+          windowSize: targetPreset.smoothingConfig.movingAverageWindowSize ?? 8,
+          velocityMultiplier: 1.5,
+        };
+      }
+
+      if (targetPreset.smoothingConfig.pullString) {
+        this.pullStringConfig = { ...targetPreset.smoothingConfig.pullString };
+      } else {
+        this.pullStringConfig = {
+          ...DEFAULT_PULL_STRING_CONFIG,
+          enabled: targetPreset.smoothingConfig.mode === "streamline",
+        };
+      }
+    } else {
+      this.movingAverageConfig = { ...DEFAULT_MOVING_AVERAGE_CONFIG };
+      this.pullStringConfig = { ...DEFAULT_PULL_STRING_CONFIG };
     }
 
     this.syncBrushConfigToRust();
+
+    if (this.onPresetChangedListener) {
+      this.onPresetChangedListener(targetPreset);
+    }
   }
 
   public updateActivePreset(
@@ -354,9 +416,24 @@ export class DrawingAppEngine implements IDrawingEngine {
         this.opacityByPressure = updates.opacityDynamics ? updates.opacityDynamics.isEnabled : false;
       }
 
-      const updatedSmoothing = smoothing
-        ? { ...this.activeBrush.smoothingConfig, ...smoothing }
-        : this.activeBrush.smoothingConfig;
+      if (smoothing?.movingAverage) {
+        this.movingAverageConfig = { ...smoothing.movingAverage };
+      }
+      if (smoothing?.pullString) {
+        this.pullStringConfig = { ...smoothing.pullString };
+      }
+
+      const updatedSmoothing: StrokeSmoothingConfig = {
+        ...this.activeBrush.smoothingConfig,
+        ...(smoothing ?? {}),
+        movingAverage: this.movingAverageConfig,
+        pullString: this.pullStringConfig,
+        mode: this.pullStringConfig.enabled
+          ? "streamline"
+          : this.movingAverageConfig.enabled
+          ? "movingAverage"
+          : (smoothing?.mode ?? this.activeBrush.smoothingConfig?.mode ?? "none"),
+      };
 
       const updatedPreset: BrushPreset = {
         ...this.activeBrush,
@@ -570,8 +647,34 @@ export class DrawingAppEngine implements IDrawingEngine {
     };
   }
 
+  private syncActivePresetSmoothing(updates: Partial<StrokeSmoothingConfig>): void {
+    if (!this.activeBrush) return;
+    const current = this.activeBrush.smoothingConfig ?? { ...DEFAULT_STROKE_SMOOTHING_CONFIG };
+    const updatedSmoothing: StrokeSmoothingConfig = {
+      ...current,
+      ...updates,
+      movingAverage: updates.movingAverage ?? this.movingAverageConfig,
+      pullString: updates.pullString ?? this.pullStringConfig,
+      mode: (updates.pullString?.enabled ?? this.pullStringConfig.enabled)
+        ? "streamline"
+        : (updates.movingAverage?.enabled ?? this.movingAverageConfig.enabled)
+        ? "movingAverage"
+        : (updates.mode ?? current.mode),
+    };
+    const updatedPreset: BrushPreset = {
+      ...this.activeBrush,
+      smoothingConfig: updatedSmoothing,
+    };
+    this.activeBrush = updatedPreset;
+    const idx = this.loadedPresets.findIndex((p) => p.presetId === updatedPreset.presetId);
+    if (idx !== -1) {
+      this.loadedPresets[idx] = updatedPreset;
+    }
+  }
+
   public setMovingAverageConfig(config: MovingAverageConfig): void {
     this.movingAverageConfig = config;
+    this.syncActivePresetSmoothing({ movingAverage: config });
     globalWasmBrushBridge.setMovingAverageConfig(config);
     void globalRustBrushBridge.setMovingAverageConfig(config);
   }
@@ -582,6 +685,7 @@ export class DrawingAppEngine implements IDrawingEngine {
 
   public setPullStringConfig(config: PullStringConfig): void {
     this.pullStringConfig = config;
+    this.syncActivePresetSmoothing({ pullString: config });
     globalWasmBrushBridge.setPullStringConfig(config);
     void globalRustBrushBridge.setPullStringConfig(config);
   }

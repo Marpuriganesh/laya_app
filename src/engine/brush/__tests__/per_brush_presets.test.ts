@@ -93,4 +93,48 @@ describe("DrawingAppEngine - Per-Brush Presets", () => {
     expect(engine.getBrushSoftness()).toBeCloseTo(0.78);
     expect(engine.getBrushSize()).toBe(8);
   });
+
+  it("maintains independent stroke smoothing configurations per brush", () => {
+    const presets = engine.getLoadedPresets();
+    const studioPen = presets.find((p) => p.displayName === "Studio Pen")!;
+    const calligraphy = presets.find((p) => p.displayName === "Calligraphy Pen")!;
+
+    expect(studioPen).toBeDefined();
+    expect(calligraphy).toBeDefined();
+
+    // 1. Activate Studio Pen -> Moving average enabled, Pull String disabled
+    engine.setActiveBrush(studioPen);
+    expect(engine.getMovingAverageConfig().enabled).toBe(true);
+    expect(engine.getPullStringConfig().enabled).toBe(false);
+
+    // Customize Studio Pen moving average
+    engine.setMovingAverageConfig({ enabled: true, windowSize: 18, velocityMultiplier: 2.5 });
+    expect(engine.getMovingAverageConfig().windowSize).toBe(18);
+
+    // 2. Activate Calligraphy Pen -> Pull String enabled, Moving average disabled
+    engine.setActiveBrush(calligraphy);
+    expect(engine.getPullStringConfig().enabled).toBe(true);
+    expect(engine.getMovingAverageConfig().enabled).toBe(false);
+
+    // Customize Calligraphy Pen pull string
+    engine.setPullStringConfig({
+      ...engine.getPullStringConfig(),
+      enabled: true,
+      maxStringLength: 75,
+      velocityMultiplier: 3.0,
+    });
+    expect(engine.getPullStringConfig().maxStringLength).toBe(75);
+
+    // 3. Switch back to Studio Pen -> Should restore windowSize 18 and pullString disabled
+    engine.setActiveBrush(studioPen);
+    expect(engine.getMovingAverageConfig().enabled).toBe(true);
+    expect(engine.getMovingAverageConfig().windowSize).toBe(18);
+    expect(engine.getPullStringConfig().enabled).toBe(false);
+
+    // 4. Switch back to Calligraphy Pen -> Should restore maxStringLength 75 and moving average disabled
+    engine.setActiveBrush(calligraphy);
+    expect(engine.getPullStringConfig().enabled).toBe(true);
+    expect(engine.getPullStringConfig().maxStringLength).toBe(75);
+    expect(engine.getMovingAverageConfig().enabled).toBe(false);
+  });
 });

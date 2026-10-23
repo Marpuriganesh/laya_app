@@ -114,6 +114,8 @@ export interface StrokeSmoothingConfig {
   readonly mode: SmoothingMode;
   /** Pulled String configuration */
   readonly pullString?: PullStringConfig;
+  /** Dynamic Moving Average configuration */
+  readonly movingAverage?: MovingAverageConfig;
   /** Streamline: catch-up pull string radius in pixels (1 to 150, default 20) */
   readonly streamlineStringRadiusPx: number;
   /** Streamline: base smoothing factor at zero velocity (0.0 to 1.0, default 0.1) */
@@ -130,6 +132,7 @@ export interface StrokeSmoothingConfig {
 
 export const DEFAULT_STROKE_SMOOTHING_CONFIG: StrokeSmoothingConfig = {
   mode: "movingAverage",
+  movingAverage: DEFAULT_MOVING_AVERAGE_CONFIG,
   pullString: DEFAULT_PULL_STRING_CONFIG,
   streamlineStringRadiusPx: 4.0,
   streamlineBaseSmoothing: 0.15,
