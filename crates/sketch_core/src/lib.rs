@@ -110,4 +110,53 @@ mod tests {
         let curve_pixel = canvas.get_pixel(181, 68).expect("Pixel in bounds");
         assert_ne!(curve_pixel, [255, 255, 255, 255], "Curve must be smoothly rounded inwards");
     }
+
+    #[test]
+    fn test_combined_moving_average_and_pull_string() {
+        let mut canvas = CanvasView::new(400, 400);
+        let config = BrushConfig {
+            diameter: 24.0,
+            spacing: 0.1,
+            softness: 0.5,
+            color: [0, 180, 50, 255],
+            size_by_pressure: true,
+            moving_average: crate::stroke::MovingAverageConfig {
+                enabled: true,
+                window_size: 6,
+                velocity_multiplier: 1.5,
+            },
+            pull_string: crate::stroke::PullStringConfig {
+                enabled: true,
+                max_string_length: 40.0,
+                velocity_multiplier: 2.0,
+                catch_up_speed: 0.25,
+                base_deadzone: 0.0,
+                connect_to_tip_on_release: true,
+                pressure_smoothing: 0.4,
+            },
+            ..Default::default()
+        };
+        let mut engine = PixelBrushEngine::new(config);
+
+        // Begin stroke
+        let p0 = StrokeEvent::new(20.0, 20.0, 0.2, 0.0);
+        let r0 = engine.begin_stroke(p0, &mut canvas);
+        assert!(r0.is_some());
+
+        // Paint series of points
+        for i in 1..=20 {
+            let t = i as f32 * 0.016;
+            let p = StrokeEvent::new(20.0 + i as f32 * 10.0, 20.0 + (i as f32 * 0.5).sin() * 15.0, 0.2 + (i as f32 / 20.0) * 0.8, t);
+            let _ = engine.paint_to(p, &mut canvas);
+        }
+
+        // Finish stroke: must connect to final release point
+        let r_finish = engine.finish_stroke(&mut canvas);
+        assert!(r_finish.is_some());
+        engine.end_stroke();
+
+        // Verify canvas was painted
+        let painted_pixel = canvas.get_pixel(100, 20).expect("Pixel in bounds");
+        assert_ne!(painted_pixel, [255, 255, 255, 255]);
+    }
 }

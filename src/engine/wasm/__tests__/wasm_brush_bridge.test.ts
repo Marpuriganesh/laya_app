@@ -263,4 +263,29 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
     const finishDirty = engine.finish_stroke();
     expect(finishDirty).toBeDefined();
   });
+
+  it("dynamically smooths trajectory with moving average and allows simultaneous pull string", () => {
+    const engine = new WasmBrushEngine(400, 400);
+    engine.set_brush_config(
+      16, 0.1, 0.5,
+      255, 0, 0, 255,
+      1.0, 1.0,
+      false, false, false, true
+    );
+
+    // Enable both moving average (window 8, 1.5x) and pull string (30px leash)
+    engine.set_moving_average_config(true, 8, 1.5);
+    engine.set_pull_string_config(true, 30.0, 2.0, 0.25, 0.0, true, 0.35);
+
+    const startDirty = engine.begin_stroke(50, 50, 0.5);
+    expect(startDirty).toBeDefined();
+
+    // Draw a series of events
+    for (let i = 1; i <= 10; i++) {
+      engine.paint_to(50 + i * 15, 50 + (i % 2 === 0 ? 5 : -5), 0.5 + i * 0.05);
+    }
+
+    const finishDirty = engine.finish_stroke();
+    expect(finishDirty).toBeDefined();
+  });
 });

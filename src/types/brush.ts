@@ -88,6 +88,21 @@ export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
 };
 
 /**
+ * Dynamic Moving Average stroke configuration for line art.
+ */
+export interface MovingAverageConfig {
+  readonly enabled: boolean;
+  readonly windowSize: number;           // Sample window count [2..24] (default: 8)
+  readonly velocityMultiplier: number;    // Velocity scaling multiplier [0..5.0] (default: 1.5)
+}
+
+export const DEFAULT_MOVING_AVERAGE_CONFIG: MovingAverageConfig = {
+  enabled: false,
+  windowSize: 8,
+  velocityMultiplier: 1.5,
+};
+
+/**
  * Selectable stroke smoothing algorithm.
  */
 export type SmoothingMode = "streamline" | "movingAverage" | "predictiveBezier" | "none";

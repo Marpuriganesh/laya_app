@@ -23,6 +23,8 @@ pub struct BrushConfig {
     pub antialias: bool,
     /// Optional 256-entry lookup table mapping normalized pressure [0.0..1.0] to response curve output.
     pub pressure_lut: Option<Box<[f32; 256]>>,
+    /// Dynamic moving average line art stroke smoothing configuration.
+    pub moving_average: crate::stroke::MovingAverageConfig,
     /// Pulled string (leash) stroke smoothing configuration.
     pub pull_string: crate::stroke::PullStringConfig,
 }
@@ -41,6 +43,7 @@ impl Default for BrushConfig {
             is_erase: false,
             antialias: true,
             pressure_lut: None,
+            moving_average: crate::stroke::MovingAverageConfig::default(),
             pull_string: crate::stroke::PullStringConfig::default(),
         }
     }

@@ -60,6 +60,23 @@ export class RustBrushBridge {
     }
   }
 
+  public async setMovingAverageConfig(config: {
+    enabled: boolean;
+    windowSize: number;
+    velocityMultiplier: number;
+  }): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_set_moving_average_config", {
+        enabled: config.enabled,
+        windowSize: config.windowSize,
+        velocityMultiplier: config.velocityMultiplier,
+      });
+    } catch (err) {
+      console.warn("Failed to sync moving average config to Rust:", err);
+    }
+  }
+
   public async setPullStringConfig(config: {
     enabled: boolean;
     maxStringLength: number;

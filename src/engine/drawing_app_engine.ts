@@ -4,8 +4,8 @@
  * with the drawing canvas.
  */
 
-import type { BrushPreset, PixelBrushParameters, StrokeSmoothingConfig, PullStringConfig } from "@/types/brush";
-import { DEFAULT_STROKE_SMOOTHING_CONFIG, DEFAULT_PULL_STRING_CONFIG } from "@/types/brush";
+import type { BrushPreset, PixelBrushParameters, StrokeSmoothingConfig, PullStringConfig, MovingAverageConfig } from "@/types/brush";
+import { DEFAULT_STROKE_SMOOTHING_CONFIG, DEFAULT_PULL_STRING_CONFIG, DEFAULT_MOVING_AVERAGE_CONFIG } from "@/types/brush";
 import type { IDrawingEngine } from "@/types/engine";
 import type { BlendMode, IRasterTarget } from "@/types/raster";
 import type { StrokePoint } from "@/types/stroke";
@@ -93,6 +93,7 @@ export class DrawingAppEngine implements IDrawingEngine {
 
   private lastPoint: StrokePoint | null = null;
   private smoothingConfig: StrokeSmoothingConfig = { ...DEFAULT_STROKE_SMOOTHING_CONFIG };
+  private movingAverageConfig: MovingAverageConfig = { ...DEFAULT_MOVING_AVERAGE_CONFIG };
   private pullStringConfig: PullStringConfig = { ...DEFAULT_PULL_STRING_CONFIG };
 
   constructor(widthPx = 2048, heightPx = 2048) {
@@ -285,6 +286,8 @@ export class DrawingAppEngine implements IDrawingEngine {
       antialias: this.brushAntialias,
     });
 
+    globalWasmBrushBridge.setMovingAverageConfig(this.movingAverageConfig);
+    void globalRustBrushBridge.setMovingAverageConfig(this.movingAverageConfig);
     globalWasmBrushBridge.setPullStringConfig(this.pullStringConfig);
     void globalRustBrushBridge.setPullStringConfig(this.pullStringConfig);
   }
@@ -323,6 +326,16 @@ export class DrawingAppEngine implements IDrawingEngine {
       ...this.smoothingConfig,
       pullString: this.pullStringConfig,
     };
+  }
+
+  public setMovingAverageConfig(config: MovingAverageConfig): void {
+    this.movingAverageConfig = config;
+    globalWasmBrushBridge.setMovingAverageConfig(config);
+    void globalRustBrushBridge.setMovingAverageConfig(config);
+  }
+
+  public getMovingAverageConfig(): MovingAverageConfig {
+    return this.movingAverageConfig;
   }
 
   public setPullStringConfig(config: PullStringConfig): void {

@@ -227,4 +227,19 @@ describe("useDocumentStore (Zustand)", () => {
     expect(updated.velocityMultiplier).toBe(4.0);
     expect(updated.enabled).toBe(true);
   });
+
+  it("manages movingAverageConfig and allows independent toggling and updates", () => {
+    const { setMovingAverageConfig } = useDocumentStore.getState();
+
+    const initial = useDocumentStore.getState().movingAverageConfig;
+    expect(initial.enabled).toBe(false);
+    expect(initial.windowSize).toBe(8);
+    expect(initial.velocityMultiplier).toBe(1.5);
+
+    setMovingAverageConfig({ enabled: true, windowSize: 12 });
+    const updated = useDocumentStore.getState().movingAverageConfig;
+    expect(updated.enabled).toBe(true);
+    expect(updated.windowSize).toBe(12);
+    expect(updated.velocityMultiplier).toBe(1.5);
+  });
 });

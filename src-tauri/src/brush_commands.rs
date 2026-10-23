@@ -30,6 +30,7 @@ impl Default for BrushEngineState {
                     is_erase: false,
                     antialias: true,
                     pressure_lut: None,
+                    moving_average: sketch_core::stroke::MovingAverageConfig::default(),
                     pull_string: sketch_core::stroke::PullStringConfig::default(),
                 }),
                 stroke_start_time: std::time::Instant::now(),
@@ -56,6 +57,7 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         is_erase: false,
         antialias: true,
         pressure_lut: None,
+        moving_average: sketch_core::stroke::MovingAverageConfig::default(),
         pull_string: sketch_core::stroke::PullStringConfig::default(),
     });
     // Transparent background: the React artboard paper div provides the white/checkerboard
@@ -251,6 +253,7 @@ impl From<BrushConfigDto> for BrushConfig {
             is_erase: dto.is_erase,
             antialias: dto.antialias,
             pressure_lut: None,
+            moving_average: sketch_core::stroke::MovingAverageConfig::default(),
             pull_string: sketch_core::stroke::PullStringConfig::default(),
         }
     }
@@ -261,15 +264,34 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         let existing_lut = session.engine.config.pressure_lut.take();
+        let existing_moving_average = session.engine.config.moving_average;
         let existing_pull_string = session.engine.config.pull_string;
         let mut new_config: BrushConfig = config.into();
         new_config.pressure_lut = existing_lut;
+        new_config.moving_average = existing_moving_average;
         new_config.pull_string = existing_pull_string;
         session.engine.config = new_config;
     }
     #[cfg(target_os = "macos")]
     unsafe {
         trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_moving_average_config(
+    enabled: bool,
+    window_size: u32,
+    velocity_multiplier: f32,
+) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.moving_average = sketch_core::stroke::MovingAverageConfig {
+            enabled,
+            window_size: window_size as usize,
+            velocity_multiplier,
+        };
     }
     Ok(())
 }

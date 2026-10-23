@@ -8,7 +8,7 @@
 import initWasm, { WasmBrushEngine } from "./pkg/sketch_core.js";
 import wasmUrl from "./pkg/sketch_core_bg.wasm?url";
 import type { StrokePoint } from "@/types/stroke";
-import type { PullStringConfig } from "@/types/brush";
+import type { PullStringConfig, MovingAverageConfig } from "@/types/brush";
 
 export interface WasmBrushConfig {
   diameter: number;
@@ -102,6 +102,18 @@ export class WasmBrushBridge {
   public setPressureLut(lut: Float32Array): void {
     if (!this.engine) return;
     this.engine.set_pressure_lut(lut);
+  }
+
+  /**
+   * Sets dynamic moving average line art stroke stabilization configuration.
+   */
+  public setMovingAverageConfig(config: MovingAverageConfig): void {
+    if (!this.engine) return;
+    this.engine.set_moving_average_config(
+      config.enabled,
+      config.windowSize,
+      config.velocityMultiplier
+    );
   }
 
   /**

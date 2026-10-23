@@ -54,6 +54,7 @@ impl WasmBrushEngine {
         antialias: bool,
     ) {
         let existing_lut = self.engine.config.pressure_lut.take();
+        let existing_moving_average = self.engine.config.moving_average;
         let existing_pull_string = self.engine.config.pull_string;
         self.engine.config = BrushConfig {
             diameter,
@@ -67,7 +68,22 @@ impl WasmBrushEngine {
             is_erase,
             antialias,
             pressure_lut: existing_lut,
+            moving_average: existing_moving_average,
             pull_string: existing_pull_string,
+        };
+    }
+
+    /// Configures the dynamic moving average line art stroke stabilizer.
+    pub fn set_moving_average_config(
+        &mut self,
+        enabled: bool,
+        window_size: u32,
+        velocity_multiplier: f32,
+    ) {
+        self.engine.config.moving_average = crate::stroke::MovingAverageConfig {
+            enabled,
+            window_size: window_size as usize,
+            velocity_multiplier,
         };
     }
 

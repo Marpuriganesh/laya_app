@@ -16,7 +16,12 @@ import {
   DEFAULT_DISCRETE_WHEEL_CONFIG,
 } from "@/engine/color/discrete_wheel";
 import { createLinearCurve, type CurvePoint } from "@/engine/math/dynamics_curve";
-import { type PullStringConfig, DEFAULT_PULL_STRING_CONFIG } from "@/types/brush";
+import {
+  type PullStringConfig,
+  DEFAULT_PULL_STRING_CONFIG,
+  type MovingAverageConfig,
+  DEFAULT_MOVING_AVERAGE_CONFIG,
+} from "@/types/brush";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 
 export interface DocumentState {
@@ -35,6 +40,7 @@ export interface DocumentState {
   wheelConfig: DiscreteWheelConfig;
   holdThresholdMs: number;
   globalPressureCurve: CurvePoint[];
+  movingAverageConfig: MovingAverageConfig;
   pullStringConfig: PullStringConfig;
 
   setDocument: (document: DocumentConfiguration) => void;
@@ -50,6 +56,7 @@ export interface DocumentState {
   togglePalmRejection: () => void;
   setHoldThresholdMs: (ms: number) => void;
   setGlobalPressureCurve: (points: CurvePoint[]) => void;
+  setMovingAverageConfig: (config: Partial<MovingAverageConfig>) => void;
   setPullStringConfig: (config: Partial<PullStringConfig>) => void;
   resetTransform: () => void;
   setLayerStack: (layerStack: LayerStack) => void;
@@ -136,6 +143,22 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     return createLinearCurve();
   })(),
+  movingAverageConfig: (() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("sketch-moving-average-config");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && typeof parsed === "object") {
+            const merged: MovingAverageConfig = { ...DEFAULT_MOVING_AVERAGE_CONFIG, ...parsed };
+            setTimeout(() => globalDrawingEngine.setMovingAverageConfig?.(merged), 0);
+            return merged;
+          }
+        }
+      } catch {}
+    }
+    return DEFAULT_MOVING_AVERAGE_CONFIG;
+  })(),
   pullStringConfig: (() => {
     if (typeof window !== "undefined") {
       try {
@@ -184,6 +207,18 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     globalDrawingEngine.setPressureCurve?.(points);
     set({ globalPressureCurve: points });
+  },
+  setMovingAverageConfig: (config: Partial<MovingAverageConfig>) => {
+    set((state) => {
+      const updated: MovingAverageConfig = { ...state.movingAverageConfig, ...config };
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("sketch-moving-average-config", JSON.stringify(updated));
+        } catch {}
+      }
+      globalDrawingEngine.setMovingAverageConfig?.(updated);
+      return { movingAverageConfig: updated };
+    });
   },
   setPullStringConfig: (config: Partial<PullStringConfig>) => {
     set((state) => {

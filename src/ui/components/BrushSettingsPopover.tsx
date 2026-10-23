@@ -1,5 +1,5 @@
 import { useState, useEffect, type FC } from "react";
-import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves } from "lucide-react";
+import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves, PenLine } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
@@ -24,6 +24,8 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
     setBrushOpacity,
     globalPressureCurve,
     setGlobalPressureCurve,
+    movingAverageConfig,
+    setMovingAverageConfig,
     pullStringConfig,
     setPullStringConfig,
   } = useDocumentStore();
@@ -254,12 +256,81 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
 
         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
 
+        {/* Dynamic Moving Average (Line Art Smoothing) */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <PenLine className="w-3.5 h-3.5 text-blue-500" />
+              Moving Average (Line Art)
+            </span>
+            <input
+              type="checkbox"
+              checked={movingAverageConfig.enabled}
+              onChange={(e) => setMovingAverageConfig({ enabled: e.target.checked })}
+              className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+              title="Toggle dynamic moving average line art smoothing"
+            />
+          </div>
+
+          {movingAverageConfig.enabled && (
+            <div className="flex flex-col gap-3 p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
+              {/* Window Size */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Smoothing Window</span>
+                  <span className="font-mono text-zinc-500">{movingAverageConfig.windowSize} samples</span>
+                </div>
+                <input
+                  type="range"
+                  min={2}
+                  max={24}
+                  step={1}
+                  value={movingAverageConfig.windowSize}
+                  onChange={(e) => setMovingAverageConfig({ windowSize: Number(e.target.value) })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="Number of trajectory samples in the smoothing window"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-400">
+                  <span>2 (Sharp)</span>
+                  <span>Anti-jitter window</span>
+                  <span>24 (Maximum)</span>
+                </div>
+              </div>
+
+              {/* Dynamic Velocity Scaling */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Velocity Scaling</span>
+                  <span className="font-mono text-zinc-500">{movingAverageConfig.velocityMultiplier.toFixed(1)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={4.0}
+                  step={0.1}
+                  value={movingAverageConfig.velocityMultiplier}
+                  onChange={(e) => setMovingAverageConfig({ velocityMultiplier: Number(e.target.value) })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="Expands smoothing window on fast sweeps, contracts down for tight corners"
+                />
+                <div className="flex justify-between text-[9px] text-zinc-400">
+                  <span>0.0x (Fixed)</span>
+                  <span>Contracts in corners</span>
+                  <span>4.0x (Heavy)</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
+
         {/* Stroke Stabilization (Pull String) */}
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
               <Waves className="w-3.5 h-3.5 text-blue-500" />
-              Stroke Smoothing (Pull String)
+              Pull String (Calligraphy)
             </span>
             <input
               type="checkbox"
