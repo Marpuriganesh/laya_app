@@ -16,6 +16,10 @@ pub enum SensorType {
     Distance,
     /// Uniform pseudo-random noise for organic scattering.
     Random,
+    /// Instantaneous motion tangent / stroke drawing angle (-pi to pi mapped to 0.0 to 1.0).
+    StrokeDirection,
+    /// Initial stroke direction established at stroke inception and locked for stroke duration.
+    InitialStrokeDirection,
 }
 
 impl SensorType {
@@ -23,10 +27,12 @@ impl SensorType {
         match s.to_ascii_lowercase().as_str() {
             "pressure" => Self::Pressure,
             "tiltelevation" | "tilt_elevation" | "tilt-elevation" | "elevation" => Self::TiltElevation,
-            "tiltazimuth" | "tilt_azimuth" | "tilt-azimuth" | "azimuth" | "direction" => Self::TiltAzimuth,
+            "tiltazimuth" | "tilt_azimuth" | "tilt-azimuth" | "azimuth" => Self::TiltAzimuth,
             "velocity" | "speed" => Self::Velocity,
             "distance" | "length" => Self::Distance,
             "random" | "jitter" => Self::Random,
+            "strokedirection" | "stroke_direction" | "stroke-direction" | "direction" | "drawingangle" | "drawing_angle" | "angle" => Self::StrokeDirection,
+            "initialstrokedirection" | "initial_stroke_direction" | "initial-stroke-direction" | "initialdirection" | "initial_direction" | "initial_angle" => Self::InitialStrokeDirection,
             _ => Self::Pressure,
         }
     }
@@ -114,6 +120,8 @@ impl SensorDynamicsMapping {
         event: &StrokeEvent,
         velocity_px_sec: f32,
         distance_px: f32,
+        stroke_direction_rad: f32,
+        initial_stroke_direction_rad: f32,
         random_seed: f32,
     ) -> f32 {
         if !self.enabled {
@@ -136,6 +144,12 @@ impl SensorDynamicsMapping {
             }
             SensorType::Distance => (distance_px / 500.0).fract(),
             SensorType::Random => random_seed.clamp(0.0, 1.0),
+            SensorType::StrokeDirection => {
+                ((stroke_direction_rad + PI) / TAU).clamp(0.0, 1.0)
+            }
+            SensorType::InitialStrokeDirection => {
+                ((initial_stroke_direction_rad + PI) / TAU).clamp(0.0, 1.0)
+            }
         };
 
         let response = self.curve.sample(raw_sensor);
@@ -226,6 +240,8 @@ impl PropertyDynamicsConfig {
         event: &StrokeEvent,
         velocity_px_sec: f32,
         distance_px: f32,
+        stroke_direction_rad: f32,
+        initial_stroke_direction_rad: f32,
         random_seed: f32,
     ) -> f32 {
         let active: Vec<&SensorDynamicsMapping> = self.mappings.iter().filter(|m| m.enabled).collect();
@@ -237,28 +253,28 @@ impl PropertyDynamicsConfig {
             DynamicsCalculationMode::Multiply => {
                 let mut product = 1.0f32;
                 for m in active {
-                    product *= m.evaluate(event, velocity_px_sec, distance_px, random_seed);
+                    product *= m.evaluate(event, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad, random_seed);
                 }
                 product
             }
             DynamicsCalculationMode::Add => {
                 let mut sum = 0.0f32;
                 for m in active {
-                    sum += m.evaluate(event, velocity_px_sec, distance_px, random_seed);
+                    sum += m.evaluate(event, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad, random_seed);
                 }
                 sum.clamp(0.0, 1.0)
             }
             DynamicsCalculationMode::Max => {
                 let mut max_val = f32::MIN;
                 for m in active {
-                    max_val = max_val.max(m.evaluate(event, velocity_px_sec, distance_px, random_seed));
+                    max_val = max_val.max(m.evaluate(event, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad, random_seed));
                 }
                 max_val
             }
             DynamicsCalculationMode::Min => {
                 let mut min_val = f32::MAX;
                 for m in active {
-                    min_val = min_val.min(m.evaluate(event, velocity_px_sec, distance_px, random_seed));
+                    min_val = min_val.min(m.evaluate(event, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad, random_seed));
                 }
                 min_val
             }
@@ -390,7 +406,7 @@ mod tests {
     fn test_sensor_dynamics_pressure_scaling() {
         let mapping = SensorDynamicsMapping::new(SensorType::Pressure, 10.0, 100.0);
         let event = StrokeEvent::new(0.0, 0.0, 0.5, 0.0);
-        let out = mapping.evaluate(&event, 0.0, 0.0, 0.0);
+        let out = mapping.evaluate(&event, 0.0, 0.0, 0.0, 0.0, 0.0);
         assert!((out - 55.0).abs() < 1.0);
     }
 
@@ -399,7 +415,7 @@ mod tests {
         let mapping = SensorDynamicsMapping::new(SensorType::Velocity, 0.2, 1.0);
         let event = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
         // Half max velocity (1250 / 2500 = 0.5)
-        let out = mapping.evaluate(&event, 1250.0, 0.0, 0.0);
+        let out = mapping.evaluate(&event, 1250.0, 0.0, 0.0, 0.0, 0.0);
         assert!((out - 0.6).abs() < 0.05);
     }
 
@@ -408,13 +424,28 @@ mod tests {
         let mapping = SensorDynamicsMapping::new(SensorType::TiltElevation, 0.0, 1.0);
         // Stylus perpendicular: tilt_x = 0, tilt_y = 0 -> elevation = pi/2 -> 1.0
         let event_vertical = StrokeEvent::with_tilt(0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
-        let out_v = mapping.evaluate(&event_vertical, 0.0, 0.0, 0.0);
+        let out_v = mapping.evaluate(&event_vertical, 0.0, 0.0, 0.0, 0.0, 0.0);
         assert!((out_v - 1.0).abs() < 0.01);
 
         // Stylus tilted flat: tilt_x = 1.0 -> elevation = 0 -> 0.0
         let event_flat = StrokeEvent::with_tilt(0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
-        let out_f = mapping.evaluate(&event_flat, 0.0, 0.0, 0.0);
+        let out_f = mapping.evaluate(&event_flat, 0.0, 0.0, 0.0, 0.0, 0.0);
         assert!((out_f - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_sensor_dynamics_stroke_direction_and_initial_direction() {
+        let map_dir = SensorDynamicsMapping::new(SensorType::StrokeDirection, 0.0, 1.0);
+        let map_init = SensorDynamicsMapping::new(SensorType::InitialStrokeDirection, 0.0, 1.0);
+        let event = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
+
+        // Direction angle 0.0 rad -> maps to (0 + pi) / 2pi = 0.5
+        let out_dir = map_dir.evaluate(&event, 0.0, 0.0, 0.0, PI, 0.0);
+        assert!((out_dir - 0.5).abs() < 0.02);
+
+        // Initial direction PI rad -> maps to (pi + pi) / 2pi = 1.0
+        let out_init = map_init.evaluate(&event, 0.0, 0.0, 0.0, PI, 0.0);
+        assert!((out_init - 1.0).abs() < 0.02);
     }
 
     #[test]
@@ -450,12 +481,12 @@ mod tests {
         // Pressure 1.0 -> 1.0; Velocity 1250 (0.5) -> 0.75
         // Multiply: 1.0 * 0.75 = 0.75
         prop.calculation_mode = DynamicsCalculationMode::Multiply;
-        let mult = prop.evaluate(&event, 1250.0, 0.0, 0.0);
+        let mult = prop.evaluate(&event, 1250.0, 0.0, 0.0, 0.0, 0.0);
         assert!((mult - 0.75).abs() < 0.05);
 
         // Add: (1.0 + 0.75).min(1.0) = 1.0
         prop.calculation_mode = DynamicsCalculationMode::Add;
-        let add = prop.evaluate(&event, 1250.0, 0.0, 0.0);
+        let add = prop.evaluate(&event, 1250.0, 0.0, 0.0, 0.0, 0.0);
         assert!((add - 1.0).abs() < 0.01);
     }
 }

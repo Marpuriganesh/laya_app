@@ -12,9 +12,12 @@ import {
   RefreshCw,
   Sparkles,
   Paintbrush,
+  Undo2,
+  CopyPlus,
 } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { useBrushStore } from "@/ui/stores/brush_store";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { globalRustBrushBridge, type ResourceItemDto } from "@/engine/brush/rust_brush_bridge";
 import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
@@ -197,6 +200,16 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     setPullStringConfig,
     brushSettingsRevision,
   } = useDocumentStore();
+
+  const {
+    isCurrentBrushDirty,
+    revertActivePreset,
+    overwriteActivePreset,
+    saveActivePresetAsNew,
+    temporarilySaveTweaks,
+    setTemporarilySaveTweaks,
+    markPresetDirty,
+  } = useBrushStore();
 
   const [activeBrushState, setActiveBrushState] = useState<BrushPreset | null>(() =>
     globalDrawingEngine.getActiveBrush?.()
@@ -671,6 +684,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     setSoftness(val);
     globalDrawingEngine.setBrushSoftness?.(val);
     globalDrawingEngine.updateActivePreset?.({ softness: val });
+    markPresetDirty(activePresetId, { softness: val });
   };
 
   const handleSpacingChange = (valPercent: number) => {
@@ -678,6 +692,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     const frac = valPercent / 100;
     globalDrawingEngine.setBrushSpacing?.(frac);
     globalDrawingEngine.updateActivePreset?.({ spacingFraction: frac });
+    markPresetDirty(activePresetId, { spacingFraction: frac });
   };
 
   const handleFlowChange = (valPercent: number) => {
@@ -685,6 +700,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     const fl = valPercent / 100;
     globalDrawingEngine.setBrushFlow?.(fl);
     globalDrawingEngine.updateActivePreset?.({ baseFlow: fl });
+    markPresetDirty(activePresetId, { baseFlow: fl });
   };
 
   const handleAntialiasToggle = (enabled: boolean) => {
@@ -703,11 +719,30 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     globalDrawingEngine.clearCanvas();
   };
 
+  const handleRevert = () => {
+    revertActivePreset();
+    syncFromActiveBrush();
+  };
+
+  const handleOverwrite = () => {
+    overwriteActivePreset();
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  const handleSaveAsNew = () => {
+    const defaultName = `${activeBrush?.displayName ?? "Brush"} Copy`;
+    const name = typeof window !== "undefined" ? window.prompt("Save new brush preset as:", defaultName) : defaultName;
+    if (name && name.trim()) {
+      saveActivePresetAsNew(name.trim());
+    }
+  };
+
   return (
     <div className="flex h-135 w-full max-w-full overflow-hidden select-none">
       {/* Left Column: Scrollable Settings Inspector */}
       <div className="flex-1 p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 overflow-y-auto overflow-x-hidden min-w-0 border-r border-zinc-200 dark:border-white/5">
-        {/* Active Brush Header Card with Display Name & Procreate-Style Stroke Thumbnail */}
+        {/* Active Brush Header Card with Display Name, Procreate-Style Stroke Thumbnail & Krita-style Preset Actions */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/50 shadow-xs">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-lg bg-blue-600 text-white shrink-0 shadow-xs">
@@ -718,6 +753,11 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
                 <span className="text-sm font-bold text-zinc-950 dark:text-white truncate">
                   {activeBrush?.displayName ?? "Studio Pen"}
                 </span>
+                {isCurrentBrushDirty && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold shrink-0">
+                    * Modified
+                  </span>
+                )}
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 font-semibold shrink-0">
                   Active
                 </span>
@@ -728,27 +768,47 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
             </div>
           </div>
 
-          {/* Stroke Preview Thumbnail & Quick Save Button */}
-          <div className="flex items-center gap-2 shrink-0 pl-2">
+          {/* Stroke Preview Thumbnail & Actions */}
+          <div className="flex items-center gap-1.5 shrink-0 pl-2">
             {activeBrush && (
               <BrushStrokePreview
                 preset={activeBrush}
-                width={140}
-                height={34}
+                width={110}
+                height={32}
               />
             )}
             <button
               type="button"
-              onClick={handleSave}
-              title={`Save settings for ${activeBrush?.displayName ?? "brush"}`}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-all cursor-pointer ${
+              onClick={handleRevert}
+              disabled={!isCurrentBrushDirty}
+              title="Revert tweaks to baseline preset"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer shadow-xs transition-all"
+            >
+              <Undo2 className="w-3 h-3" />
+              <span>Revert</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleOverwrite}
+              disabled={!isCurrentBrushDirty}
+              title="Overwrite baseline preset with current tweaks"
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer shadow-xs ${
                 isSaved
                   ? "bg-emerald-600 text-white"
-                  : "bg-blue-600 hover:bg-blue-500 active:scale-95 text-white"
+                  : "bg-amber-600 hover:bg-amber-500 active:scale-95 text-white disabled:opacity-35 disabled:cursor-not-allowed"
               }`}
             >
-              {isSaved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
-              <span>{isSaved ? "Saved!" : "Save"}</span>
+              {isSaved ? <Check className="w-3 h-3" /> : <Save className="w-3 h-3" />}
+              <span>{isSaved ? "Saved!" : "Overwrite"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAsNew}
+              title="Save tweaks as a new custom brush preset"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-blue-600 hover:bg-blue-500 active:scale-95 text-white cursor-pointer shadow-xs transition-all"
+            >
+              <CopyPlus className="w-3 h-3" />
+              <span>Save New...</span>
             </button>
           </div>
         </div>
@@ -1313,6 +1373,19 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
         </div>
 
         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
+
+        {/* Krita-style Tweaks Memory Management Toggle */}
+        <div className="flex items-center justify-between py-1 px-1">
+          <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
+            <input
+              type="checkbox"
+              checked={temporarilySaveTweaks}
+              onChange={(e) => setTemporarilySaveTweaks(e.target.checked)}
+              className="rounded border-zinc-300 dark:border-zinc-700 text-blue-600 focus:ring-0 cursor-pointer"
+            />
+            <span>Temporarily Save Tweaks To Presets</span>
+          </label>
+        </div>
 
         {/* Action Buttons: Save Settings & Clear Canvas Paper */}
         <div className="flex flex-col gap-2 pt-1">

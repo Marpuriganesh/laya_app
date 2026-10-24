@@ -20,6 +20,8 @@ export interface IDrawingEngine {
   setActiveBrush(preset: BrushPreset): void;
   getActiveBrush(): BrushPreset | null;
   getLoadedPresets(): readonly BrushPreset[];
+  addPreset?(preset: BrushPreset): void;
+  replacePreset?(preset: BrushPreset): void;
   updateActivePreset?(updates: Partial<import("./brush").PixelBrushParameters>, smoothing?: Partial<StrokeSmoothingConfig>): void;
 
   // --- Active Stroke ---

@@ -340,6 +340,27 @@ export class DrawingAppEngine implements IDrawingEngine {
     this.onPresetChangedListener = listener;
   }
 
+  public addPreset(preset: BrushPreset): void {
+    const existingIdx = this.loadedPresets.findIndex((p) => p.presetId === preset.presetId);
+    if (existingIdx >= 0) {
+      this.loadedPresets[existingIdx] = preset;
+    } else {
+      this.loadedPresets.push(preset);
+    }
+  }
+
+  public replacePreset(preset: BrushPreset): void {
+    const existingIdx = this.loadedPresets.findIndex((p) => p.presetId === preset.presetId);
+    if (existingIdx >= 0) {
+      this.loadedPresets[existingIdx] = preset;
+    } else {
+      this.loadedPresets.push(preset);
+    }
+    if (this.activeBrush?.presetId === preset.presetId) {
+      this.setActiveBrush(preset);
+    }
+  }
+
   public setActiveBrush(preset: BrushPreset): void {
     // If this preset exists in loadedPresets, use the persisted modified instance
     let existing = this.loadedPresets.find((p) => p.presetId === preset.presetId);

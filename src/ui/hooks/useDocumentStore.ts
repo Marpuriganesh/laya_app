@@ -15,16 +15,14 @@ import {
   type DiscreteWheelConfig,
   DEFAULT_DISCRETE_WHEEL_CONFIG,
 } from "@/engine/color/discrete_wheel";
-import { createLinearCurve, type CurvePoint } from "@/engine/math/dynamics_curve";
+import { type CurvePoint } from "@/engine/math/dynamics_curve";
 import {
   type PullStringConfig,
-  DEFAULT_PULL_STRING_CONFIG,
   type MovingAverageConfig,
-  DEFAULT_MOVING_AVERAGE_CONFIG,
 } from "@/types/brush";
-import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
+import { useBrushStore } from "@/ui/stores/brush_store";
 
 export interface DocumentState {
   document: DocumentConfiguration;
@@ -112,17 +110,17 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   document: createDefaultDocumentConfiguration(),
   activeTool: "brush",
   activeColor: "#1e1e1e",
-  brushBlendMode: "normal",
-  brushSize: 32,
-  brushOpacity: 1.0,
+  brushBlendMode: useBrushStore.getState().brushBlendMode,
+  brushSize: useBrushStore.getState().brushSize,
+  brushOpacity: useBrushStore.getState().brushOpacity,
   transform: {
     scale: 0.8,
     panX: 0,
     panY: 0,
   },
   activePopover: "none",
-  isBrushStudioOpen: false,
-  activePresetId: "default-studio-pen",
+  isBrushStudioOpen: useBrushStore.getState().isBrushStudioOpen,
+  activePresetId: useBrushStore.getState().activePresetId,
   softProofMode: "none",
   palmRejection: true,
   layerStack: createDefaultLayerStack(),
@@ -153,52 +151,59 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     return 250;
   })(),
-  globalPressureCurve: (() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("sketch-global-pressure-curve");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length >= 2) {
-            setTimeout(() => globalDrawingEngine.setPressureCurve?.(parsed), 0);
-            return parsed;
-          }
-        }
-      } catch {}
-    }
-    return createLinearCurve();
-  })(),
-  movingAverageConfig: globalDrawingEngine.getMovingAverageConfig?.() ?? DEFAULT_MOVING_AVERAGE_CONFIG,
-  pullStringConfig: globalDrawingEngine.getPullStringConfig?.() ?? DEFAULT_PULL_STRING_CONFIG,
-  brushSettingsRevision: 0,
-  bumpBrushSettingsRevision: () => set((state) => ({ brushSettingsRevision: state.brushSettingsRevision + 1 })),
+  globalPressureCurve: useBrushStore.getState().globalPressureCurve,
+  movingAverageConfig: useBrushStore.getState().movingAverageConfig,
+  pullStringConfig: useBrushStore.getState().pullStringConfig,
+  brushSettingsRevision: useBrushStore.getState().brushSettingsRevision,
+  bumpBrushSettingsRevision: () => {
+    useBrushStore.getState().bumpBrushSettingsRevision();
+    set((state) => ({ brushSettingsRevision: state.brushSettingsRevision + 1 }));
+  },
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setActiveColor: (activeColor) => set({ activeColor }),
   setBrushBlendMode: (mode: string) => {
+    useBrushStore.getState().setBrushBlendMode(mode);
     set({ brushBlendMode: mode });
-    globalDrawingEngine.setBlendMode?.(mode as any);
-    void globalRustBrushBridge.setBrushBlendMode(mode);
-    globalWasmBrushBridge.setBrushBlendMode(mode);
   },
-  setBrushSize: (brushSize) => set((state) => ({ brushSize, brushSettingsRevision: state.brushSettingsRevision + 1 })),
-  setBrushOpacity: (brushOpacity) => set((state) => ({ brushOpacity, brushSettingsRevision: state.brushSettingsRevision + 1 })),
+  setBrushSize: (brushSize) => {
+    useBrushStore.getState().setBrushSize(brushSize);
+    set((state) => ({ brushSize, brushSettingsRevision: state.brushSettingsRevision + 1 }));
+  },
+  setBrushOpacity: (brushOpacity) => {
+    useBrushStore.getState().setBrushOpacity(brushOpacity);
+    set((state) => ({ brushOpacity, brushSettingsRevision: state.brushSettingsRevision + 1 }));
+  },
   setTransform: (transform) => set({ transform }),
-  setActivePopover: (activePopover) =>
+  setActivePopover: (activePopover) => {
+    if (activePopover === "brushSettings") {
+      useBrushStore.getState().setBrushStudioOpen(true);
+    }
     set({
       activePopover,
       ...(activePopover === "brushSettings" ? { isBrushStudioOpen: true } : {}),
-    }),
-  setBrushStudioOpen: (open) => set({ isBrushStudioOpen: open }),
-  setActivePresetId: (activePresetId) => set({ activePresetId }),
+    });
+  },
+  setBrushStudioOpen: (open) => {
+    useBrushStore.getState().setBrushStudioOpen(open);
+    set({ isBrushStudioOpen: open });
+  },
+  setActivePresetId: (activePresetId) => {
+    useBrushStore.getState().setActivePresetId(activePresetId);
+    set({ activePresetId });
+  },
   togglePopover: (popover) =>
-    set((state) => ({
-      activePopover: state.activePopover === popover ? "none" : popover,
-      ...(popover === "brushSettings"
-        ? { isBrushStudioOpen: state.activePopover !== "brushSettings" }
-        : {}),
-    })),
+    set((state) => {
+      const willOpenStudio = popover === "brushSettings" && state.activePopover !== "brushSettings";
+      if (popover === "brushSettings") {
+        useBrushStore.getState().setBrushStudioOpen(willOpenStudio);
+      }
+      return {
+        activePopover: state.activePopover === popover ? "none" : popover,
+        ...(popover === "brushSettings" ? { isBrushStudioOpen: willOpenStudio } : {}),
+      };
+    }),
   setSoftProofMode: (softProofMode) => set({ softProofMode }),
   setPalmRejection: (palmRejection) => set({ palmRejection }),
   togglePalmRejection: () => set((state) => ({ palmRejection: !state.palmRejection })),
@@ -212,27 +217,20 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     set({ holdThresholdMs: clamped });
   },
   setGlobalPressureCurve: (points: CurvePoint[]) => {
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("sketch-global-pressure-curve", JSON.stringify(points));
-      } catch {}
-    }
-    globalDrawingEngine.setPressureCurve?.(points);
+    useBrushStore.getState().setGlobalPressureCurve(points);
     set({ globalPressureCurve: points });
   },
   setMovingAverageConfig: (config: Partial<MovingAverageConfig>) => {
-    set((state) => {
-      const updated: MovingAverageConfig = { ...state.movingAverageConfig, ...config };
-      globalDrawingEngine.setMovingAverageConfig?.(updated);
-      return { movingAverageConfig: updated };
-    });
+    useBrushStore.getState().setMovingAverageConfig(config);
+    set((state) => ({
+      movingAverageConfig: { ...state.movingAverageConfig, ...config },
+    }));
   },
   setPullStringConfig: (config: Partial<PullStringConfig>) => {
-    set((state) => {
-      const updated: PullStringConfig = { ...state.pullStringConfig, ...config };
-      globalDrawingEngine.setPullStringConfig?.(updated);
-      return { pullStringConfig: updated };
-    });
+    useBrushStore.getState().setPullStringConfig(config);
+    set((state) => ({
+      pullStringConfig: { ...state.pullStringConfig, ...config },
+    }));
   },
   resetTransform: () =>
     set({
@@ -464,16 +462,17 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     })),
 }));
 
-// Wire drawing engine preset change notifications directly into Zustand store
-if (typeof globalDrawingEngine !== "undefined" && globalDrawingEngine?.setOnPresetChangedListener) {
-  globalDrawingEngine.setOnPresetChangedListener((preset) => {
-    const isPixel = preset.engineParameters.engineId === "pixelbrush";
-    useDocumentStore.setState({
-      activePresetId: preset.presetId,
-      brushSize: isPixel ? (preset.engineParameters.baseSizePx ?? 24) : 24,
-      brushOpacity: isPixel ? (preset.engineParameters.baseOpacity ?? 1.0) : 1.0,
-      movingAverageConfig: globalDrawingEngine.getMovingAverageConfig?.() ?? DEFAULT_MOVING_AVERAGE_CONFIG,
-      pullStringConfig: globalDrawingEngine.getPullStringConfig?.() ?? DEFAULT_PULL_STRING_CONFIG,
-    });
+// Subscribe to dedicated brush store so useDocumentStore stays synchronized
+useBrushStore.subscribe((brushState) => {
+  useDocumentStore.setState({
+    brushSize: brushState.brushSize,
+    brushOpacity: brushState.brushOpacity,
+    brushBlendMode: brushState.brushBlendMode,
+    activePresetId: brushState.activePresetId,
+    brushSettingsRevision: brushState.brushSettingsRevision,
+    isBrushStudioOpen: brushState.isBrushStudioOpen,
+    movingAverageConfig: brushState.movingAverageConfig,
+    pullStringConfig: brushState.pullStringConfig,
+    globalPressureCurve: brushState.globalPressureCurve,
   });
-}
+});

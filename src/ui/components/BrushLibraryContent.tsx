@@ -17,6 +17,7 @@ import {
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { useBrushStore } from "@/ui/stores/brush_store";
 import { useTheme } from "@/ui/theme/ThemeProvider";
 import type { BrushPreset, PredefinedBrushTip } from "@/types/brush";
 
@@ -230,8 +231,10 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
     setBrushOpacity,
     brushSettingsRevision,
   } = useDocumentStore();
+  const dirtyPresets = useBrushStore((s) => s.dirtyPresets);
 
   useEffect(() => {
+    useBrushStore.getState().loadSavedCustomPresets();
     return () => {
       thumbnailUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       thumbnailUrlsRef.current.clear();
@@ -342,6 +345,7 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
         ) : (
           filteredPresets.map((preset) => {
             const isActive = preset.presetId === activePresetId;
+            const isDirty = Boolean(dirtyPresets[preset.presetId]);
             const thumbUrl = getPresetThumbnailUrl(preset);
 
             return (
@@ -360,9 +364,17 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
                     <BrushTipIcon preset={preset} thumbUrl={thumbUrl} />
                   </div>
                   <div className="flex flex-col min-w-0 pr-2">
-                    <span className="text-xs font-semibold truncate leading-tight">
-                      {preset.displayName}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold truncate leading-tight">
+                        {preset.displayName}
+                      </span>
+                      {isDirty && (
+                        <span
+                          title="Modified preset (tweaks pending in memory)"
+                          className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 shadow-xs"
+                        />
+                      )}
+                    </div>
                     <span className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate mt-0.5">
                       {preset.tags.join(" • ")}
                     </span>

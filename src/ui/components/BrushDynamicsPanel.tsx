@@ -6,6 +6,8 @@ import {
   Gauge,
   Shuffle,
   Ruler,
+  Navigation,
+  Pin,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -19,7 +21,7 @@ import {
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
-import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { useBrushStore } from "@/ui/stores/brush_store";
 
 export type DynamicsParameterId =
   | "size"
@@ -33,6 +35,8 @@ export type SensorTypeId =
   | "pressure"
   | "tilt_elevation"
   | "tilt_azimuth"
+  | "stroke_direction"
+  | "initial_stroke_direction"
   | "velocity"
   | "distance"
   | "random";
@@ -100,7 +104,7 @@ const PARAMETERS: readonly ParameterMeta[] = [
     id: "angle",
     label: "Rotation",
     description: "Modulates tip rotation angle",
-    defaultSensor: "tilt_azimuth",
+    defaultSensor: "stroke_direction",
     defaultCurve: createLinearCurve,
   },
   {
@@ -123,6 +127,8 @@ const SENSORS: readonly SensorMeta[] = [
   { id: "pressure", label: "Pressure", icon: Activity, description: "Stylus tip pressure (0.0 to 1.0)" },
   { id: "tilt_elevation", label: "Tilt Elevation", icon: Maximize2, description: "Stylus angle relative to canvas" },
   { id: "tilt_azimuth", label: "Tilt Direction", icon: Compass, description: "Stylus compass rotation heading" },
+  { id: "stroke_direction", label: "Stroke Direction", icon: Navigation, description: "Instantaneous stroke movement tangent angle" },
+  { id: "initial_stroke_direction", label: "Initial Direction", icon: Pin, description: "Initial stroke direction locked at stroke start" },
   { id: "velocity", label: "Speed", icon: Gauge, description: "Instantaneous stroke speed" },
   { id: "distance", label: "Distance", icon: Ruler, description: "Cyclic distance along stroke" },
   { id: "random", label: "Fuzzy Dab", icon: Shuffle, description: "Organic random noise per dab" },
@@ -161,6 +167,8 @@ function createDefaultDynamicsState(): Record<DynamicsParameterId, ParameterMult
       pressure: createBlankSensorState(false),
       tilt_elevation: createBlankSensorState(false),
       tilt_azimuth: createBlankSensorState(false),
+      stroke_direction: createBlankSensorState(false),
+      initial_stroke_direction: createBlankSensorState(false),
       velocity: createBlankSensorState(false),
       distance: createBlankSensorState(false),
       random: createBlankSensorState(false),
@@ -356,7 +364,11 @@ export const BrushDynamicsPanel: FC<BrushDynamicsPanelProps> = ({
         });
       }
 
-      useDocumentStore.getState().bumpBrushSettingsRevision();
+      const activeId = useBrushStore.getState().activePresetId;
+      useBrushStore.getState().markPresetDirty(activeId, {
+        multiDynamics: updatedMultiDynamics,
+      });
+      useBrushStore.getState().bumpBrushSettingsRevision();
     },
     []
   );

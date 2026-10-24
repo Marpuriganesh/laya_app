@@ -48,7 +48,9 @@ export type SensorInputName =
   | "rotation"
   | "random"
   | "distance"
-  | "fade";
+  | "fade"
+  | "stroke_direction"
+  | "initial_stroke_direction";
 
 /**
  * A single control point on a dynamics response curve.
