@@ -57,6 +57,10 @@ impl WasmBrushEngine {
         let existing_moving_average = self.engine.config.moving_average;
         let existing_pull_string = self.engine.config.pull_string;
         let existing_blend_mode = self.engine.config.blend_mode;
+        let existing_tip_type = self.engine.config.tip_type.clone();
+        let existing_texture = self.engine.config.texture.clone();
+        let existing_texture_by_pressure = self.engine.config.texture_by_pressure;
+
         self.engine.config = BrushConfig {
             diameter,
             spacing,
@@ -73,6 +77,9 @@ impl WasmBrushEngine {
             } else {
                 existing_blend_mode
             },
+            tip_type: existing_tip_type,
+            texture: existing_texture,
+            texture_by_pressure: existing_texture_by_pressure,
             pressure_lut: existing_lut,
             moving_average: existing_moving_average,
             pull_string: existing_pull_string,
@@ -82,6 +89,19 @@ impl WasmBrushEngine {
     /// Sets the color blend mode (e.g. "normal", "multiply", "screen", "overlay", "add", "subtract", etc.).
     pub fn set_brush_blend_mode(&mut self, mode_name: &str) {
         self.engine.config.blend_mode = crate::brush::ColorBlendMode::from_str(mode_name);
+    }
+
+    /// Configures AutoBrush elliptical geometry (aspect ratio and rotation angle in radians).
+    pub fn set_brush_auto_tip(&mut self, aspect_ratio: f32, angle_radians: f32) {
+        self.engine.config.tip_type = crate::brush::tip::BrushTipType::Auto {
+            aspect_ratio,
+            angle_radians,
+        };
+    }
+
+    /// Clears any active paper grain texture.
+    pub fn clear_brush_texture(&mut self) {
+        self.engine.config.texture = None;
     }
 
     /// Configures the dynamic moving average line art stroke stabilizer.

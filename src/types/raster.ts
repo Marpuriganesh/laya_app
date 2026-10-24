@@ -55,7 +55,8 @@ export type BlendMode =
   | "saturation"
   | "color"
   | "luminosity"
-  | "erase";
+  | "erase"
+  | "parallel";
 
 /**
  * Texture modulation modes supported for brush grain texturing.
@@ -69,7 +70,8 @@ export type TextureBlendMode =
   | "overlay"
   | "divide"
   | "darken"
-  | "lighten";
+  | "lighten"
+  | "parallel";
 
 /**
  * The raster target contract: the abstract 2D surface into which the brush engine stamps dabs.

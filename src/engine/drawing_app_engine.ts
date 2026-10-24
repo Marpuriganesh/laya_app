@@ -552,6 +552,16 @@ export class DrawingAppEngine implements IDrawingEngine {
     ] as [number, number, number, number];
     const isErase = this.blendMode === "erase";
 
+    let aspectRatio = 1.0;
+    let angleRadians = 0.0;
+    if (this.activeBrush && this.activeBrush.engineParameters.engineId === "pixelbrush") {
+      const tip = this.activeBrush.engineParameters.brushTip;
+      if (tip.tipType === "generated") {
+        aspectRatio = tip.aspectRatio ?? 1.0;
+        angleRadians = tip.angleRadians ?? 0.0;
+      }
+    }
+
     globalRustBrushBridge.setBrushConfig({
       diameter: this.brushSize,
       spacing: this.brushSpacing,
@@ -563,6 +573,9 @@ export class DrawingAppEngine implements IDrawingEngine {
       opacity_by_pressure: this.opacityByPressure,
       is_erase: isErase,
       antialias: this.brushAntialias,
+      blend_mode: this.blendMode,
+      aspect_ratio: aspectRatio,
+      angle_radians: angleRadians,
     });
 
     globalWasmBrushBridge.setBrushConfig({

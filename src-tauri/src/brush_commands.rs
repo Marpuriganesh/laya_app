@@ -30,6 +30,9 @@ impl Default for BrushEngineState {
                     is_erase: false,
                     antialias: true,
                     blend_mode: sketch_core::brush::ColorBlendMode::Normal,
+                    tip_type: sketch_core::brush::tip::BrushTipType::default(),
+                    texture: None,
+                    texture_by_pressure: false,
                     pressure_lut: None,
                     moving_average: sketch_core::stroke::MovingAverageConfig::default(),
                     pull_string: sketch_core::stroke::PullStringConfig::default(),
@@ -58,6 +61,9 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         is_erase: false,
         antialias: true,
         blend_mode: sketch_core::brush::ColorBlendMode::Normal,
+        tip_type: sketch_core::brush::tip::BrushTipType::default(),
+        texture: None,
+        texture_by_pressure: false,
         pressure_lut: None,
         moving_average: sketch_core::stroke::MovingAverageConfig::default(),
         pull_string: sketch_core::stroke::PullStringConfig::default(),
@@ -257,6 +263,12 @@ pub struct BrushConfigDto {
     pub antialias: bool,
     #[serde(default)]
     pub blend_mode: Option<String>,
+    #[serde(default)]
+    pub aspect_ratio: Option<f32>,
+    #[serde(default)]
+    pub angle_radians: Option<f32>,
+    #[serde(default)]
+    pub texture_by_pressure: Option<bool>,
 }
 
 fn default_true() -> bool {
@@ -273,6 +285,15 @@ impl From<BrushConfigDto> for BrushConfig {
             sketch_core::brush::ColorBlendMode::Normal
         };
 
+        let tip_type = if let (Some(ar), Some(ang)) = (dto.aspect_ratio, dto.angle_radians) {
+            sketch_core::brush::tip::BrushTipType::Auto {
+                aspect_ratio: ar,
+                angle_radians: ang,
+            }
+        } else {
+            sketch_core::brush::tip::BrushTipType::default()
+        };
+
         Self {
             diameter: dto.diameter,
             spacing: dto.spacing,
@@ -285,6 +306,9 @@ impl From<BrushConfigDto> for BrushConfig {
             is_erase: dto.is_erase,
             antialias: dto.antialias,
             blend_mode,
+            tip_type,
+            texture: None,
+            texture_by_pressure: dto.texture_by_pressure.unwrap_or(false),
             pressure_lut: None,
             moving_average: sketch_core::stroke::MovingAverageConfig::default(),
             pull_string: sketch_core::stroke::PullStringConfig::default(),
@@ -299,10 +323,12 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
         let existing_lut = session.engine.config.pressure_lut.take();
         let existing_moving_average = session.engine.config.moving_average;
         let existing_pull_string = session.engine.config.pull_string;
+        let existing_texture = session.engine.config.texture.clone();
         let mut new_config: BrushConfig = config.into();
         new_config.pressure_lut = existing_lut;
         new_config.moving_average = existing_moving_average;
         new_config.pull_string = existing_pull_string;
+        new_config.texture = existing_texture;
         session.engine.config = new_config;
     }
     #[cfg(target_os = "macos")]

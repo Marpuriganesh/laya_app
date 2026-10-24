@@ -182,6 +182,23 @@ pub fn blend_channel_exclusion(dst: f32, src: f32) -> f32 {
     dst + src - (2.0 * dst * src) / 255.0
 }
 
+/// Parallel: Krita parallel / harmonic blend mode.
+/// Calculates the harmonic mean of destination and source channels:
+/// f(d, s) = 2.0 / (1/d + 1/s) = (2.0 * d * s) / (d + s)
+///
+/// Blends colors in a natural, organic way akin to physical parallel circuits,
+/// producing smooth, physical-like tonal transitions.
+/// If `d + s <= 0.0`, returns 0.0 to prevent division by zero.
+#[inline(always)]
+pub fn blend_channel_parallel(dst: f32, src: f32) -> f32 {
+    let sum = dst + src;
+    if sum <= 0.0 {
+        0.0
+    } else {
+        ((2.0 * dst * src) / sum).clamp(0.0, 255.0)
+    }
+}
+
 // ============================================================================
 // 2. Modular Texture Modes (Krita KisTextureOption Modulation)
 // ============================================================================
@@ -199,6 +216,7 @@ pub enum TextureBlendMode {
     Divide = 5,
     Darken = 6,
     Lighten = 7,
+    Parallel = 8,
 }
 
 impl TextureBlendMode {
@@ -213,6 +231,7 @@ impl TextureBlendMode {
             "divide" => Self::Divide,
             "darken" => Self::Darken,
             "lighten" => Self::Lighten,
+            "parallel" | "harmonic" => Self::Parallel,
             _ => Self::Multiply,
         }
     }
@@ -283,6 +302,11 @@ pub fn modulate_texture_alpha(
             let blended = a_f.max(pat_f);
             a_f + (blended - a_f) * s
         }
+        // Parallel: blends dab alpha with pattern sample via harmonic mean
+        TextureBlendMode::Parallel => {
+            let blended = blend_channel_parallel(a_f, pat_f);
+            a_f + (blended - a_f) * s
+        }
     };
 
     res.round().clamp(0.0, 255.0) as u8
@@ -319,6 +343,7 @@ pub enum ColorBlendMode {
     HardMix = 19,
     Behind = 20,
     Erase = 21,
+    Parallel = 22,
 }
 
 impl ColorBlendMode {
@@ -346,6 +371,7 @@ impl ColorBlendMode {
             "hardmix" => Self::HardMix,
             "behind" => Self::Behind,
             "erase" | "destination_out" => Self::Erase,
+            "parallel" | "harmonic" => Self::Parallel,
             _ => Self::Normal,
         }
     }
@@ -453,6 +479,11 @@ pub fn blend_rgb(dst: [u8; 3], src: [u8; 3], mode: ColorBlendMode) -> [u8; 3] {
             blend_channel_hard_mix(dr, sr),
             blend_channel_hard_mix(dg, sg),
             blend_channel_hard_mix(db, sb),
+        ),
+        ColorBlendMode::Parallel => (
+            blend_channel_parallel(dr, sr),
+            blend_channel_parallel(dg, sg),
+            blend_channel_parallel(db, sb),
         ),
     };
 
@@ -575,6 +606,29 @@ mod tests {
         assert_eq!(blend_channel_add(50.0, 70.0), 120.0);
         assert_eq!(blend_channel_subtract(100.0, 120.0), 0.0);
         assert_eq!(blend_channel_subtract(100.0, 40.0), 60.0);
+    }
+
+    #[test]
+    fn test_parallel_channel() {
+        // Both pure white -> 255
+        assert_eq!(blend_channel_parallel(255.0, 255.0).round(), 255.0);
+        // Both 0 -> 0 (division by zero avoided)
+        assert_eq!(blend_channel_parallel(0.0, 0.0), 0.0);
+        // Zero with non-zero -> 0 (black absorbed)
+        assert_eq!(blend_channel_parallel(0.0, 255.0), 0.0);
+        assert_eq!(blend_channel_parallel(255.0, 0.0), 0.0);
+        // Equal values preserve brightness: H(128, 128) = 128
+        assert_eq!(blend_channel_parallel(128.0, 128.0).round(), 128.0);
+        // Harmonic mean of 100 and 200: (2 * 100 * 200) / 300 = 133.333
+        assert!((blend_channel_parallel(100.0, 200.0) - 133.33333).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_composite_pixel_opaque_parallel() {
+        let dst = [200, 100, 50, 255];
+        let src = [200, 100, 50, 255];
+        let out = composite_pixel(dst, src, 1.0, ColorBlendMode::Parallel);
+        assert_eq!(out, [200, 100, 50, 255]);
     }
 
     #[test]

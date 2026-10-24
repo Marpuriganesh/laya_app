@@ -26,6 +26,7 @@ import {
   blendChannelHardMix,
   blendChannelDifference,
   blendChannelExclusion,
+  blendChannelParallel,
   modulateTextureAlpha,
   blendPixelColor,
   compositePixelOver,
@@ -93,6 +94,20 @@ describe("Single-Channel Modular Blend Modes", () => {
   it("computes blendPixelColor correctly", () => {
     const blended = blendPixelColor(255, 255, 255, 128, 128, 128, "multiply");
     expect(blended).toEqual([128, 128, 128]);
+  });
+
+  it("computes Krita Parallel blend mode correctly", () => {
+    expect(blendChannelParallel(255, 255)).toBe(255);
+    expect(blendChannelParallel(0, 0)).toBe(0);
+    expect(blendChannelParallel(0, 255)).toBe(0);
+    expect(blendChannelParallel(255, 0)).toBe(0);
+    expect(blendChannelParallel(128, 128)).toBe(128);
+    expect(blendChannelParallel(100, 200)).toBeCloseTo(133.33, 1);
+
+    const blended = blendPixelColor(100, 150, 200, 200, 150, 100, "parallel");
+    expect(blended[0]).toBeCloseTo(133.33, 1);
+    expect(blended[1]).toBe(150);
+    expect(blended[2]).toBeCloseTo(133.33, 1);
   });
 });
 

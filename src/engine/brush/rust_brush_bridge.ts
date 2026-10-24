@@ -15,6 +15,10 @@ export interface BrushConfigDto {
   opacity_by_pressure: boolean;
   is_erase: boolean;
   antialias?: boolean;
+  blend_mode?: string;
+  aspect_ratio?: number;
+  angle_radians?: number;
+  texture_by_pressure?: boolean;
 }
 
 export class RustBrushBridge {

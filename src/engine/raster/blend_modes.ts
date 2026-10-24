@@ -118,6 +118,21 @@ export function blendChannelExclusion(dst: number, src: number): number {
   return dst + src - (2 * dst * src) / 255;
 }
 
+/**
+ * Parallel: Krita parallel / harmonic blend mode.
+ * Calculates the harmonic mean of destination and source channels:
+ * f(d, s) = 2.0 / (1/d + 1/s) = (2.0 * d * s) / (d + s)
+ *
+ * Blends colors in a natural, organic way akin to physical parallel circuits,
+ * producing smooth, physical-like tonal transitions.
+ * If dst + src <= 0, returns 0 to prevent division by zero.
+ */
+export function blendChannelParallel(dst: number, src: number): number {
+  const sum = dst + src;
+  if (sum <= 0) return 0;
+  return Math.min(255, (2 * dst * src) / sum);
+}
+
 // ============================================================================
 // 2. Modular Texture Modes (Krita KisTextureOption Modulation)
 // ============================================================================
@@ -173,6 +188,11 @@ export function modulateTextureAlpha(
     }
     case "lighten": {
       const blended = Math.max(dabAlpha, patternSample);
+      res = dabAlpha + (blended - dabAlpha) * s;
+      break;
+    }
+    case "parallel": {
+      const blended = blendChannelParallel(dabAlpha, patternSample);
       res = dabAlpha + (blended - dabAlpha) * s;
       break;
     }
@@ -486,6 +506,13 @@ export function blendPixelColor(
       const srcLum = calculateLuminosity(sourceRed, sourceGreen, sourceBlue);
       return setLuminosity(destinationRed, destinationGreen, destinationBlue, srcLum);
     }
+
+    case "parallel":
+      return [
+        blendChannelParallel(destinationRed, sourceRed),
+        blendChannelParallel(destinationGreen, sourceGreen),
+        blendChannelParallel(destinationBlue, sourceBlue),
+      ];
 
     default:
       return [sourceRed, sourceGreen, sourceBlue];

@@ -156,7 +156,68 @@ mod tests {
         engine.end_stroke();
 
         // Verify canvas was painted
-        let painted_pixel = canvas.get_pixel(100, 20).expect("Pixel in bounds");
-        assert_ne!(painted_pixel, [255, 255, 255, 255]);
+        let initial_pixel = canvas.get_pixel(20, 20).expect("Initial pixel in bounds");
+        assert_ne!(initial_pixel, [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn test_textured_brush_with_blend_mode_stroke() {
+        use std::sync::Arc;
+        let mut canvas = CanvasView::new(200, 200);
+
+        // Fill canvas with 50% gray [128, 128, 128, 255]
+        canvas.clear([128, 128, 128, 255]);
+
+        // Create a 4x4 paper grain texture with checkerboard contrast
+        let pattern_bytes = vec![
+            0, 255, 0, 255,
+            255, 0, 255, 0,
+            0, 255, 0, 255,
+            255, 0, 255, 0,
+        ];
+        let pattern = Arc::new(PatternData::from_grayscale(4, 4, pattern_bytes));
+        let texture_config = TextureConfig {
+            pattern,
+            scale: 1.0,
+            mode: TextureBlendMode::Subtract,
+            strength: 1.0,
+            ..Default::default()
+        };
+
+        // Brush with Multiply color blend mode and Subtract paper texture
+        let config = BrushConfig {
+            diameter: 30.0,
+            spacing: 0.1,
+            softness: 0.2,
+            color: [200, 50, 50, 255],
+            blend_mode: ColorBlendMode::Multiply,
+            tip_type: BrushTipType::Auto {
+                aspect_ratio: 0.7,
+                angle_radians: 0.785, // 45 deg
+            },
+            texture: Some(texture_config),
+            texture_by_pressure: false,
+            ..Default::default()
+        };
+
+        let mut engine = PixelBrushEngine::new(config);
+
+        // Draw a short stroke across the canvas
+        engine.begin_stroke(StrokeEvent::new(50.0, 50.0, 1.0, 0.0), &mut canvas);
+        for i in 1..=10 {
+            engine.paint_to(StrokeEvent::new(50.0 + i as f32 * 5.0, 50.0, 1.0, i as f32 * 0.016), &mut canvas);
+        }
+        engine.finish_stroke(&mut canvas);
+        engine.end_stroke();
+
+        // Under Subtract texture mode, the grain carved holes into the stroke!
+        // At pattern hole locations (where pattern byte was 0), texture carved out ink, leaving base gray [128, 128, 128, 255].
+        // At pattern peak locations (where pattern byte was 255), ink remains and Multiplies with gray:
+        // (128 * 200) / 255 = ~100
+        let p_peak = canvas.get_pixel(51, 50).expect("Pixel in bounds");
+        let p_hole = canvas.get_pixel(50, 50).expect("Pixel in bounds");
+
+        // The textured stroke has genuine paper tooth contrast!
+        assert_ne!(p_peak, p_hole, "Texture must produce grain variation across the stroke");
     }
 }

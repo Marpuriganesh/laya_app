@@ -23,6 +23,12 @@ pub struct BrushConfig {
     pub antialias: bool,
     /// Color compositing blend mode (Normal, Multiply, Screen, Overlay, etc.)
     pub blend_mode: crate::brush::ColorBlendMode,
+    /// Tip shape configuration: Auto (circle/ellipse with aspect ratio/angle) or Predefined (.gbr image).
+    pub tip_type: crate::brush::tip::BrushTipType,
+    /// Paper texture modulation configuration (Krita KisTextureOption).
+    pub texture: Option<crate::brush::texture::TextureConfig>,
+    /// Whether texture strength scales proportionally with stylus pressure.
+    pub texture_by_pressure: bool,
     /// Optional 256-entry lookup table mapping normalized pressure [0.0..1.0] to response curve output.
     pub pressure_lut: Option<Box<[f32; 256]>>,
     /// Dynamic moving average line art stroke smoothing configuration.
@@ -45,6 +51,9 @@ impl Default for BrushConfig {
             is_erase: false,
             antialias: true,
             blend_mode: crate::brush::ColorBlendMode::Normal,
+            tip_type: crate::brush::tip::BrushTipType::default(),
+            texture: None,
+            texture_by_pressure: false,
             pressure_lut: None,
             moving_average: crate::stroke::MovingAverageConfig::default(),
             pull_string: crate::stroke::PullStringConfig::default(),

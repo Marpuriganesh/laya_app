@@ -17,6 +17,7 @@ pub struct PixelBrushEngine {
     pub moving_average: MovingAverageStabilizer,
     pub pull_string: PullStringStabilizer,
     pub rasterizer: MaskRasterizer,
+    pub tip_rasterizer: crate::brush::tip::BrushTipRasterizer,
     pub blitter: CanvasBlitter,
     scratch_mask: Vec<u8>,
 }
@@ -30,6 +31,7 @@ impl PixelBrushEngine {
             moving_average: MovingAverageStabilizer::new(),
             pull_string: PullStringStabilizer::new(),
             rasterizer: MaskRasterizer::new(),
+            tip_rasterizer: crate::brush::tip::BrushTipRasterizer::new(),
             blitter: CanvasBlitter::new(),
             scratch_mask: Vec::with_capacity(4096),
         }
@@ -43,7 +45,7 @@ impl PixelBrushEngine {
     ) -> Option<Rect> {
         let mut dirty: Option<Rect> = None;
         let config = &self.config;
-        let rasterizer = &self.rasterizer;
+        let tip_rasterizer = &self.tip_rasterizer;
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
 
@@ -52,7 +54,7 @@ impl PixelBrushEngine {
         let seed_event = self.pull_string.begin_stroke(event_after_avg, &self.config.pull_string);
 
         self.trajectory.begin_stroke(seed_event, |dab| {
-            dirty = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas);
+            dirty = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas);
         });
 
         dirty
@@ -66,7 +68,7 @@ impl PixelBrushEngine {
             if let Some(stabilized_event) = self.pull_string.add_event(event_after_avg, &self.config.pull_string) {
                 let mut dirty_rect: Option<Rect> = None;
                 let config = &self.config;
-                let rasterizer = &self.rasterizer;
+                let tip_rasterizer = &self.tip_rasterizer;
                 let blitter = &self.blitter;
                 let scratch = &mut self.scratch_mask;
 
@@ -74,7 +76,7 @@ impl PixelBrushEngine {
                     stabilized_event,
                     |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
                     |dab| {
-                        if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
+                        if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas) {
                             dirty_rect = match dirty_rect {
                                 None => Some(r),
                                 Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -118,7 +120,7 @@ impl PixelBrushEngine {
     pub fn finish_stroke(&mut self, canvas: &mut CanvasView) -> Option<Rect> {
         let mut dirty_rect: Option<Rect> = None;
         let config = &self.config;
-        let rasterizer = &self.rasterizer;
+        let tip_rasterizer = &self.tip_rasterizer;
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
 
@@ -128,7 +130,7 @@ impl PixelBrushEngine {
                 final_event,
                 |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
                 |dab| {
-                    if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
+                    if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas) {
                         dirty_rect = match dirty_rect {
                             None => Some(r),
                             Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -145,7 +147,7 @@ impl PixelBrushEngine {
         self.trajectory.finish_stroke(
             |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
             |dab| {
-                if let Some(r) = Self::paint_dab_impl(dab, config, rasterizer, blitter, scratch, canvas) {
+                if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas) {
                     dirty_rect = match dirty_rect {
                         None => Some(r),
                         Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -194,7 +196,7 @@ impl PixelBrushEngine {
         Self::paint_dab_impl(
             event,
             &self.config,
-            &self.rasterizer,
+            &self.tip_rasterizer,
             &self.blitter,
             &mut self.scratch_mask,
             canvas,
@@ -205,25 +207,61 @@ impl PixelBrushEngine {
     fn paint_dab_impl(
         event: StrokeEvent,
         config: &BrushConfig,
-        rasterizer: &MaskRasterizer,
+        tip_rasterizer: &crate::brush::tip::BrushTipRasterizer,
         blitter: &CanvasBlitter,
         scratch_mask: &mut Vec<u8>,
         canvas: &mut CanvasView,
     ) -> Option<Rect> {
-        let radius = Self::compute_diameter_impl(event.pressure, config) * 0.5;
+        let diameter = Self::compute_diameter_impl(event.pressure, config);
+        let radius = diameter * 0.5;
         let dest_x = (event.x - radius).floor() as i32;
         let dest_y = (event.y - radius).floor() as i32;
         let sub_x = event.x - dest_x as f32;
         let sub_y = event.y - dest_y as f32;
 
-        let (dab_w, dab_h) = rasterizer.render_circle_dab_into(
-            radius,
-            config.softness,
-            sub_x,
-            sub_y,
-            config.antialias,
-            scratch_mask,
-        );
+        // 1. Generate dab mask according to tip geometry (Auto ellipse vs Predefined image)
+        let (dab_w, dab_h) = match config.tip_type {
+            crate::brush::tip::BrushTipType::Auto { aspect_ratio, angle_radians } => {
+                tip_rasterizer.render_auto_brush(
+                    radius,
+                    aspect_ratio,
+                    angle_radians,
+                    config.softness,
+                    sub_x,
+                    sub_y,
+                    config.antialias,
+                    scratch_mask,
+                )
+            }
+            crate::brush::tip::BrushTipType::Predefined { ref tip_data, scale, angle_radians } => {
+                tip_rasterizer.render_predefined_tip(
+                    tip_data,
+                    diameter * scale,
+                    angle_radians,
+                    sub_x,
+                    sub_y,
+                    scratch_mask,
+                )
+            }
+        };
+
+        // 2. Apply paper texture grain modulation in world canvas coordinates if enabled
+        if let Some(ref texture_config) = config.texture {
+            let dyn_strength = if config.texture_by_pressure {
+                Self::map_pressure(event.pressure, config)
+            } else {
+                1.0
+            };
+            crate::brush::texture::apply_texture_to_dab(
+                &mut scratch_mask[..dab_w * dab_h],
+                dab_w,
+                dab_h,
+                dest_x,
+                dest_y,
+                texture_config,
+                dyn_strength,
+            );
+        }
 
         let mut flow_opacity = config.flow * config.opacity;
         if config.opacity_by_pressure {

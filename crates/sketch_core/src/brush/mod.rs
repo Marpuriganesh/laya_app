@@ -15,6 +15,8 @@ pub mod config;
 pub mod engine;
 pub mod rasterizer;
 pub mod rect;
+pub mod texture;
+pub mod tip;
 
 pub use blend::{
     blend_channel_add, blend_channel_color_burn, blend_channel_color_dodge, blend_channel_darken,
@@ -32,6 +34,8 @@ pub use config::BrushConfig;
 pub use engine::PixelBrushEngine;
 pub use rasterizer::MaskRasterizer;
 pub use rect::Rect;
+pub use texture::{apply_texture_to_dab, PatternData, TextureConfig};
+pub use tip::{BrushTipRasterizer, BrushTipType, PredefinedTipData};
 
 // Re-export stroke pipeline types for contract compatibility
 pub use crate::stroke::{StrokeEvent, StrokeStepper, StrokeTrajectory};

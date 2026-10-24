@@ -137,7 +137,7 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     g_cursor_y = (float)loc.y;
 
     NSPoint cp = [self canvasPointFromWindowPoint:loc];
-    BOOL isTablet = ([event subtype] == NSEventSubtypeTabletPoint);
+    BOOL isTablet = ([event type] == NSEventTypeTabletPoint) || ([event subtype] == NSEventSubtypeTabletPoint);
 
     float pressure = (float)[event pressure];
     if (!isTablet && pressure <= 0.001f) {
@@ -161,7 +161,7 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     g_cursor_y = (float)loc.y;
 
     NSPoint cp = [self canvasPointFromWindowPoint:loc];
-    BOOL isTablet = ([event subtype] == NSEventSubtypeTabletPoint);
+    BOOL isTablet = ([event type] == NSEventTypeTabletPoint) || ([event subtype] == NSEventSubtypeTabletPoint);
 
     float pressure = (float)[event pressure];
     if (!isTablet && pressure <= 0.001f) {
@@ -184,7 +184,7 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     g_cursor_y = (float)loc.y;
 
     NSPoint cp = [self canvasPointFromWindowPoint:loc];
-    BOOL isTablet = ([event subtype] == NSEventSubtypeTabletPoint);
+    BOOL isTablet = ([event type] == NSEventTypeTabletPoint) || ([event subtype] == NSEventSubtypeTabletPoint);
 
     float pressure = (float)[event pressure];
     if (!isTablet && pressure <= 0.001f) {
@@ -529,7 +529,7 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                         float winH = (float)mainCanvasWin.contentView.bounds.size.height;
 
                         // Hover tracking for brush reticle
-                        if ([event type] == NSEventTypeMouseMoved) {
+                        if ([event type] == NSEventTypeMouseMoved || (!g_is_drawing && [event type] == NSEventTypeTabletPoint)) {
                             if (NSPointInRect(loc, g_artboard_rect)) {
                                 g_cursor_x = (float)loc.x;
                                 g_cursor_y = (float)loc.y;
@@ -542,9 +542,9 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                             return event; // Always pass hover to React UI
                         }
 
-                        // Active Drawing: If already drawing a stroke, drag and up must always continue/end the stroke
+                        // Active Drawing: If already drawing a stroke, drag/tablet movement and up must continue/end the stroke
                         if (g_is_drawing) {
-                            if ([event type] == NSEventTypeLeftMouseDragged) {
+                            if ([event type] == NSEventTypeLeftMouseDragged || [event type] == NSEventTypeTabletPoint) {
                                 [g_active_workspace_view handleMouseDragged:event];
                                 return nil;
                             } else if ([event type] == NSEventTypeLeftMouseUp) {
