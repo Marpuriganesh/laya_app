@@ -99,9 +99,76 @@ impl WasmBrushEngine {
         };
     }
 
+    /// Configures paper texture modulation (Krita KisTextureOption) from 8-bit grayscale bytes.
+    pub fn set_brush_texture(
+        &mut self,
+        width: u32,
+        height: u32,
+        bytes: &[u8],
+        scale: f32,
+        mode_str: &str,
+        strength: f32,
+        invert: bool,
+        brightness: f32,
+        contrast: f32,
+        by_pressure: bool,
+    ) {
+        use std::sync::Arc;
+        let mode = crate::brush::blend::TextureBlendMode::from_str(mode_str);
+        let pattern = Arc::new(crate::brush::texture::PatternData::from_grayscale(
+            width,
+            height,
+            bytes.to_vec(),
+        ));
+        self.engine.config.texture = Some(crate::brush::texture::TextureConfig {
+            pattern,
+            scale: scale.max(0.01),
+            offset_x: 0,
+            offset_y: 0,
+            brightness,
+            contrast,
+            cutoff_left: 0.0,
+            cutoff_right: 1.0,
+            invert,
+            mode,
+            strength: strength.clamp(0.0, 1.0),
+        });
+        self.engine.config.texture_by_pressure = by_pressure;
+    }
+
     /// Clears any active paper grain texture.
     pub fn clear_brush_texture(&mut self) {
         self.engine.config.texture = None;
+        self.engine.config.texture_by_pressure = false;
+    }
+
+    /// Sets a predefined raster tip mask (.gbr or PNG alpha mask).
+    pub fn set_brush_predefined_tip(
+        &mut self,
+        width: u32,
+        height: u32,
+        mask: &[u8],
+        scale: f32,
+        angle_radians: f32,
+        invert_gbr: bool,
+    ) {
+        use std::sync::Arc;
+        let tip_data = Arc::new(crate::brush::tip::PredefinedTipData::from_gbr_grayscale(
+            width,
+            height,
+            mask,
+            invert_gbr,
+        ));
+        self.engine.config.tip_type = crate::brush::tip::BrushTipType::Predefined {
+            tip_data,
+            scale: scale.max(0.01),
+            angle_radians,
+        };
+    }
+
+    /// Resets brush tip to default Auto circle.
+    pub fn clear_brush_predefined_tip(&mut self) {
+        self.engine.config.tip_type = crate::brush::tip::BrushTipType::default();
     }
 
     /// Configures the dynamic moving average line art stroke stabilizer.

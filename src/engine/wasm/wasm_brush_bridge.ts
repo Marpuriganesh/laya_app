@@ -21,6 +21,9 @@ export interface WasmBrushConfig {
   opacityByPressure: boolean;
   isErase: boolean;
   antialias: boolean;
+  blendMode?: string;
+  aspectRatio?: number;
+  angleRadians?: number;
 }
 
 export class WasmBrushBridge {
@@ -150,6 +153,80 @@ export class WasmBrushBridge {
       c.isErase,
       c.antialias ?? true
     );
+    if (c.blendMode) {
+      this.engine.set_brush_blend_mode(c.isErase ? "erase" : c.blendMode);
+    }
+    if (typeof c.aspectRatio === "number" && typeof c.angleRadians === "number") {
+      this.engine.set_brush_auto_tip(c.aspectRatio, c.angleRadians);
+    }
+  }
+
+  /**
+   * Configures paper grain texture modulation in the WASM engine.
+   */
+  public setTexture(config: {
+    width: number;
+    height: number;
+    bytes: Uint8Array;
+    scale?: number;
+    mode?: string;
+    strength?: number;
+    invert?: boolean;
+    brightness?: number;
+    contrast?: number;
+    byPressure?: boolean;
+  }): void {
+    if (!this.engine) return;
+    this.engine.set_brush_texture(
+      config.width,
+      config.height,
+      config.bytes,
+      config.scale ?? 1.0,
+      config.mode ?? "multiply",
+      config.strength ?? 1.0,
+      config.invert ?? false,
+      config.brightness ?? 0.0,
+      config.contrast ?? 1.0,
+      config.byPressure ?? false
+    );
+  }
+
+  /**
+   * Clears paper grain texture in the WASM engine.
+   */
+  public clearTexture(): void {
+    if (!this.engine) return;
+    this.engine.clear_brush_texture();
+  }
+
+  /**
+   * Sets a predefined raster tip stamp (.gbr or PNG mask) in the WASM engine.
+   */
+  public setPredefinedTip(tip: {
+    width: number;
+    height: number;
+    mask: Uint8Array;
+    scale?: number;
+    angleRadians?: number;
+    invertGbr?: boolean;
+  }): void {
+    if (!this.engine) return;
+    this.engine.set_brush_predefined_tip(
+      tip.width,
+      tip.height,
+      tip.mask,
+      tip.scale ?? 1.0,
+      tip.angleRadians ?? 0.0,
+      tip.invertGbr ?? false
+    );
+  }
+
+  /**
+   * Clears predefined tip in the WASM engine, reverting to Auto analytical tip.
+   */
+  public clearPredefinedTip(): void {
+    if (!this.engine) return;
+    this.engine.clear_brush_predefined_tip();
   }
 
   /**

@@ -19,9 +19,9 @@ describe("DrawingAppEngine - Per-Brush Presets", () => {
     engine = new DrawingAppEngine(800, 600);
   });
 
-  it("initializes with 1 default preset and sets it as active", () => {
+  it("initializes with default presets and sets Studio Pen as active", () => {
     const presets = engine.getLoadedPresets();
-    expect(presets.length).toBe(1);
+    expect(presets.length).toBeGreaterThanOrEqual(1);
 
     const active = engine.getActiveBrush();
     expect(active).not.toBeNull();

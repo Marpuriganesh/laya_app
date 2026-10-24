@@ -324,16 +324,155 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
         let existing_moving_average = session.engine.config.moving_average;
         let existing_pull_string = session.engine.config.pull_string;
         let existing_texture = session.engine.config.texture.clone();
+        let existing_texture_by_pressure = session.engine.config.texture_by_pressure;
+        let existing_tip_type = session.engine.config.tip_type.clone();
+
         let mut new_config: BrushConfig = config.into();
         new_config.pressure_lut = existing_lut;
         new_config.moving_average = existing_moving_average;
         new_config.pull_string = existing_pull_string;
         new_config.texture = existing_texture;
+        new_config.texture_by_pressure = existing_texture_by_pressure;
+
+        // If incoming config did not explicitly provide custom aspect ratio / angle, preserve predefined tip
+        if matches!(existing_tip_type, sketch_core::brush::tip::BrushTipType::Predefined { .. })
+            && new_config.tip_type == sketch_core::brush::tip::BrushTipType::default()
+        {
+            new_config.tip_type = existing_tip_type;
+        }
+
         session.engine.config = new_config;
     }
     #[cfg(target_os = "macos")]
     unsafe {
         trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextureConfigDto {
+    pub width: u32,
+    pub height: u32,
+    pub bytes: Vec<u8>,
+    #[serde(default = "default_scale")]
+    pub scale: f32,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default = "default_strength")]
+    pub strength: f32,
+    #[serde(default)]
+    pub invert: bool,
+    #[serde(default)]
+    pub brightness: f32,
+    #[serde(default = "default_contrast")]
+    pub contrast: f32,
+    #[serde(default)]
+    pub cutoff_left: f32,
+    #[serde(default = "default_cutoff_right")]
+    pub cutoff_right: f32,
+    #[serde(default)]
+    pub by_pressure: bool,
+}
+
+fn default_scale() -> f32 {
+    1.0
+}
+fn default_strength() -> f32 {
+    1.0
+}
+fn default_contrast() -> f32 {
+    1.0
+}
+fn default_cutoff_right() -> f32 {
+    1.0
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_texture(config: TextureConfigDto) -> Result<(), String> {
+    use std::sync::Arc;
+    let mode = if let Some(ref m) = config.mode {
+        sketch_core::brush::blend::TextureBlendMode::from_str(m)
+    } else {
+        sketch_core::brush::blend::TextureBlendMode::Multiply
+    };
+    let pattern = Arc::new(sketch_core::brush::texture::PatternData::from_grayscale(
+        config.width,
+        config.height,
+        config.bytes,
+    ));
+    let texture = sketch_core::brush::texture::TextureConfig {
+        pattern,
+        scale: config.scale.max(0.01),
+        offset_x: 0,
+        offset_y: 0,
+        brightness: config.brightness,
+        contrast: config.contrast,
+        cutoff_left: config.cutoff_left,
+        cutoff_right: config.cutoff_right,
+        invert: config.invert,
+        mode,
+        strength: config.strength.clamp(0.0, 1.0),
+    };
+
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.texture = Some(texture);
+        session.engine.config.texture_by_pressure = config.by_pressure;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_clear_texture() -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.texture = None;
+        session.engine.config.texture_by_pressure = false;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredefinedTipDto {
+    pub width: u32,
+    pub height: u32,
+    pub mask: Vec<u8>,
+    #[serde(default = "default_scale")]
+    pub scale: f32,
+    #[serde(default)]
+    pub angle_radians: f32,
+    #[serde(default)]
+    pub invert_gbr: bool,
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_predefined_tip(tip: PredefinedTipDto) -> Result<(), String> {
+    use std::sync::Arc;
+    let tip_data = Arc::new(sketch_core::brush::tip::PredefinedTipData::from_gbr_grayscale(
+        tip.width,
+        tip.height,
+        &tip.mask,
+        tip.invert_gbr,
+    ));
+    let tip_type = sketch_core::brush::tip::BrushTipType::Predefined {
+        tip_data,
+        scale: tip.scale.max(0.01),
+        angle_radians: tip.angle_radians,
+    };
+
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.tip_type = tip_type;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_clear_predefined_tip() -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.tip_type = sketch_core::brush::tip::BrushTipType::default();
     }
     Ok(())
 }

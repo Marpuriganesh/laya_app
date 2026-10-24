@@ -288,4 +288,74 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
     const finishDirty = engine.finish_stroke();
     expect(finishDirty).toBeDefined();
   });
+
+  it("modulates stroke with paper grain texture in Wasm", () => {
+    const engine = new WasmBrushEngine(200, 200);
+    // Fill canvas with opaque white [255, 255, 255, 255]
+    engine.clear(255, 255, 255, 255);
+
+    engine.set_brush_config(
+      32, 0.08, 0.2,
+      0, 0, 0, 255, // black ink
+      1.0, 1.0,
+      false, false, false, true
+    );
+
+    // Create 4x4 checkerboard texture
+    const checker = new Uint8Array([
+      0, 255, 0, 255,
+      255, 0, 255, 0,
+      0, 255, 0, 255,
+      255, 0, 255, 0,
+    ]);
+
+    // Apply texture with subtract mode
+    engine.set_brush_texture(4, 4, checker, 1.0, "subtract", 1.0, false, 0.0, 1.0, false);
+
+    engine.begin_stroke(50, 50, 1.0);
+    for (let i = 1; i <= 5; i++) {
+      engine.paint_to(50 + i * 5, 50, 1.0);
+    }
+    engine.finish_stroke();
+    engine.end_stroke();
+
+    // Verify sub-rect pixel copy has textured variation
+    const sub = new Uint8Array(20 * 20 * 4);
+    engine.copy_sub_rect(45, 45, 20, 20, sub);
+
+    // There should be both dark inked pixels and paper-preserved pixels
+    let darkCount = 0;
+    let lightCount = 0;
+    for (let i = 0; i < sub.length; i += 4) {
+      if (sub[i] < 100) darkCount++;
+      if (sub[i] > 200) lightCount++;
+    }
+    expect(darkCount).toBeGreaterThan(0);
+    expect(lightCount).toBeGreaterThan(0);
+  });
+
+  it("applies Krita Parallel blend mode in Wasm", () => {
+    const engine = new WasmBrushEngine(100, 100);
+    // Fill with mid gray [128, 128, 128, 255]
+    engine.clear(128, 128, 128, 255);
+
+    engine.set_brush_config(
+      24, 0.1, 0.0,
+      128, 128, 128, 255, // mid gray ink
+      1.0, 1.0,
+      false, false, false, true
+    );
+    engine.set_brush_blend_mode("parallel");
+
+    engine.begin_stroke(50, 50, 1.0);
+    engine.finish_stroke();
+    engine.end_stroke();
+
+    // Harmonic mean of 128 and 128 is 128
+    const sub = new Uint8Array(4);
+    engine.copy_sub_rect(50, 50, 1, 1, sub);
+    expect(sub[0]).toBe(128);
+    expect(sub[1]).toBe(128);
+    expect(sub[2]).toBe(128);
+  });
 });

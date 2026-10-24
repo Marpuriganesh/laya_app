@@ -4,6 +4,34 @@
  * Aligned with Krita's .kpp XML schema and Photoshop ABR brush definitions.
  */
 
+import type { TextureBlendMode } from "./raster";
+
+/**
+ * Configuration for paper texture / canvas grain modulation (Krita KisTextureOption).
+ */
+export interface BrushTextureConfig {
+  readonly patternId: string;
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+  /** 8-bit grayscale luminance bytes [0..255] */
+  readonly bytes: Uint8Array | Uint8ClampedArray;
+  /** Texture scale multiplier (default: 1.0) */
+  readonly scale: number;
+  /** Texture blend mode (Multiply, Subtract, Add, Screen, etc.) */
+  readonly mode: TextureBlendMode;
+  /** Modulation strength [0.0..1.0] (default: 1.0) */
+  readonly strength: number;
+  /** Whether texture strength scales with stylus pressure */
+  readonly byPressure: boolean;
+  /** Whether texture luminance is inverted */
+  readonly invert?: boolean;
+  /** Brightness adjustment [-1.0..1.0] */
+  readonly brightness?: number;
+  /** Contrast adjustment [0.0..2.0] */
+  readonly contrast?: number;
+}
+
 /**
  * Sensor inputs that can drive brush dynamics parameters.
  * Directly mirrors Krita's <param name="..."> dynamics bindings.
@@ -160,6 +188,8 @@ export interface PixelBrushParameters {
   readonly flowDynamics: DynamicsMapping | null;
   readonly angleDynamics: DynamicsMapping | null;
   readonly scatterDynamics: DynamicsMapping | null;
+  /** Optional paper grain texture modulation (Krita KisTextureOption) */
+  readonly grainTexture?: BrushTextureConfig | null;
 }
 
 /**

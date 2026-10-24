@@ -168,6 +168,88 @@ export class RustBrushBridge {
       console.warn("Failed to clear native canvas:", err);
     }
   }
+
+  public async setTexture(config: {
+    width: number;
+    height: number;
+    bytes: Uint8Array | number[];
+    scale?: number;
+    mode?: string;
+    strength?: number;
+    invert?: boolean;
+    brightness?: number;
+    contrast?: number;
+    cutoffLeft?: number;
+    cutoffRight?: number;
+    byPressure?: boolean;
+  }): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      const bytesArray = config.bytes instanceof Uint8Array ? Array.from(config.bytes) : config.bytes;
+      await this.invokeFn("rust_brush_set_texture", {
+        config: {
+          width: config.width,
+          height: config.height,
+          bytes: bytesArray,
+          scale: config.scale ?? 1.0,
+          mode: config.mode ?? "multiply",
+          strength: config.strength ?? 1.0,
+          invert: config.invert ?? false,
+          brightness: config.brightness ?? 0.0,
+          contrast: config.contrast ?? 1.0,
+          cutoff_left: config.cutoffLeft ?? 0.0,
+          cutoff_right: config.cutoffRight ?? 1.0,
+          by_pressure: config.byPressure ?? false,
+        },
+      });
+    } catch (err) {
+      console.warn("Failed to set brush texture in Rust:", err);
+    }
+  }
+
+  public async clearTexture(): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_clear_texture");
+    } catch (err) {
+      console.warn("Failed to clear brush texture in Rust:", err);
+    }
+  }
+
+  public async setPredefinedTip(tip: {
+    width: number;
+    height: number;
+    mask: Uint8Array | number[];
+    scale?: number;
+    angleRadians?: number;
+    invertGbr?: boolean;
+  }): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      const maskArray = tip.mask instanceof Uint8Array ? Array.from(tip.mask) : tip.mask;
+      await this.invokeFn("rust_brush_set_predefined_tip", {
+        tip: {
+          width: tip.width,
+          height: tip.height,
+          mask: maskArray,
+          scale: tip.scale ?? 1.0,
+          angle_radians: tip.angleRadians ?? 0.0,
+          invert_gbr: tip.invertGbr ?? false,
+        },
+      });
+    } catch (err) {
+      console.warn("Failed to set predefined tip in Rust:", err);
+    }
+  }
+
+  public async clearPredefinedTip(): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_clear_predefined_tip");
+    } catch (err) {
+      console.warn("Failed to clear predefined tip in Rust:", err);
+    }
+  }
 }
 
 export const globalRustBrushBridge = new RustBrushBridge();
