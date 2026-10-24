@@ -1,15 +1,21 @@
 use serde::{Deserialize, Serialize};
-use sketch_core::{BrushConfig, CanvasView, PixelBrushEngine, StrokeEvent};
+use sketch_core::{
+    parse_gbr, parse_pat, BrushConfig, BrushTipType, ColorBlendMode, CompositeStack,
+    PatternData, PatternRegistry, PixelBrushEngine, PredefinedTipData, StrokeEvent,
+    TextureBlendMode, TextureConfig, TipRegistry,
+};
 use std::sync::Mutex;
 
-/// Shared application state managing the active Rust canvas buffer and brush engine.
+/// Shared application state managing the active Rust composite canvas stack and brush engine.
 pub struct BrushEngineState {
     pub inner: Mutex<BrushSession>,
 }
 
 pub struct BrushSession {
-    pub canvas: CanvasView,
+    pub stack: CompositeStack,
     pub engine: PixelBrushEngine,
+    pub tip_registry: TipRegistry,
+    pub pattern_registry: PatternRegistry,
     pub stroke_start_time: std::time::Instant,
 }
 
@@ -17,7 +23,7 @@ impl Default for BrushEngineState {
     fn default() -> Self {
         Self {
             inner: Mutex::new(BrushSession {
-                canvas: CanvasView::new(1920, 1080),
+                stack: CompositeStack::with_background(1920, 1080, [255, 255, 255, 255], true),
                 engine: PixelBrushEngine::new(BrushConfig {
                     diameter: 32.0,
                     spacing: 0.08,
@@ -29,14 +35,16 @@ impl Default for BrushEngineState {
                     opacity_by_pressure: false,
                     is_erase: false,
                     antialias: true,
-                    blend_mode: sketch_core::brush::ColorBlendMode::Normal,
-                    tip_type: sketch_core::brush::tip::BrushTipType::default(),
+                    blend_mode: ColorBlendMode::Normal,
+                    tip_type: BrushTipType::default(),
                     texture: None,
                     texture_by_pressure: false,
                     pressure_lut: None,
                     moving_average: sketch_core::stroke::MovingAverageConfig::default(),
                     pull_string: sketch_core::stroke::PullStringConfig::default(),
                 }),
+                tip_registry: TipRegistry::new(),
+                pattern_registry: PatternRegistry::new(),
                 stroke_start_time: std::time::Instant::now(),
             }),
         }
@@ -60,19 +68,26 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         opacity_by_pressure: false,
         is_erase: false,
         antialias: true,
-        blend_mode: sketch_core::brush::ColorBlendMode::Normal,
-        tip_type: sketch_core::brush::tip::BrushTipType::default(),
+        blend_mode: ColorBlendMode::Normal,
+        tip_type: BrushTipType::default(),
         texture: None,
         texture_by_pressure: false,
         pressure_lut: None,
         moving_average: sketch_core::stroke::MovingAverageConfig::default(),
         pull_string: sketch_core::stroke::PullStringConfig::default(),
     });
-    // Transparent background: the React artboard paper div provides the white/checkerboard
-    // surface behind the ink. The native canvas only holds painted stroke pixels.
+
+    let (tips, patterns) = if let Some(s) = guard.as_ref() {
+        (s.tip_registry.clone(), s.pattern_registry.clone())
+    } else {
+        (TipRegistry::new(), PatternRegistry::new())
+    };
+
     *guard = Some(BrushSession {
-        canvas: CanvasView::with_color(width, height, [0, 0, 0, 0]),
+        stack: CompositeStack::with_background(width, height, [255, 255, 255, 255], true),
         engine: PixelBrushEngine::new(config),
+        tip_registry: tips,
+        pattern_registry: patterns,
         stroke_start_time: std::time::Instant::now(),
     });
 }
@@ -83,7 +98,7 @@ pub extern "C" fn rust_overlay_begin_stroke(x: f32, y: f32, pressure: f32) {
     if let Some(session) = guard.as_mut() {
         session.stroke_start_time = std::time::Instant::now();
         let event = StrokeEvent::new(x, y, pressure, 0.0);
-        let _ = session.engine.begin_stroke(event, &mut session.canvas);
+        let _ = session.engine.begin_stroke_on_stack(event, &mut session.stack);
     }
 }
 
@@ -93,7 +108,7 @@ pub extern "C" fn rust_overlay_paint_event(x: f32, y: f32, pressure: f32) {
     if let Some(session) = guard.as_mut() {
         let time_sec = session.stroke_start_time.elapsed().as_secs_f32();
         let event = StrokeEvent::new(x, y, pressure, time_sec);
-        let _ = session.engine.paint_to(event, &mut session.canvas);
+        let _ = session.engine.paint_to_stack(event, &mut session.stack);
     }
 }
 
@@ -101,7 +116,7 @@ pub extern "C" fn rust_overlay_paint_event(x: f32, y: f32, pressure: f32) {
 pub extern "C" fn rust_overlay_end_stroke() {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
-        let _ = session.engine.finish_stroke(&mut session.canvas);
+        let _ = session.engine.finish_stroke_on_stack(&mut session.stack);
         session.engine.end_stroke();
     }
 }
@@ -111,12 +126,12 @@ pub extern "C" fn rust_overlay_get_pixels(out_width: *mut i32, out_height: *mut 
     let guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_ref() {
         if !out_width.is_null() {
-            unsafe { *out_width = session.canvas.width as i32 };
+            unsafe { *out_width = session.stack.width as i32 };
         }
         if !out_height.is_null() {
-            unsafe { *out_height = session.canvas.height as i32 };
+            unsafe { *out_height = session.stack.height as i32 };
         }
-        session.canvas.as_slice().as_ptr()
+        session.stack.get_display_pixels().as_ptr()
     } else {
         std::ptr::null()
     }
@@ -246,7 +261,307 @@ pub async fn rust_set_document_size(width: u32, height: u32) -> Result<(), Strin
     Ok(())
 }
 
-/// DTO for brush configuration updates from the React UI.
+// ============================================================================
+// Layer Management Tauri IPC Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn rust_layer_add(id: String, name: String) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.add_layer(id, name)?;
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_delete(id: String) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.remove_layer(&id)?;
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_duplicate(
+    source_id: String,
+    new_id: String,
+    new_name: String,
+) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.duplicate_layer(&source_id, new_id, new_name)?;
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_active(id: String) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        if !session.stack.set_active_layer(&id) {
+            return Err(format!("Layer '{}' not found", id));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_opacity(id: String, opacity: f32) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_opacity(&id, opacity);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_blend_mode(id: String, blend_mode: String) -> Result<(), String> {
+    let mode = ColorBlendMode::from_str(&blend_mode);
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_blend_mode(&id, mode);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_visibility(id: String, visible: bool) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_visibility(&id, visible);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_reorder(ordered_ids: Vec<String>) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.reorder_layers(&ordered_ids)?;
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_clear_active() -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.clear_active_layer();
+        session.engine.end_stroke();
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_set_background_color(r: u8, g: u8, b: u8, a: u8) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_background_color([r, g, b, a]);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_set_background_visible(visible: bool) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_background_visible(visible);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Resource Management Tauri IPC Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn rust_resource_register_tip_gbr(id: String, bytes: Vec<u8>) -> Result<String, String> {
+    let (tip, name) = parse_gbr(&bytes)?;
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.tip_registry.register(id, name.clone(), tip);
+    }
+    Ok(name)
+}
+
+#[tauri::command]
+pub async fn rust_resource_register_tip_mask(
+    id: String,
+    name: String,
+    width: u32,
+    height: u32,
+    mask: Vec<u8>,
+    invert: bool,
+) -> Result<(), String> {
+    let tip = if mask.len() == (width * height * 4) as usize {
+        PredefinedTipData::from_rgba(width, height, &mask)
+    } else {
+        PredefinedTipData::from_gbr_grayscale(width, height, &mask, invert)
+    };
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.tip_registry.register(id, name, tip);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_resource_set_active_tip(
+    tip_id: Option<String>,
+    scale: f32,
+    angle_radians: f32,
+) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        if let Some(ref id) = tip_id {
+            if let Some(tip_data) = session.tip_registry.get(id) {
+                session.engine.config.tip_type = BrushTipType::Predefined {
+                    tip_data,
+                    scale: scale.max(0.01),
+                    angle_radians,
+                };
+            } else {
+                return Err(format!("Tip '{}' not found in registry", id));
+            }
+        } else {
+            session.engine.config.tip_type = BrushTipType::default();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_resource_register_pattern_pat(
+    id: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let (pat, name) = parse_pat(&bytes)?;
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.pattern_registry.register(id, name.clone(), pat);
+    }
+    Ok(name)
+}
+
+#[tauri::command]
+pub async fn rust_resource_register_pattern_grayscale(
+    id: String,
+    name: String,
+    width: u32,
+    height: u32,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    let pat = PatternData::from_grayscale(width, height, bytes);
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.pattern_registry.register(id, name, pat);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_resource_register_pattern_rgba(
+    id: String,
+    name: String,
+    width: u32,
+    height: u32,
+    rgba_bytes: Vec<u8>,
+) -> Result<(), String> {
+    let pat = PatternData::from_rgba(width, height, &rgba_bytes);
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.pattern_registry.register(id, name, pat);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_resource_set_active_pattern(
+    pattern_id: Option<String>,
+    scale: f32,
+    mode: String,
+    strength: f32,
+    invert: bool,
+    brightness: f32,
+    contrast: f32,
+    by_pressure: bool,
+) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        if let Some(ref id) = pattern_id {
+            if let Some(pattern) = session.pattern_registry.get(id) {
+                let blend_mode = TextureBlendMode::from_str(&mode);
+                session.engine.config.texture = Some(TextureConfig {
+                    pattern,
+                    scale: scale.max(0.01),
+                    offset_x: 0,
+                    offset_y: 0,
+                    brightness,
+                    contrast,
+                    cutoff_left: 0.0,
+                    cutoff_right: 1.0,
+                    invert,
+                    mode: blend_mode,
+                    strength: strength.clamp(0.0, 1.0),
+                });
+                session.engine.config.texture_by_pressure = by_pressure;
+            } else {
+                return Err(format!("Pattern '{}' not found in registry", id));
+            }
+        } else {
+            session.engine.config.texture = None;
+            session.engine.config.texture_by_pressure = false;
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Brush Configuration DTO & Handlers
+// ============================================================================
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrushConfigDto {
     pub diameter: f32,
@@ -278,20 +593,20 @@ fn default_true() -> bool {
 impl From<BrushConfigDto> for BrushConfig {
     fn from(dto: BrushConfigDto) -> Self {
         let blend_mode = if dto.is_erase {
-            sketch_core::brush::ColorBlendMode::Erase
+            ColorBlendMode::Erase
         } else if let Some(ref m) = dto.blend_mode {
-            sketch_core::brush::ColorBlendMode::from_str(m)
+            ColorBlendMode::from_str(m)
         } else {
-            sketch_core::brush::ColorBlendMode::Normal
+            ColorBlendMode::Normal
         };
 
         let tip_type = if let (Some(ar), Some(ang)) = (dto.aspect_ratio, dto.angle_radians) {
-            sketch_core::brush::tip::BrushTipType::Auto {
+            BrushTipType::Auto {
                 aspect_ratio: ar,
                 angle_radians: ang,
             }
         } else {
-            sketch_core::brush::tip::BrushTipType::default()
+            BrushTipType::default()
         };
 
         Self {
@@ -334,9 +649,8 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
         new_config.texture = existing_texture;
         new_config.texture_by_pressure = existing_texture_by_pressure;
 
-        // If incoming config did not explicitly provide custom aspect ratio / angle, preserve predefined tip
-        if matches!(existing_tip_type, sketch_core::brush::tip::BrushTipType::Predefined { .. })
-            && new_config.tip_type == sketch_core::brush::tip::BrushTipType::default()
+        if matches!(existing_tip_type, BrushTipType::Predefined { .. })
+            && new_config.tip_type == BrushTipType::default()
         {
             new_config.tip_type = existing_tip_type;
         }
@@ -346,133 +660,6 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
     #[cfg(target_os = "macos")]
     unsafe {
         trigger_native_overlay_repaint();
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TextureConfigDto {
-    pub width: u32,
-    pub height: u32,
-    pub bytes: Vec<u8>,
-    #[serde(default = "default_scale")]
-    pub scale: f32,
-    #[serde(default)]
-    pub mode: Option<String>,
-    #[serde(default = "default_strength")]
-    pub strength: f32,
-    #[serde(default)]
-    pub invert: bool,
-    #[serde(default)]
-    pub brightness: f32,
-    #[serde(default = "default_contrast")]
-    pub contrast: f32,
-    #[serde(default)]
-    pub cutoff_left: f32,
-    #[serde(default = "default_cutoff_right")]
-    pub cutoff_right: f32,
-    #[serde(default)]
-    pub by_pressure: bool,
-}
-
-fn default_scale() -> f32 {
-    1.0
-}
-fn default_strength() -> f32 {
-    1.0
-}
-fn default_contrast() -> f32 {
-    1.0
-}
-fn default_cutoff_right() -> f32 {
-    1.0
-}
-
-#[tauri::command]
-pub async fn rust_brush_set_texture(config: TextureConfigDto) -> Result<(), String> {
-    use std::sync::Arc;
-    let mode = if let Some(ref m) = config.mode {
-        sketch_core::brush::blend::TextureBlendMode::from_str(m)
-    } else {
-        sketch_core::brush::blend::TextureBlendMode::Multiply
-    };
-    let pattern = Arc::new(sketch_core::brush::texture::PatternData::from_grayscale(
-        config.width,
-        config.height,
-        config.bytes,
-    ));
-    let texture = sketch_core::brush::texture::TextureConfig {
-        pattern,
-        scale: config.scale.max(0.01),
-        offset_x: 0,
-        offset_y: 0,
-        brightness: config.brightness,
-        contrast: config.contrast,
-        cutoff_left: config.cutoff_left,
-        cutoff_right: config.cutoff_right,
-        invert: config.invert,
-        mode,
-        strength: config.strength.clamp(0.0, 1.0),
-    };
-
-    let mut guard = GLOBAL_SESSION.lock().unwrap();
-    if let Some(session) = guard.as_mut() {
-        session.engine.config.texture = Some(texture);
-        session.engine.config.texture_by_pressure = config.by_pressure;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn rust_brush_clear_texture() -> Result<(), String> {
-    let mut guard = GLOBAL_SESSION.lock().unwrap();
-    if let Some(session) = guard.as_mut() {
-        session.engine.config.texture = None;
-        session.engine.config.texture_by_pressure = false;
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PredefinedTipDto {
-    pub width: u32,
-    pub height: u32,
-    pub mask: Vec<u8>,
-    #[serde(default = "default_scale")]
-    pub scale: f32,
-    #[serde(default)]
-    pub angle_radians: f32,
-    #[serde(default)]
-    pub invert_gbr: bool,
-}
-
-#[tauri::command]
-pub async fn rust_brush_set_predefined_tip(tip: PredefinedTipDto) -> Result<(), String> {
-    use std::sync::Arc;
-    let tip_data = Arc::new(sketch_core::brush::tip::PredefinedTipData::from_gbr_grayscale(
-        tip.width,
-        tip.height,
-        &tip.mask,
-        tip.invert_gbr,
-    ));
-    let tip_type = sketch_core::brush::tip::BrushTipType::Predefined {
-        tip_data,
-        scale: tip.scale.max(0.01),
-        angle_radians: tip.angle_radians,
-    };
-
-    let mut guard = GLOBAL_SESSION.lock().unwrap();
-    if let Some(session) = guard.as_mut() {
-        session.engine.config.tip_type = tip_type;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn rust_brush_clear_predefined_tip() -> Result<(), String> {
-    let mut guard = GLOBAL_SESSION.lock().unwrap();
-    if let Some(session) = guard.as_mut() {
-        session.engine.config.tip_type = sketch_core::brush::tip::BrushTipType::default();
     }
     Ok(())
 }
@@ -555,13 +742,11 @@ pub async fn rust_brush_set_modal_open(is_open: bool) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn rust_brush_clear(
-    fill_color: Option<[u8; 4]>,
+    _fill_color: Option<[u8; 4]>,
 ) -> Result<(), String> {
-    // Default to fully transparent so the React artboard paper shows through.
-    let fill = fill_color.unwrap_or([0, 0, 0, 0]);
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
-        session.canvas.clear(fill);
+        session.stack.clear_active_layer();
         session.engine.end_stroke();
     }
     #[cfg(target_os = "macos")]

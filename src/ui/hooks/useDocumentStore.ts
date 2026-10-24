@@ -23,6 +23,8 @@ import {
   DEFAULT_MOVING_AVERAGE_CONFIG,
 } from "@/types/brush";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
+import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
+import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
 
 export interface DocumentState {
   document: DocumentConfiguration;
@@ -271,6 +273,10 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         locked: false,
       };
 
+      // Sync layer creation to Rust core
+      globalRustBrushBridge.addLayer(newLayer.id, newLayer.name);
+      globalWasmBrushBridge.addLayer(newLayer.id, newLayer.name);
+
       // Insert above current active layer or at the very top (index 0)
       const activeIndex = existingLayers.findIndex((l) => l.id === state.layerStack.activeLayerId);
       const insertIndex = activeIndex >= 0 ? activeIndex : 0;
@@ -296,6 +302,10 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       if (!target || target.isBackground || existingLayers.filter((l) => !l.isBackground).length <= 1) {
         return state;
       }
+
+      // Sync layer deletion to Rust core
+      globalRustBrushBridge.deleteLayer(id);
+      globalWasmBrushBridge.removeLayer(id);
 
       const nextLayers = existingLayers.filter((l) => l.id !== id);
       const nextActiveId =
@@ -326,6 +336,10 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         isBackground: false,
       };
 
+      // Sync layer duplication to Rust core
+      globalRustBrushBridge.duplicateLayer(target.id, clonedLayer.id, clonedLayer.name);
+      globalWasmBrushBridge.duplicateLayer(target.id, clonedLayer.id, clonedLayer.name);
+
       const nextLayers = [
         ...existingLayers.slice(0, targetIndex),
         clonedLayer,
@@ -340,23 +354,34 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       };
     }),
 
-  setActiveLayerId: (activeLayerId: string) =>
+  setActiveLayerId: (activeLayerId: string) => {
+    globalRustBrushBridge.setActiveLayer(activeLayerId);
+    globalWasmBrushBridge.setActiveLayer(activeLayerId);
     set((state) => ({
       layerStack: {
         ...state.layerStack,
         activeLayerId,
       },
-    })),
+    }));
+  },
 
   toggleLayerVisibility: (id: string) =>
-    set((state) => ({
-      layerStack: {
-        ...state.layerStack,
-        layers: state.layerStack.layers.map((l) =>
-          l.id === id ? { ...l, visible: !l.visible } : l
-        ),
-      },
-    })),
+    set((state) => {
+      const target = state.layerStack.layers.find((l) => l.id === id);
+      if (target) {
+        const nextVisible = !target.visible;
+        globalRustBrushBridge.setLayerVisibility(id, nextVisible);
+        globalWasmBrushBridge.setLayerVisibility(id, nextVisible);
+      }
+      return {
+        layerStack: {
+          ...state.layerStack,
+          layers: state.layerStack.layers.map((l) =>
+            l.id === id ? { ...l, visible: !l.visible } : l
+          ),
+        },
+      };
+    }),
 
   toggleLayerLock: (id: string) =>
     set((state) => ({
@@ -368,17 +393,23 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       },
     })),
 
-  setLayerOpacity: (id: string, opacity: number) =>
+  setLayerOpacity: (id: string, opacity: number) => {
+    const clamped = Math.max(0, Math.min(1, opacity));
+    globalRustBrushBridge.setLayerOpacity(id, clamped);
+    globalWasmBrushBridge.setLayerOpacity(id, clamped);
     set((state) => ({
       layerStack: {
         ...state.layerStack,
         layers: state.layerStack.layers.map((l) =>
-          l.id === id ? { ...l, opacity: Math.max(0, Math.min(1, opacity)) } : l
+          l.id === id ? { ...l, opacity: clamped } : l
         ),
       },
-    })),
+    }));
+  },
 
-  setLayerBlendMode: (id: string, blendMode: LayerBlendMode) =>
+  setLayerBlendMode: (id: string, blendMode: LayerBlendMode) => {
+    globalRustBrushBridge.setLayerBlendMode(id, blendMode);
+    globalWasmBrushBridge.setLayerBlendMode(id, blendMode);
     set((state) => ({
       layerStack: {
         ...state.layerStack,
@@ -386,7 +417,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
           l.id === id ? { ...l, blendMode } : l
         ),
       },
-    })),
+    }));
+  },
 
   renameLayer: (id: string, name: string) =>
     set((state) => ({

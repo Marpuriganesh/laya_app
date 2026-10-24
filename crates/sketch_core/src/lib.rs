@@ -6,10 +6,12 @@
 
 pub mod stroke;
 pub mod brush;
+pub mod composite;
 pub mod wasm;
 
 pub use stroke::*;
 pub use brush::*;
+pub use composite::*;
 pub use wasm::*;
 
 
@@ -219,5 +221,41 @@ mod tests {
 
         // The textured stroke has genuine paper tooth contrast!
         assert_ne!(p_peak, p_hole, "Texture must produce grain variation across the stroke");
+    }
+
+    #[test]
+    fn test_engine_painting_on_composite_stack() {
+        let mut stack = crate::composite::CompositeStack::new(200, 200);
+
+        // Configure brush with black color
+        let config = BrushConfig {
+            diameter: 20.0,
+            spacing: 0.1,
+            softness: 0.1,
+            color: [0, 0, 0, 255],
+            ..Default::default()
+        };
+        let mut engine = PixelBrushEngine::new(config);
+
+        // Draw a stroke on stack
+        let r1 = engine.begin_stroke_on_stack(StrokeEvent::new(50.0, 50.0, 1.0, 0.0), &mut stack);
+        assert!(r1.is_some());
+        let r2 = engine.paint_to_stack(StrokeEvent::new(80.0, 50.0, 1.0, 0.1), &mut stack);
+        assert!(r2.is_some());
+        engine.finish_stroke_on_stack(&mut stack);
+        engine.end_stroke();
+
+        // Active layer buffer has ink
+        let active_layer = stack.active_layer().unwrap();
+        let layer_pixel = active_layer.buffer.get_pixel(50, 50).unwrap();
+        assert_eq!(layer_pixel[3], 255); // Opaque ink
+
+        // Display framebuffer also has the ink composited over white paper!
+        let display_pixel = stack.display_framebuffer.get_pixel(50, 50).unwrap();
+        assert_eq!(display_pixel, [0, 0, 0, 255]);
+
+        // Untouched area remains white paper
+        let untouched = stack.display_framebuffer.get_pixel(10, 10).unwrap();
+        assert_eq!(untouched, [255, 255, 255, 255]);
     }
 }

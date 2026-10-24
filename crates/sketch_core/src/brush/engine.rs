@@ -3,6 +3,7 @@ use crate::brush::canvas::CanvasView;
 use crate::brush::config::BrushConfig;
 use crate::brush::rasterizer::MaskRasterizer;
 use crate::brush::rect::Rect;
+use crate::composite::CompositeStack;
 use crate::stroke::event::StrokeEvent;
 use crate::stroke::moving_average::MovingAverageStabilizer;
 use crate::stroke::pull_string::PullStringStabilizer;
@@ -164,6 +165,63 @@ impl PixelBrushEngine {
         self.moving_average.reset();
         self.pull_string.reset();
         self.trajectory.end_stroke();
+    }
+
+    /// Begins a stroke on the active layer of a composite stack, immediately
+    /// updating the display framebuffer's dirty region.
+    pub fn begin_stroke_on_stack(
+        &mut self,
+        start_event: StrokeEvent,
+        stack: &mut CompositeStack,
+    ) -> Option<Rect> {
+        let dirty = if let Some(active_layer) = stack.active_layer_mut() {
+            if active_layer.locked || !active_layer.visible {
+                return None;
+            }
+            self.begin_stroke(start_event, &mut active_layer.buffer)
+        } else {
+            None
+        };
+        if let Some(ref r) = dirty {
+            stack.composite_rect(r);
+        }
+        dirty
+    }
+
+    /// Paints to the active layer of a composite stack, updating the display framebuffer's dirty region.
+    pub fn paint_to_stack(
+        &mut self,
+        next_event: StrokeEvent,
+        stack: &mut CompositeStack,
+    ) -> Option<Rect> {
+        let dirty = if let Some(active_layer) = stack.active_layer_mut() {
+            if active_layer.locked || !active_layer.visible {
+                return None;
+            }
+            self.paint_to(next_event, &mut active_layer.buffer)
+        } else {
+            None
+        };
+        if let Some(ref r) = dirty {
+            stack.composite_rect(r);
+        }
+        dirty
+    }
+
+    /// Finishes the stroke on the active layer of a composite stack.
+    pub fn finish_stroke_on_stack(&mut self, stack: &mut CompositeStack) -> Option<Rect> {
+        let dirty = if let Some(active_layer) = stack.active_layer_mut() {
+            if active_layer.locked || !active_layer.visible {
+                return None;
+            }
+            self.finish_stroke(&mut active_layer.buffer)
+        } else {
+            None
+        };
+        if let Some(ref r) = dirty {
+            stack.composite_rect(r);
+        }
+        dirty
     }
 
     /// Computes instantaneous dab diameter accounting for pressure sensitivity.

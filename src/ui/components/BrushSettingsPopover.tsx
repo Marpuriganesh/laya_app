@@ -1,21 +1,55 @@
 import { useState, useEffect, useCallback, useRef, type FC } from "react";
-import { SlidersHorizontal, Trash2, Activity, Spline, ChevronRight, Waves, PenLine, Save, Check, Layers } from "lucide-react";
+import {
+  SlidersHorizontal,
+  Trash2,
+  Activity,
+  Spline,
+  ChevronRight,
+  Waves,
+  PenLine,
+  Save,
+  Check,
+  FolderOpen,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
+import { globalRustBrushBridge, type ResourceItemDto } from "@/engine/brush/rust_brush_bridge";
+import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
 import { CurveEditor } from "@/ui/components/CurveEditor";
 import { BrushScratchpad } from "@/ui/components/BrushScratchpad";
 import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
-import type { BrushPreset, BrushTextureConfig } from "@/types/brush";
-import type { BlendMode, TextureBlendMode } from "@/types/raster";
-import {
-  createDefaultCharcoalTextureConfig,
-  createDefaultCanvasTextureConfig,
-  createDefaultColdPressTextureConfig,
-} from "@/engine/brush/procedural_textures";
+import type { BrushPreset } from "@/types/brush";
 
 export interface BrushStudioContentProps {
   activeColor?: string;
+}
+
+async function decodeImageToRgba(
+  bytes: Uint8Array | number[]
+): Promise<{ width: number; height: number; rgba: Uint8Array } | null> {
+  try {
+    const uint8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    const blob = new Blob([uint8.buffer as ArrayBuffer], { type: "image/png" });
+    const img = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, img.width, img.height);
+    return {
+      width: img.width,
+      height: img.height,
+      rgba: new Uint8Array(imgData.data.buffer),
+    };
+  } catch (err) {
+    console.warn("Failed to decode image file:", err);
+    return null;
+  }
 }
 
 export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
@@ -44,27 +78,175 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   const [opacityDynamics, setOpacityDynamics] = useState(() => globalDrawingEngine.getOpacityDynamicsEnabled?.() ?? false);
   const [antialias, setAntialias] = useState(() => globalDrawingEngine.getAntialias?.() ?? true);
 
-  const [blendMode, setBlendMode] = useState<BlendMode>(() => globalDrawingEngine.getBlendMode?.() ?? "normal");
-  const [textureType, setTextureType] = useState<"none" | "charcoal" | "canvas" | "coldpress">(() => {
-    const brush = globalDrawingEngine.getActiveBrush?.();
-    if (brush?.engineParameters?.engineId === "pixelbrush") {
-      const tex = brush.engineParameters.grainTexture;
-      if (!tex) return "none";
-      if (tex.patternId.includes("charcoal")) return "charcoal";
-      if (tex.patternId.includes("canvas")) return "canvas";
-      if (tex.patternId.includes("cold")) return "coldpress";
-      return "charcoal";
-    }
-    return "none";
-  });
-  const [textureScale, setTextureScale] = useState(1.0);
-  const [textureStrength, setTextureStrength] = useState(100);
-  const [textureBlendMode, setTextureBlendMode] = useState<TextureBlendMode>("multiply");
-  const [textureByPressure, setTextureByPressure] = useState(true);
-
   const [isCurveOpen, setIsCurveOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const lastPresetIdRef = useRef<string | null>(null);
+
+  // Disk-backed resource state
+  const [brushResources, setBrushResources] = useState<ResourceItemDto[]>([]);
+  const [patternResources, setPatternResources] = useState<ResourceItemDto[]>([]);
+  const [selectedTipId, setSelectedTipId] = useState<string | null>(null);
+  const [textureEnabled, setTextureEnabled] = useState(false);
+  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
+  const [textureMode, setTextureMode] = useState("multiply");
+  const [textureScale, setTextureScale] = useState(1.0);
+  const [textureStrength, setTextureStrength] = useState(1.0);
+  const [textureByPressure, setTextureByPressure] = useState(false);
+
+  const refreshResources = useCallback(async () => {
+    const tips = await globalRustBrushBridge.listResources("brushes");
+    const pats = await globalRustBrushBridge.listResources("patterns");
+    setBrushResources(tips);
+    setPatternResources(pats);
+  }, []);
+
+  useEffect(() => {
+    refreshResources();
+  }, [refreshResources]);
+
+  const handleSelectTip = async (item: ResourceItemDto | null) => {
+    if (!item) {
+      setSelectedTipId(null);
+      await globalRustBrushBridge.setActiveTip(null);
+      globalWasmBrushBridge.setBrushPredefinedTip(null);
+      return;
+    }
+    setSelectedTipId(item.id);
+    const bytes = await globalRustBrushBridge.readResourceFile(item.path);
+    if (bytes) {
+      if (item.file_name.endsWith(".gbr")) {
+        await globalRustBrushBridge.registerTipGbr(item.id, bytes);
+        globalWasmBrushBridge.registerTipGbr(item.id, bytes);
+      } else if (
+        item.file_name.endsWith(".png") ||
+        item.file_name.endsWith(".webp") ||
+        item.file_name.endsWith(".jpg")
+      ) {
+        const decoded = await decodeImageToRgba(bytes);
+        if (decoded) {
+          await globalRustBrushBridge.registerTipMask(
+            item.id,
+            item.name,
+            decoded.width,
+            decoded.height,
+            decoded.rgba,
+            false
+          );
+          globalWasmBrushBridge.registerTipMask(
+            item.id,
+            item.name,
+            decoded.width,
+            decoded.height,
+            decoded.rgba,
+            false
+          );
+        }
+      }
+      await globalRustBrushBridge.setActiveTip(item.id, 1.0, 0.0);
+      globalWasmBrushBridge.setBrushPredefinedTip(item.id, 1.0, 0.0);
+    }
+  };
+
+  const handleSelectPattern = async (item: ResourceItemDto | null) => {
+    if (!item) {
+      setSelectedPatternId(null);
+      await globalRustBrushBridge.setActivePattern(null);
+      globalWasmBrushBridge.setBrushTextureResource(null);
+      return;
+    }
+    setSelectedPatternId(item.id);
+    const bytes = await globalRustBrushBridge.readResourceFile(item.path);
+    if (bytes) {
+      if (item.file_name.endsWith(".pat")) {
+        await globalRustBrushBridge.registerPatternPat(item.id, bytes);
+        globalWasmBrushBridge.registerPatternPat(item.id, bytes);
+      } else if (
+        item.file_name.endsWith(".png") ||
+        item.file_name.endsWith(".webp") ||
+        item.file_name.endsWith(".jpg")
+      ) {
+        const decoded = await decodeImageToRgba(bytes);
+        if (decoded) {
+          await globalRustBrushBridge.registerPatternRgba(
+            item.id,
+            item.name,
+            decoded.width,
+            decoded.height,
+            decoded.rgba
+          );
+          globalWasmBrushBridge.registerPatternRgba(
+            item.id,
+            item.name,
+            decoded.width,
+            decoded.height,
+            decoded.rgba
+          );
+        }
+      }
+      await globalRustBrushBridge.setActivePattern(
+        item.id,
+        textureScale,
+        textureMode,
+        textureStrength,
+        false,
+        0.0,
+        1.0,
+        textureByPressure
+      );
+      globalWasmBrushBridge.setBrushTextureResource(
+        item.id,
+        textureScale,
+        textureMode,
+        textureStrength,
+        false,
+        0.0,
+        1.0,
+        textureByPressure
+      );
+    }
+  };
+
+  const handleTextureToggle = async (enabled: boolean) => {
+    setTextureEnabled(enabled);
+    if (!enabled) {
+      await globalRustBrushBridge.setActivePattern(null);
+      globalWasmBrushBridge.setBrushTextureResource(null);
+    } else if (selectedPatternId) {
+      const item = patternResources.find((p) => p.id === selectedPatternId);
+      if (item) await handleSelectPattern(item);
+    } else if (patternResources.length > 0) {
+      await handleSelectPattern(patternResources[0]);
+    }
+  };
+
+  const handleTextureParamChange = (
+    scale = textureScale,
+    mode = textureMode,
+    strength = textureStrength,
+    byPressure = textureByPressure
+  ) => {
+    if (!selectedPatternId || !textureEnabled) return;
+    globalRustBrushBridge.setActivePattern(
+      selectedPatternId,
+      scale,
+      mode,
+      strength,
+      false,
+      0.0,
+      1.0,
+      byPressure
+    );
+    globalWasmBrushBridge.setBrushTextureResource(
+      selectedPatternId,
+      scale,
+      mode,
+      strength,
+      false,
+      0.0,
+      1.0,
+      byPressure
+    );
+  };
 
   const handleSave = () => {
     // Explicitly commit all current settings to the active preset in the engine
@@ -136,25 +318,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
       if (typeof p.baseOpacity === "number") setBrushOpacity(p.baseOpacity);
       if (p.sizeDynamics) setSizeDynamics(p.sizeDynamics.isEnabled);
       if (p.opacityDynamics) setOpacityDynamics(p.opacityDynamics.isEnabled);
-
-      if (p.grainTexture) {
-        const tex = p.grainTexture;
-        if (tex.patternId.includes("charcoal")) setTextureType("charcoal");
-        else if (tex.patternId.includes("canvas")) setTextureType("canvas");
-        else if (tex.patternId.includes("cold")) setTextureType("coldpress");
-        else setTextureType("charcoal");
-
-        setTextureScale(tex.scale);
-        setTextureStrength(Math.round(tex.strength * 100));
-        setTextureBlendMode(tex.mode);
-        setTextureByPressure(tex.byPressure);
-      } else {
-        setTextureType("none");
-      }
     }
-
-    const bm = globalDrawingEngine.getBlendMode?.() ?? "normal";
-    setBlendMode(bm);
 
     const mv = globalDrawingEngine.getMovingAverageConfig?.();
     if (mv) setMovingAverageConfig(mv);
@@ -188,56 +352,6 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     const fl = valPercent / 100;
     globalDrawingEngine.setBrushFlow?.(fl);
     globalDrawingEngine.updateActivePreset?.({ baseFlow: fl });
-  };
-
-  const handleBlendModeChange = (mode: BlendMode) => {
-    setBlendMode(mode);
-    globalDrawingEngine.setBlendMode(mode);
-  };
-
-  const applyTextureConfig = (
-    newType: "none" | "charcoal" | "canvas" | "coldpress",
-    newScale: number,
-    newStrength: number,
-    newMode: TextureBlendMode,
-    newByPressure: boolean
-  ) => {
-    setTextureType(newType);
-    setTextureScale(newScale);
-    setTextureStrength(newStrength);
-    setTextureBlendMode(newMode);
-    setTextureByPressure(newByPressure);
-
-    let newGrain: BrushTextureConfig | null = null;
-    if (newType === "charcoal") {
-      newGrain = {
-        ...createDefaultCharcoalTextureConfig(),
-        scale: newScale,
-        strength: newStrength / 100,
-        mode: newMode,
-        byPressure: newByPressure,
-      };
-    } else if (newType === "canvas") {
-      newGrain = {
-        ...createDefaultCanvasTextureConfig(),
-        scale: newScale,
-        strength: newStrength / 100,
-        mode: newMode,
-        byPressure: newByPressure,
-      };
-    } else if (newType === "coldpress") {
-      newGrain = {
-        ...createDefaultColdPressTextureConfig(),
-        scale: newScale,
-        strength: newStrength / 100,
-        mode: newMode,
-        byPressure: newByPressure,
-      };
-    }
-
-    globalDrawingEngine.updateActivePreset?.({ grainTexture: newGrain });
-    const updated = globalDrawingEngine.getActiveBrush?.();
-    if (updated) setActiveBrush({ ...updated });
   };
 
   const handleSizeDynamicsToggle = (enabled: boolean) => {
@@ -416,6 +530,200 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
 
         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
 
+        {/* Brush Tip Stamp (Auto vs Raster .gbr/.png) */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+              Brush Tip Stamp (Dab Mask)
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={refreshResources}
+                title="Refresh resource files from disk"
+                className="p-1 rounded text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => globalRustBrushBridge.openResourceFolder("brushes")}
+                title="Open Brushes directory in Finder / Explorer"
+                className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline px-1.5 py-0.5 cursor-pointer"
+              >
+                <FolderOpen className="w-3 h-3" />
+                <span>Open Folder</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleSelectTip(null)}
+              className={`p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                selectedTipId === null
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200"
+                  : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300"
+              }`}
+            >
+              <div className="text-xs font-medium">Auto Circle</div>
+              <div className="text-[10px] text-zinc-500">Procedural analytical tip</div>
+            </button>
+
+            {brushResources.map((res) => (
+              <button
+                key={res.id}
+                type="button"
+                onClick={() => handleSelectTip(res)}
+                className={`p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                  selectedTipId === res.id
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200"
+                    : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300"
+                }`}
+              >
+                <div className="text-xs font-medium truncate">{res.name}</div>
+                <div className="text-[10px] text-zinc-500 truncate">{res.file_name}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
+
+        {/* Seamless Paper Pattern Textures (Krita KisTexture) */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Waves className="w-3.5 h-3.5 text-blue-500" />
+              Paper Texture Grain (KisTexture)
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => globalRustBrushBridge.openResourceFolder("patterns")}
+                title="Open Patterns directory in Finder / Explorer"
+                className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline px-1 py-0.5 cursor-pointer"
+              >
+                <FolderOpen className="w-3 h-3" />
+                <span>Open Folder</span>
+              </button>
+              <input
+                type="checkbox"
+                checked={textureEnabled}
+                onChange={(e) => handleTextureToggle(e.target.checked)}
+                className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+                title="Toggle paper grain texture modulation"
+              />
+            </div>
+          </div>
+
+          {textureEnabled && (
+            <div className="flex flex-col gap-3 p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
+              {/* Pattern selection buttons */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {patternResources.map((pat) => (
+                  <button
+                    key={pat.id}
+                    type="button"
+                    onClick={() => handleSelectPattern(pat)}
+                    className={`p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                      selectedPatternId === pat.id
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200"
+                        : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300"
+                    }`}
+                  >
+                    <div className="text-xs font-medium truncate">{pat.name}</div>
+                    <div className="text-[10px] text-zinc-500 truncate">{pat.file_name}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Texture Blend Mode */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Texture Blend Mode</span>
+                <select
+                  value={textureMode}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    setTextureMode(m);
+                    handleTextureParamChange(textureScale, m, textureStrength, textureByPressure);
+                  }}
+                  className="px-2 py-1 text-xs rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800"
+                >
+                  <option value="multiply">Multiply (Darken Tooth)</option>
+                  <option value="subtract">Subtract (Carve Tooth)</option>
+                  <option value="parallel">Krita Parallel (Harmonic Tooth)</option>
+                  <option value="screen">Screen (Lighten Tooth)</option>
+                  <option value="add">Add (Brighten Tooth)</option>
+                  <option value="overlay">Overlay</option>
+                  <option value="divide">Divide</option>
+                </select>
+              </div>
+
+              {/* Texture Scale */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Pattern Scale</span>
+                  <span className="font-mono text-zinc-500">{textureScale.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.2}
+                  max={4.0}
+                  step={0.1}
+                  value={textureScale}
+                  onChange={(e) => {
+                    const s = Number(e.target.value);
+                    setTextureScale(s);
+                    handleTextureParamChange(s, textureMode, textureStrength, textureByPressure);
+                  }}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                />
+              </div>
+
+              {/* Texture Strength */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Modulation Strength</span>
+                  <span className="font-mono text-zinc-500">{Math.round(textureStrength * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.0}
+                  step={0.02}
+                  value={textureStrength}
+                  onChange={(e) => {
+                    const st = Number(e.target.value);
+                    setTextureStrength(st);
+                    handleTextureParamChange(textureScale, textureMode, st, textureByPressure);
+                  }}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                />
+              </div>
+
+              {/* Pressure sensitivity toggle */}
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-xs text-zinc-600 dark:text-zinc-400">Modulate tooth depth by stylus pressure</span>
+                <input
+                  type="checkbox"
+                  checked={textureByPressure}
+                  onChange={(e) => {
+                    const p = e.target.checked;
+                    setTextureByPressure(p);
+                    handleTextureParamChange(textureScale, textureMode, textureStrength, p);
+                  }}
+                  className="accent-blue-600 w-3.5 h-3.5 rounded cursor-pointer"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
+
         {/* Hardware Pressure Dynamics */}
         <div className="flex flex-col gap-2.5">
           <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -495,171 +803,6 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
                 showLiveTelemetry={true}
                 showPresets={true}
               />
-            </div>
-          )}
-        </div>
-
-        <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
-
-        {/* Brush Blending & Paper Grain Texture */}
-        <div className="flex flex-col gap-2.5">
-          <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-blue-500" />
-            Color Blend & Texture Grain
-          </span>
-
-          {/* Color Blend Mode */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">Brush Blend Mode</span>
-            </div>
-            <select
-              value={blendMode}
-              onChange={(e) => handleBlendModeChange(e.target.value as BlendMode)}
-              className="w-full text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-2 text-zinc-800 dark:text-zinc-200 cursor-pointer"
-            >
-              <option value="normal">Normal</option>
-              <option value="parallel">Parallel (Harmonic Mean - Natural)</option>
-              <option value="multiply">Multiply</option>
-              <option value="screen">Screen</option>
-              <option value="overlay">Overlay</option>
-              <option value="darken">Darken</option>
-              <option value="lighten">Lighten</option>
-              <option value="colorDodge">Color Dodge</option>
-              <option value="colorBurn">Color Burn</option>
-              <option value="add">Add (Linear Dodge)</option>
-              <option value="subtract">Subtract</option>
-              <option value="divide">Divide</option>
-              <option value="hardLight">Hard Light</option>
-              <option value="softLight">Soft Light</option>
-              <option value="difference">Difference</option>
-              <option value="exclusion">Exclusion</option>
-            </select>
-          </div>
-
-          {/* Paper Texture Selection */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">Paper Grain Texture</span>
-            </div>
-            <select
-              value={textureType}
-              onChange={(e) =>
-                applyTextureConfig(
-                  e.target.value as "none" | "charcoal" | "canvas" | "coldpress",
-                  textureScale,
-                  textureStrength,
-                  textureBlendMode,
-                  textureByPressure
-                )
-              }
-              className="w-full text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-2 text-zinc-800 dark:text-zinc-200 cursor-pointer"
-            >
-              <option value="none">None (Smooth)</option>
-              <option value="charcoal">Charcoal Tooth (Rough Paper)</option>
-              <option value="canvas">Woven Canvas (Textile Fibers)</option>
-              <option value="coldpress">Cold Press Paper (Watercolor)</option>
-            </select>
-          </div>
-
-          {textureType !== "none" && (
-            <div className="flex flex-col gap-3 p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
-              {/* Texture Blend Mode */}
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Texture Modulation Mode</span>
-                <select
-                  value={textureBlendMode}
-                  onChange={(e) =>
-                    applyTextureConfig(
-                      textureType,
-                      textureScale,
-                      textureStrength,
-                      e.target.value as TextureBlendMode,
-                      textureByPressure
-                    )
-                  }
-                  className="w-full text-xs bg-white dark:bg-zinc-700/60 border border-zinc-200 dark:border-zinc-600 rounded-md p-1.5 cursor-pointer text-zinc-800 dark:text-zinc-200"
-                >
-                  <option value="subtract">Subtract (Carves Paper Pits)</option>
-                  <option value="multiply">Multiply (Darkens Paper Peaks)</option>
-                  <option value="add">Add</option>
-                  <option value="screen">Screen</option>
-                  <option value="overlay">Overlay</option>
-                  <option value="divide">Divide</option>
-                  <option value="darken">Darken</option>
-                  <option value="lighten">Lighten</option>
-                  <option value="parallel">Parallel</option>
-                </select>
-              </div>
-
-              {/* Texture Scale */}
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Grain Scale</span>
-                  <span className="font-mono text-zinc-500">{textureScale.toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.25}
-                  max={3.0}
-                  step={0.05}
-                  value={textureScale}
-                  onChange={(e) =>
-                    applyTextureConfig(
-                      textureType,
-                      Number(e.target.value),
-                      textureStrength,
-                      textureBlendMode,
-                      textureByPressure
-                    )
-                  }
-                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
-                />
-              </div>
-
-              {/* Texture Strength */}
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Texture Strength</span>
-                  <span className="font-mono text-zinc-500">{textureStrength}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={textureStrength}
-                  onChange={(e) =>
-                    applyTextureConfig(
-                      textureType,
-                      textureScale,
-                      Number(e.target.value),
-                      textureBlendMode,
-                      textureByPressure
-                    )
-                  }
-                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
-                />
-              </div>
-
-              {/* Texture by Pressure */}
-              <label className="flex items-center justify-between cursor-pointer pt-1">
-                <span className="text-xs text-zinc-700 dark:text-zinc-300">Scale Texture by Pressure</span>
-                <input
-                  type="checkbox"
-                  checked={textureByPressure}
-                  onChange={(e) =>
-                    applyTextureConfig(
-                      textureType,
-                      textureScale,
-                      textureStrength,
-                      textureBlendMode,
-                      e.target.checked
-                    )
-                  }
-                  className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
-                />
-              </label>
             </div>
           )}
         </div>

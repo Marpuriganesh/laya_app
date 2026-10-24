@@ -15,6 +15,7 @@ pub mod config;
 pub mod engine;
 pub mod rasterizer;
 pub mod rect;
+pub mod resource;
 pub mod texture;
 pub mod tip;
 
@@ -34,6 +35,9 @@ pub use config::BrushConfig;
 pub use engine::PixelBrushEngine;
 pub use rasterizer::MaskRasterizer;
 pub use rect::Rect;
+pub use resource::{
+    parse_gbr, parse_pat, PatternRegistry, PatternResourceMeta, TipRegistry, TipResourceMeta,
+};
 pub use texture::{apply_texture_to_dab, PatternData, TextureConfig};
 pub use tip::{BrushTipRasterizer, BrushTipType, PredefinedTipData};
 

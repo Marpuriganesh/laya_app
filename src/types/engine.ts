@@ -35,7 +35,6 @@ export interface IDrawingEngine {
   getBrushSize?(): number;
   setBrushOpacity(opacityNormalized: number): void;
   setBlendMode(blendMode: import("./raster").BlendMode): void;
-  getBlendMode?(): import("./raster").BlendMode;
   setSmoothingConfig(config: StrokeSmoothingConfig): void;
   getSmoothingConfig?(): StrokeSmoothingConfig;
   setPullStringConfig?(config: PullStringConfig): void;

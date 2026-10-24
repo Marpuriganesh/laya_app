@@ -35,19 +35,18 @@ pub struct PredefinedTipData {
     pub width: u32,
     pub height: u32,
     /// Grayscale alpha mask in `[0..255]`.
-    /// In accordance with Krita and GIMP `.gbr` specifications:
-    /// In 1-BPP GBR brushes, 0 = black ink (fully opaque) and 255 = white paper (transparent).
-    /// PredefinedTipData stores normalized alpha where 255 = fully opaque ink.
+    /// White is color (255 = fully opaque ink), Black is transparent (0 = transparent).
     pub mask: Vec<u8>,
     /// Optional RGBA data if this is a full-color brush stamp.
     pub color_data: Option<Vec<u8>>,
 }
 
 impl PredefinedTipData {
-    /// Creates a new grayscale predefined tip from raw GBR bytes.
-    /// Inverts 1-BPP GBR ink values (`alpha = 255 - raw_byte`) if `invert_gbr` is true.
-    pub fn from_gbr_grayscale(width: u32, height: u32, raw_bytes: &[u8], invert_gbr: bool) -> Self {
-        let mask = if invert_gbr {
+    /// Creates a new grayscale predefined tip from raw bytes.
+    /// By default, White is color (255 = fully opaque ink), Black is transparent (0 = transparent).
+    /// If `invert` is true, values are inverted (`alpha = 255 - raw_byte`).
+    pub fn from_gbr_grayscale(width: u32, height: u32, raw_bytes: &[u8], invert: bool) -> Self {
+        let mask = if invert {
             raw_bytes.iter().map(|&b| 255 - b).collect()
         } else {
             raw_bytes.to_vec()
@@ -61,12 +60,56 @@ impl PredefinedTipData {
     }
 
     /// Creates a predefined tip from RGBA8 interleaved pixels.
+    ///
+    /// # Opacity & Transparency Resolution (matching Krita KisCustomImageBrush):
+    /// 1. If the image has an alpha channel with real transparency (any alpha < 255),
+    ///    the alpha channel is used directly (alpha 255 = opaque ink, 0 = transparent).
+    /// 2. If the image is fully opaque (all alpha == 255, e.g. standard PNG brush drawn on paper):
+    ///    - If corners are bright/white (average corner luminance > 128), it represents black/dark
+    ///      ink drawn on white paper (like Krita's chalk.png and bristles_*.png).
+    ///      The luminance is inverted (`alpha = 255 - lum`), turning the white paper transparent (0)
+    ///      and dark ink marks opaque (up to 255).
+    ///    - If corners are dark (average corner luminance <= 128), it represents light/white marks
+    ///      on a dark background (`alpha = lum`), turning the dark background transparent (0).
     pub fn from_rgba(width: u32, height: u32, rgba_bytes: &[u8]) -> Self {
         let pixel_count = (width * height) as usize;
         let mut mask = Vec::with_capacity(pixel_count);
+        let mut has_transparency = false;
+
         for chunk in rgba_bytes.chunks_exact(4) {
-            mask.push(chunk[3]); // Alpha channel
+            if chunk[3] < 255 {
+                has_transparency = true;
+            }
+            mask.push(chunk[3]);
         }
+
+        if !has_transparency && pixel_count > 0 {
+            let w = width as usize;
+            let h = height as usize;
+            let sample_lum = |x: usize, y: usize| -> f32 {
+                let idx = (y * w + x) * 4;
+                0.299 * rgba_bytes[idx] as f32
+                    + 0.587 * rgba_bytes[idx + 1] as f32
+                    + 0.114 * rgba_bytes[idx + 2] as f32
+            };
+
+            let c_tl = sample_lum(0, 0);
+            let c_tr = sample_lum(w.saturating_sub(1), 0);
+            let c_bl = sample_lum(0, h.saturating_sub(1));
+            let c_br = sample_lum(w.saturating_sub(1), h.saturating_sub(1));
+            let avg_corner_lum = (c_tl + c_tr + c_bl + c_br) * 0.25;
+
+            // If corners are white/bright (> 128), this is ink on white paper -> invert paper to transparent
+            let invert_paper = avg_corner_lum > 128.0;
+
+            mask.clear();
+            for chunk in rgba_bytes.chunks_exact(4) {
+                let lum = (0.299 * chunk[0] as f32 + 0.587 * chunk[1] as f32 + 0.114 * chunk[2] as f32).round() as u8;
+                let alpha = if invert_paper { 255 - lum } else { lum };
+                mask.push(alpha);
+            }
+        }
+
         Self {
             width,
             height,
@@ -275,12 +318,54 @@ mod tests {
     }
 
     #[test]
-    fn test_predefined_gbr_inversion() {
-        // GBR raw byte 0 (black ink) should become 255 opaque
-        let tip = PredefinedTipData::from_gbr_grayscale(2, 2, &[0, 255, 128, 0], true);
-        assert_eq!(tip.mask[0], 255);
-        assert_eq!(tip.mask[1], 0);
-        assert_eq!(tip.mask[2], 127);
-        assert_eq!(tip.mask[3], 255);
+    fn test_predefined_gbr_opacity_mapping() {
+        // Direct opacity: byte 255 (white ink) is 255 opaque, 0 (black background) is 0 transparent
+        let tip = PredefinedTipData::from_gbr_grayscale(2, 2, &[0, 255, 128, 0], false);
+        assert_eq!(tip.mask[0], 0);
+        assert_eq!(tip.mask[1], 255);
+        assert_eq!(tip.mask[2], 128);
+        assert_eq!(tip.mask[3], 0);
+
+        // Invert option: when invert is true, 0 becomes 255 and 255 becomes 0
+        let tip_inv = PredefinedTipData::from_gbr_grayscale(2, 2, &[0, 255, 128, 0], true);
+        assert_eq!(tip_inv.mask[0], 255);
+        assert_eq!(tip_inv.mask[1], 0);
+        assert_eq!(tip_inv.mask[2], 127);
+        assert_eq!(tip_inv.mask[3], 255);
+    }
+
+    #[test]
+    fn test_predefined_rgba_white_paper_png() {
+        // Simulating a 2x2 PNG drawn with black ink on white paper:
+        // Corners: white paper [255, 255, 255, 255]
+        // Center/Ink: dark bristle [0, 0, 0, 255]
+        let pixels = [
+            255, 255, 255, 255, // White paper (corner)
+            0,   0,   0,   255, // Black ink
+            255, 255, 255, 255, // White paper
+            255, 255, 255, 255, // White paper
+        ];
+        let tip = PredefinedTipData::from_rgba(2, 2, &pixels);
+        // White paper should be 0 (transparent background), black ink should be 255 (opaque ink)
+        assert_eq!(tip.mask[0], 0);
+        assert_eq!(tip.mask[1], 255);
+        assert_eq!(tip.mask[2], 0);
+        assert_eq!(tip.mask[3], 0);
+    }
+
+    #[test]
+    fn test_predefined_rgba_transparent_png() {
+        // Simulating a 2x2 PNG with actual transparency channel:
+        let pixels = [
+            0,   0,   0,   0,   // Transparent background
+            255, 0,   0,   255, // Opaque dab
+            0,   0,   0,   0,   // Transparent
+            255, 0,   0,   128, // 50% alpha
+        ];
+        let tip = PredefinedTipData::from_rgba(2, 2, &pixels);
+        assert_eq!(tip.mask[0], 0);
+        assert_eq!(tip.mask[1], 255);
+        assert_eq!(tip.mask[2], 0);
+        assert_eq!(tip.mask[3], 128);
     }
 }

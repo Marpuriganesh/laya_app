@@ -11,7 +11,15 @@ export type LayerBlendMode =
   | "darken"
   | "lighten"
   | "color-dodge"
-  | "color-burn";
+  | "color-burn"
+  | "parallel"
+  | "add"
+  | "subtract"
+  | "divide"
+  | "hard-light"
+  | "soft-light"
+  | "difference"
+  | "exclusion";
 
 export interface LayerItem {
   readonly id: string;

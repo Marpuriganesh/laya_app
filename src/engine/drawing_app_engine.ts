@@ -4,7 +4,7 @@
  * with the drawing canvas.
  */
 
-import type { BrushPreset, PixelBrushParameters, StrokeSmoothingConfig, PullStringConfig, MovingAverageConfig, BrushTextureConfig, PredefinedBrushTip } from "@/types/brush";
+import type { BrushPreset, PixelBrushParameters, StrokeSmoothingConfig, PullStringConfig, MovingAverageConfig } from "@/types/brush";
 import { DEFAULT_STROKE_SMOOTHING_CONFIG, DEFAULT_PULL_STRING_CONFIG, DEFAULT_MOVING_AVERAGE_CONFIG } from "@/types/brush";
 import type { IDrawingEngine } from "@/types/engine";
 import type { BlendMode, IRasterTarget } from "@/types/raster";
@@ -16,10 +16,6 @@ import { parseKritaBundle } from "./brush/bundle_parser";
 import { globalRustBrushBridge } from "./brush/rust_brush_bridge";
 import { globalWasmBrushBridge } from "./wasm/wasm_brush_bridge";
 import { generateCurveLookupTable256, type CurvePoint } from "./math/dynamics_curve";
-import {
-  createDefaultCharcoalTextureConfig,
-  createDefaultCanvasTextureConfig,
-} from "./brush/procedural_textures";
 
 /**
  * Creates default brush preset configuration.
@@ -244,127 +240,10 @@ export function createDefaultCalligraphyPenPreset(): BrushPreset {
   };
 }
 
-export function createDefaultTexturedCharcoalPreset(): BrushPreset {
-  return {
-    presetId: "default-textured-charcoal",
-    displayName: "Textured Charcoal",
-    engineType: "pixelbrush",
-    thumbnailPngData: null,
-    engineParameters: {
-      engineId: "pixelbrush",
-      brushTip: {
-        tipType: "generated",
-        diameter: 36,
-        hardness: 0.35,
-        aspectRatio: 0.85,
-        angleRadians: 0.35,
-      },
-      spacingFraction: 0.08,
-      baseOpacity: 0.90,
-      baseFlow: 0.85,
-      baseSizePx: 36,
-      softness: 0.35,
-      scatterAmplitude: 0.0,
-      isAirbrushMode: false,
-      sizeDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.2 },
-          { inputValue: 1.0, outputValue: 1.0 },
-        ],
-        isEnabled: true,
-      },
-      opacityDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.1 },
-          { inputValue: 1.0, outputValue: 1.0 },
-        ],
-        isEnabled: true,
-      },
-      flowDynamics: null,
-      angleDynamics: null,
-      scatterDynamics: null,
-      grainTexture: createDefaultCharcoalTextureConfig(),
-    },
-    smoothingConfig: {
-      ...DEFAULT_STROKE_SMOOTHING_CONFIG,
-      mode: "movingAverage",
-      movingAverage: {
-        enabled: true,
-        windowSize: 3,
-        velocityMultiplier: 1.0,
-      },
-      pullString: {
-        ...DEFAULT_PULL_STRING_CONFIG,
-        enabled: false,
-      },
-    },
-    tags: ["Pencils", "Charcoal"],
-  };
-}
-
-export function createDefaultCanvasOilPreset(): BrushPreset {
-  return {
-    presetId: "default-canvas-oil",
-    displayName: "Canvas Oil",
-    engineType: "pixelbrush",
-    thumbnailPngData: null,
-    engineParameters: {
-      engineId: "pixelbrush",
-      brushTip: {
-        tipType: "generated",
-        diameter: 42,
-        hardness: 0.70,
-        aspectRatio: 0.75,
-        angleRadians: 0.785,
-      },
-      spacingFraction: 0.06,
-      baseOpacity: 1.0,
-      baseFlow: 0.95,
-      baseSizePx: 42,
-      softness: 0.25,
-      scatterAmplitude: 0.0,
-      isAirbrushMode: false,
-      sizeDynamics: {
-        sensorInput: "pressure",
-        curvePoints: [
-          { inputValue: 0.0, outputValue: 0.3 },
-          { inputValue: 1.0, outputValue: 1.0 },
-        ],
-        isEnabled: true,
-      },
-      opacityDynamics: null,
-      flowDynamics: null,
-      angleDynamics: null,
-      scatterDynamics: null,
-      grainTexture: createDefaultCanvasTextureConfig(),
-    },
-    smoothingConfig: {
-      ...DEFAULT_STROKE_SMOOTHING_CONFIG,
-      mode: "streamline",
-      movingAverage: {
-        enabled: false,
-        windowSize: 4,
-        velocityMultiplier: 1.0,
-      },
-      pullString: {
-        ...DEFAULT_PULL_STRING_CONFIG,
-        enabled: true,
-        maxStringLength: 30,
-        velocityMultiplier: 1.5,
-        catchUpSpeed: 0.35,
-      },
-    },
-    tags: ["Paint", "Canvas"],
-  };
-}
-
 export function createDefaultPresets(): BrushPreset[] {
   return [
     createDefaultStudioPenPreset(),
-    createDefaultTexturedCharcoalPreset(),
-    createDefaultCanvasOilPreset(),
+    createDefaultTechnicalPencilPreset(),
     createDefaultCalligraphyPenPreset(),
     createDefaultSoftAirbrushPreset(),
   ];
@@ -678,18 +557,12 @@ export class DrawingAppEngine implements IDrawingEngine {
 
     let aspectRatio = 1.0;
     let angleRadians = 0.0;
-    let grainTexture: BrushTextureConfig | null = null;
-    let predefinedTip: PredefinedBrushTip | null = null;
-
     if (this.activeBrush && this.activeBrush.engineParameters.engineId === "pixelbrush") {
-      const p = this.activeBrush.engineParameters;
-      if (p.brushTip.tipType === "generated") {
-        aspectRatio = p.brushTip.aspectRatio ?? 1.0;
-        angleRadians = p.brushTip.angleRadians ?? 0.0;
-      } else if (p.brushTip.tipType === "predefined") {
-        predefinedTip = p.brushTip;
+      const tip = this.activeBrush.engineParameters.brushTip;
+      if (tip.tipType === "generated") {
+        aspectRatio = tip.aspectRatio ?? 1.0;
+        angleRadians = tip.angleRadians ?? 0.0;
       }
-      grainTexture = p.grainTexture ?? null;
     }
 
     globalRustBrushBridge.setBrushConfig({
@@ -706,7 +579,6 @@ export class DrawingAppEngine implements IDrawingEngine {
       blend_mode: this.blendMode,
       aspect_ratio: aspectRatio,
       angle_radians: angleRadians,
-      texture_by_pressure: grainTexture?.byPressure ?? false,
     });
 
     globalWasmBrushBridge.setBrushConfig({
@@ -720,56 +592,7 @@ export class DrawingAppEngine implements IDrawingEngine {
       opacityByPressure: this.opacityByPressure,
       isErase,
       antialias: this.brushAntialias,
-      blendMode: this.blendMode,
-      aspectRatio,
-      angleRadians,
     });
-
-    // Texture grain synchronization across dual runtime
-    if (grainTexture) {
-      const bytesU8 = grainTexture.bytes instanceof Uint8Array
-        ? grainTexture.bytes
-        : new Uint8Array(grainTexture.bytes);
-
-      const texData = {
-        width: grainTexture.width,
-        height: grainTexture.height,
-        bytes: bytesU8,
-        scale: grainTexture.scale,
-        mode: grainTexture.mode,
-        strength: grainTexture.strength,
-        invert: grainTexture.invert ?? false,
-        brightness: grainTexture.brightness ?? 0.0,
-        contrast: grainTexture.contrast ?? 1.0,
-        byPressure: grainTexture.byPressure,
-      };
-      void globalRustBrushBridge.setTexture(texData);
-      globalWasmBrushBridge.setTexture(texData);
-    } else {
-      void globalRustBrushBridge.clearTexture();
-      globalWasmBrushBridge.clearTexture();
-    }
-
-    // Predefined tip synchronization across dual runtime
-    if (predefinedTip) {
-      const maskU8 = predefinedTip.imageData instanceof Uint8Array
-        ? predefinedTip.imageData
-        : new Uint8Array(predefinedTip.imageData);
-
-      const tipData = {
-        width: predefinedTip.width,
-        height: predefinedTip.height,
-        mask: maskU8,
-        scale: 1.0,
-        angleRadians: 0.0,
-        invertGbr: false,
-      };
-      void globalRustBrushBridge.setPredefinedTip(tipData);
-      globalWasmBrushBridge.setPredefinedTip(tipData);
-    } else {
-      void globalRustBrushBridge.clearPredefinedTip();
-      globalWasmBrushBridge.clearPredefinedTip();
-    }
 
     globalWasmBrushBridge.setMovingAverageConfig(this.movingAverageConfig);
     void globalRustBrushBridge.setMovingAverageConfig(this.movingAverageConfig);
@@ -825,10 +648,6 @@ export class DrawingAppEngine implements IDrawingEngine {
   public setBlendMode(mode: BlendMode): void {
     this.blendMode = mode;
     this.syncBrushConfigToRust();
-  }
-
-  public getBlendMode(): BlendMode {
-    return this.blendMode;
   }
 
   public setSmoothingConfig(config: StrokeSmoothingConfig): void {

@@ -1,8 +1,8 @@
 /**
  * Wasm Brush Bridge
- * Loads and orchestrates the compiled Rust `sketch_core` brush engine in WebAssembly.
+ * Loads and orchestrates the compiled Rust `sketch_core` brush engine and multi-layer compositor in WebAssembly.
  * Powers the web browser canvas with identical midpoint quadratic Bézier splines,
- * subpixel dab stepping, and analytical softness masks.
+ * multi-layer compositing, real brush tip raster masks, and seamless paper textures.
  */
 
 import initWasm, { WasmBrushEngine } from "./pkg/sketch_core.js";
@@ -21,9 +21,6 @@ export interface WasmBrushConfig {
   opacityByPressure: boolean;
   isErase: boolean;
   antialias: boolean;
-  blendMode?: string;
-  aspectRatio?: number;
-  angleRadians?: number;
 }
 
 export class WasmBrushBridge {
@@ -78,13 +75,13 @@ export class WasmBrushBridge {
   /**
    * Resizes or re-initializes the internal Wasm canvas buffer.
    */
-  public resizeCanvas(width: number, height: number, r = 0, g = 0, b = 0, a = 0): void {
+  public resizeCanvas(width: number, height: number, r = 255, g = 255, b = 255, a = 255): void {
     if (!this.engine) return;
     this.engine.init_canvas(width, height, r, g, b, a);
   }
 
   /**
-   * Clears the internal Wasm canvas buffer with an RGBA color.
+   * Clears the internal active layer with an RGBA color.
    */
   public clear(r = 0, g = 0, b = 0, a = 0): void {
     if (!this.engine) return;
@@ -100,15 +97,24 @@ export class WasmBrushBridge {
   }
 
   /**
-   * Sets a 256-sample lookup table for pressure response curve dynamics.
+   * Sets the color blend mode (e.g. "normal", "multiply", "screen", "parallel", etc.).
    */
-  public setPressureLut(lut: Float32Array): void {
+  public setBrushBlendMode(modeName: string): void {
     if (!this.engine) return;
-    this.engine.set_pressure_lut(lut);
+    this.engine.set_brush_blend_mode(modeName);
   }
 
   /**
-   * Sets dynamic moving average line art stroke stabilization configuration.
+   * Sets a 256-sample lookup table for pressure response curve dynamics.
+   */
+  public setPressureLut(lut: Float32Array | number[]): void {
+    if (!this.engine) return;
+    const slice = lut instanceof Float32Array ? lut : new Float32Array(lut);
+    this.engine.set_pressure_lut(slice);
+  }
+
+  /**
+   * Configures the dynamic moving average stroke stabilizer.
    */
   public setMovingAverageConfig(config: MovingAverageConfig): void {
     if (!this.engine) return;
@@ -120,7 +126,7 @@ export class WasmBrushBridge {
   }
 
   /**
-   * Sets dynamic pulled string (leash) stroke stabilization configuration.
+   * Configures the dynamic pulled string (leash) stroke stabilizer.
    */
   public setPullStringConfig(config: PullStringConfig): void {
     if (!this.engine) return;
@@ -153,81 +159,154 @@ export class WasmBrushBridge {
       c.isErase,
       c.antialias ?? true
     );
-    if (c.blendMode) {
-      this.engine.set_brush_blend_mode(c.isErase ? "erase" : c.blendMode);
+  }
+
+  // ========================================================================
+  // Multi-Layer Compositor Bridge
+  // ========================================================================
+
+  public addLayer(id: string, name: string): void {
+    if (!this.engine) return;
+    this.engine.add_layer(id, name);
+  }
+
+  public removeLayer(id: string): void {
+    if (!this.engine) return;
+    this.engine.remove_layer(id);
+  }
+
+  public duplicateLayer(sourceId: string, newId: string, newName: string): void {
+    if (!this.engine) return;
+    this.engine.duplicate_layer(sourceId, newId, newName);
+  }
+
+  public setActiveLayer(id: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_active_layer(id);
+  }
+
+  public setLayerOpacity(id: string, opacity: number): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_opacity(id, opacity);
+  }
+
+  public setLayerBlendMode(id: string, modeName: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_blend_mode(id, modeName);
+  }
+
+  public setLayerVisibility(id: string, visible: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_visibility(id, visible);
+  }
+
+  public setBackgroundColor(r: number, g: number, b: number, a: number): void {
+    if (!this.engine) return;
+    this.engine.set_background_color(r, g, b, a);
+  }
+
+  public setBackgroundVisible(visible: boolean): void {
+    if (!this.engine) return;
+    this.engine.set_background_visible(visible);
+  }
+
+  // ========================================================================
+  // Resource Management (Brush Tips & Patterns)
+  // ========================================================================
+
+  public registerTipGbr(id: string, bytes: Uint8Array): string {
+    if (!this.engine) return "";
+    try {
+      return this.engine.register_tip_gbr(id, bytes);
+    } catch {
+      return "";
     }
-    if (typeof c.aspectRatio === "number" && typeof c.angleRadians === "number") {
-      this.engine.set_brush_auto_tip(c.aspectRatio, c.angleRadians);
+  }
+
+  public registerTipMask(
+    id: string,
+    name: string,
+    width: number,
+    height: number,
+    mask: Uint8Array,
+    invert = false
+  ): void {
+    if (!this.engine) return;
+    this.engine.register_tip_mask(id, name, width, height, mask, invert);
+  }
+
+  public setBrushPredefinedTip(tipId: string | null, scale = 1.0, angleRadians = 0.0): boolean {
+    if (!this.engine) return false;
+    if (tipId) {
+      return this.engine.set_brush_predefined_tip(tipId, scale, angleRadians);
+    } else {
+      this.engine.clear_brush_predefined_tip();
+      return true;
     }
   }
 
-  /**
-   * Configures paper grain texture modulation in the WASM engine.
-   */
-  public setTexture(config: {
-    width: number;
-    height: number;
-    bytes: Uint8Array;
-    scale?: number;
-    mode?: string;
-    strength?: number;
-    invert?: boolean;
-    brightness?: number;
-    contrast?: number;
-    byPressure?: boolean;
-  }): void {
-    if (!this.engine) return;
-    this.engine.set_brush_texture(
-      config.width,
-      config.height,
-      config.bytes,
-      config.scale ?? 1.0,
-      config.mode ?? "multiply",
-      config.strength ?? 1.0,
-      config.invert ?? false,
-      config.brightness ?? 0.0,
-      config.contrast ?? 1.0,
-      config.byPressure ?? false
-    );
+  public registerPatternPat(id: string, bytes: Uint8Array): string {
+    if (!this.engine) return "";
+    try {
+      return this.engine.register_pattern_pat(id, bytes);
+    } catch {
+      return "";
+    }
   }
 
-  /**
-   * Clears paper grain texture in the WASM engine.
-   */
-  public clearTexture(): void {
+  public registerPatternGrayscale(
+    id: string,
+    name: string,
+    width: number,
+    height: number,
+    bytes: Uint8Array
+  ): void {
     if (!this.engine) return;
-    this.engine.clear_brush_texture();
+    this.engine.register_pattern_grayscale(id, name, width, height, bytes);
   }
 
-  /**
-   * Sets a predefined raster tip stamp (.gbr or PNG mask) in the WASM engine.
-   */
-  public setPredefinedTip(tip: {
-    width: number;
-    height: number;
-    mask: Uint8Array;
-    scale?: number;
-    angleRadians?: number;
-    invertGbr?: boolean;
-  }): void {
+  public registerPatternRgba(
+    id: string,
+    name: string,
+    width: number,
+    height: number,
+    rgbaBytes: Uint8Array
+  ): void {
     if (!this.engine) return;
-    this.engine.set_brush_predefined_tip(
-      tip.width,
-      tip.height,
-      tip.mask,
-      tip.scale ?? 1.0,
-      tip.angleRadians ?? 0.0,
-      tip.invertGbr ?? false
-    );
+    this.engine.register_pattern_rgba(id, name, width, height, rgbaBytes);
   }
 
-  /**
-   * Clears predefined tip in the WASM engine, reverting to Auto analytical tip.
-   */
-  public clearPredefinedTip(): void {
-    if (!this.engine) return;
-    this.engine.clear_brush_predefined_tip();
+  public setBrushTextureResource(
+    patternId: string | null,
+    scale = 1.0,
+    modeStr = "multiply",
+    strength = 1.0,
+    invert = false,
+    brightness = 0.0,
+    contrast = 1.0,
+    byPressure = false
+  ): boolean {
+    if (!this.engine) return false;
+    if (patternId) {
+      return this.engine.set_brush_texture_resource(
+        patternId,
+        scale,
+        modeStr,
+        strength,
+        invert,
+        brightness,
+        contrast,
+        byPressure
+      );
+    } else {
+      this.engine.clear_brush_texture();
+      return true;
+    }
   }
+
+  // ========================================================================
+  // Stroke Execution
+  // ========================================================================
 
   /**
    * Begins a new stroke at the given starting point.
@@ -316,7 +395,7 @@ export class WasmBrushBridge {
   /**
    * Blits only the modified sub-rectangle from Wasm memory into the Canvas2D context.
    */
-  private blitDirtyRect(rect: Int32Array, ctx: CanvasRenderingContext2D): void {
+  public blitDirtyRect(rect: Int32Array, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
     const [x, y, w, h] = rect;
     if (w <= 0 || h <= 0) return;
@@ -334,6 +413,16 @@ export class WasmBrushBridge {
       const imgData = new ImageData(subView, w, h);
       ctx.putImageData(imgData, x, y);
     }
+  }
+
+  /**
+   * Blits the entire composited canvas from Wasm into the 2D context.
+   */
+  public blitFullCanvas(ctx: CanvasRenderingContext2D): void {
+    if (!this.engine) return;
+    const w = this.engine.width();
+    const h = this.engine.height();
+    this.blitDirtyRect(new Int32Array([0, 0, w, h]), ctx);
   }
 }
 
