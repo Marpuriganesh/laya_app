@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type FC } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type FC } from "react";
 import {
   SlidersHorizontal,
   Trash2,
@@ -148,11 +148,16 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     setMovingAverageConfig,
     pullStringConfig,
     setPullStringConfig,
+    brushSettingsRevision,
   } = useDocumentStore();
 
-  const [activeBrush, setActiveBrush] = useState<BrushPreset | null>(() =>
+  const [activeBrushState, setActiveBrushState] = useState<BrushPreset | null>(() =>
     globalDrawingEngine.getActiveBrush?.()
   );
+
+  const activeBrush = useMemo(() => {
+    return globalDrawingEngine.getActiveBrush?.() ?? activeBrushState;
+  }, [activePresetId, brushSettingsRevision, activeBrushState]);
 
   const [softness, setSoftness] = useState(() => globalDrawingEngine.getBrushSoftness?.() ?? 0.45);
   const [spacing, setSpacing] = useState(() => (globalDrawingEngine.getBrushSpacing?.() ?? 0.08) * 100);
@@ -432,7 +437,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     // Refresh active preset reference to re-render preview thumbnail
     const updated = globalDrawingEngine.getActiveBrush?.();
     if (updated) {
-      setActiveBrush({ ...updated });
+      setActiveBrushState({ ...updated });
     }
 
     setIsSaved(true);
@@ -443,7 +448,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
 
   const syncFromActiveBrush = useCallback(() => {
     const brush = globalDrawingEngine.getActiveBrush?.();
-    setActiveBrush(brush);
+    setActiveBrushState(brush);
     if (!brush) return;
 
     if (brush.engineParameters && brush.engineParameters.engineId === "pixelbrush") {
@@ -952,7 +957,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
           {/* Reusable Krita-Style Brush Dynamics Studio Panel */}
           {isCurveOpen && (
             <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
-              <BrushDynamicsPanel />
+              <BrushDynamicsPanel key={activePresetId} />
             </div>
           )}
         </div>
@@ -1153,6 +1158,7 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
       {/* Right Column: Embedded Live Scratchpad (white in dark mode, black in light mode) */}
       <div className="w-68 p-3 flex flex-col items-center justify-center bg-zinc-50/60 dark:bg-zinc-900/40 shrink-0">
         <BrushScratchpad
+          activeBrush={activeBrush}
           brushSize={brushSize}
           brushOpacity={brushOpacity}
           softness={softness}

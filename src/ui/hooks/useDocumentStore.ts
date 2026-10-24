@@ -46,6 +46,8 @@ export interface DocumentState {
   globalPressureCurve: CurvePoint[];
   movingAverageConfig: MovingAverageConfig;
   pullStringConfig: PullStringConfig;
+  brushSettingsRevision: number;
+  bumpBrushSettingsRevision: () => void;
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
@@ -168,6 +170,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   })(),
   movingAverageConfig: globalDrawingEngine.getMovingAverageConfig?.() ?? DEFAULT_MOVING_AVERAGE_CONFIG,
   pullStringConfig: globalDrawingEngine.getPullStringConfig?.() ?? DEFAULT_PULL_STRING_CONFIG,
+  brushSettingsRevision: 0,
+  bumpBrushSettingsRevision: () => set((state) => ({ brushSettingsRevision: state.brushSettingsRevision + 1 })),
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
@@ -178,8 +182,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     void globalRustBrushBridge.setBrushBlendMode(mode);
     globalWasmBrushBridge.setBrushBlendMode(mode);
   },
-  setBrushSize: (brushSize) => set({ brushSize }),
-  setBrushOpacity: (brushOpacity) => set({ brushOpacity }),
+  setBrushSize: (brushSize) => set((state) => ({ brushSize, brushSettingsRevision: state.brushSettingsRevision + 1 })),
+  setBrushOpacity: (brushOpacity) => set((state) => ({ brushOpacity, brushSettingsRevision: state.brushSettingsRevision + 1 })),
   setTransform: (transform) => set({ transform }),
   setActivePopover: (activePopover) =>
     set({

@@ -862,22 +862,43 @@ pub async fn rust_brush_set_dynamics_mapping(
 ) -> Result<(), String> {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
+        let sensor_type = sketch_core::brush::SensorType::from_str(&sensor);
         if enabled && lut.len() == 256 {
-            let sensor_type = sketch_core::brush::SensorType::from_str(&sensor);
             let mut arr = [0.0f32; 256];
             arr.copy_from_slice(&lut);
             let curve = sketch_core::brush::DynamicsCurve::from_lut(arr);
-            let mapping = sketch_core::brush::SensorDynamicsMapping {
-                sensor: sensor_type,
-                curve,
+            session.engine.config.dynamics.set_sensor_mapping(
+                &param,
+                sensor_type,
+                true,
                 min_output,
                 max_output,
-                enabled: true,
-            };
-            session.engine.config.dynamics.set_mapping(&param, Some(mapping));
+                curve,
+            );
         } else {
-            session.engine.config.dynamics.set_mapping(&param, None);
+            let curve = sketch_core::brush::DynamicsCurve::linear();
+            session.engine.config.dynamics.set_sensor_mapping(
+                &param,
+                sensor_type,
+                false,
+                min_output,
+                max_output,
+                curve,
+            );
         }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_dynamics_calculation_mode(
+    param: String,
+    mode: String,
+) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        let calc_mode = sketch_core::brush::DynamicsCalculationMode::from_str(&mode);
+        session.engine.config.dynamics.set_calculation_mode(&param, calc_mode);
     }
     Ok(())
 }

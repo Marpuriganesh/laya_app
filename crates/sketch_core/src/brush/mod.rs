@@ -33,7 +33,10 @@ pub use blend::{
 pub use blitter::CanvasBlitter;
 pub use canvas::CanvasView;
 pub use config::BrushConfig;
-pub use dynamics::{BrushDynamicsConfig, DynamicsCurve, SensorDynamicsMapping, SensorType};
+pub use dynamics::{
+    BrushDynamicsConfig, DynamicsCalculationMode, DynamicsCurve, PropertyDynamicsConfig,
+    SensorDynamicsMapping, SensorType,
+};
 pub use engine::PixelBrushEngine;
 pub use rasterizer::MaskRasterizer;
 pub use rect::Rect;

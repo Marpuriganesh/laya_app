@@ -143,39 +143,215 @@ impl SensorDynamicsMapping {
     }
 }
 
-/// Full brush dynamics configuration bundling independent parameter modulations.
+/// Combination mode for multiple active sensor curves modulating the same brush property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DynamicsCalculationMode {
+    #[default]
+    Multiply,
+    Add,
+    Max,
+    Min,
+}
+
+impl DynamicsCalculationMode {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_ascii_lowercase().as_str() {
+            "add" | "addition" => Self::Add,
+            "max" | "maximum" => Self::Max,
+            "min" | "minimum" => Self::Min,
+            _ => Self::Multiply,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Multiply => "multiply",
+            Self::Add => "add",
+            Self::Max => "max",
+            Self::Min => "min",
+        }
+    }
+}
+
+/// Represents a set of active sensor dynamics mappings modulating a single brush property.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PropertyDynamicsConfig {
+    pub mappings: Vec<SensorDynamicsMapping>,
+    pub calculation_mode: DynamicsCalculationMode,
+}
+
+impl PropertyDynamicsConfig {
+    /// Returns whether any sensor mapping is currently enabled.
+    #[inline]
+    pub fn is_active(&self) -> bool {
+        self.mappings.iter().any(|m| m.enabled)
+    }
+
+    /// Sets or replaces the mapping for a sensor.
+    pub fn set_sensor_mapping(&mut self, mapping: SensorDynamicsMapping) {
+        if let Some(pos) = self.mappings.iter().position(|m| m.sensor == mapping.sensor) {
+            self.mappings[pos] = mapping;
+        } else {
+            self.mappings.push(mapping);
+        }
+    }
+
+    /// Enables or disables a sensor mapping without dropping its curve.
+    pub fn set_sensor_enabled(&mut self, sensor: SensorType, enabled: bool) {
+        if let Some(m) = self.mappings.iter_mut().find(|m| m.sensor == sensor) {
+            m.enabled = enabled;
+        }
+    }
+
+    /// Removes a sensor mapping entirely.
+    pub fn remove_sensor(&mut self, sensor: SensorType) {
+        self.mappings.retain(|m| m.sensor != sensor);
+    }
+
+    /// Queries the mapping for a given sensor if present.
+    pub fn get_mapping(&self, sensor: SensorType) -> Option<&SensorDynamicsMapping> {
+        self.mappings.iter().find(|m| m.sensor == sensor)
+    }
+
+    /// Clears all active mappings and resets calculation mode to multiply.
+    pub fn clear(&mut self) {
+        self.mappings.clear();
+        self.calculation_mode = DynamicsCalculationMode::Multiply;
+    }
+
+    /// Evaluates all active sensor mappings according to `calculation_mode`.
+    /// Returns a combined modulation multiplier.
+    pub fn evaluate(
+        &self,
+        event: &StrokeEvent,
+        velocity_px_sec: f32,
+        distance_px: f32,
+        random_seed: f32,
+    ) -> f32 {
+        let active: Vec<&SensorDynamicsMapping> = self.mappings.iter().filter(|m| m.enabled).collect();
+        if active.is_empty() {
+            return 1.0;
+        }
+
+        match self.calculation_mode {
+            DynamicsCalculationMode::Multiply => {
+                let mut product = 1.0f32;
+                for m in active {
+                    product *= m.evaluate(event, velocity_px_sec, distance_px, random_seed);
+                }
+                product
+            }
+            DynamicsCalculationMode::Add => {
+                let mut sum = 0.0f32;
+                for m in active {
+                    sum += m.evaluate(event, velocity_px_sec, distance_px, random_seed);
+                }
+                sum.clamp(0.0, 1.0)
+            }
+            DynamicsCalculationMode::Max => {
+                let mut max_val = f32::MIN;
+                for m in active {
+                    max_val = max_val.max(m.evaluate(event, velocity_px_sec, distance_px, random_seed));
+                }
+                max_val
+            }
+            DynamicsCalculationMode::Min => {
+                let mut min_val = f32::MAX;
+                for m in active {
+                    min_val = min_val.min(m.evaluate(event, velocity_px_sec, distance_px, random_seed));
+                }
+                min_val
+            }
+        }
+    }
+}
+
+/// Full brush dynamics configuration bundling independent multi-sensor parameter modulations.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BrushDynamicsConfig {
-    pub size: Option<SensorDynamicsMapping>,
-    pub opacity: Option<SensorDynamicsMapping>,
-    pub flow: Option<SensorDynamicsMapping>,
-    pub angle: Option<SensorDynamicsMapping>,
-    pub jitter: Option<SensorDynamicsMapping>,
-    pub softness: Option<SensorDynamicsMapping>,
+    pub size: PropertyDynamicsConfig,
+    pub opacity: PropertyDynamicsConfig,
+    pub flow: PropertyDynamicsConfig,
+    pub angle: PropertyDynamicsConfig,
+    pub jitter: PropertyDynamicsConfig,
+    pub softness: PropertyDynamicsConfig,
 }
 
 impl BrushDynamicsConfig {
     /// Sets or removes a dynamic sensor mapping for a given brush parameter name.
     pub fn set_mapping(&mut self, param: &str, mapping: Option<SensorDynamicsMapping>) {
-        match param.to_ascii_lowercase().as_str() {
-            "size" | "diameter" => self.size = mapping,
-            "opacity" => self.opacity = mapping,
-            "flow" => self.flow = mapping,
-            "angle" | "rotation" => self.angle = mapping,
-            "jitter" | "scatter" => self.jitter = mapping,
-            "softness" => self.softness = mapping,
-            _ => {}
+        let prop = match param.to_ascii_lowercase().as_str() {
+            "size" | "diameter" => &mut self.size,
+            "opacity" => &mut self.opacity,
+            "flow" => &mut self.flow,
+            "angle" | "rotation" => &mut self.angle,
+            "jitter" | "scatter" => &mut self.jitter,
+            "softness" => &mut self.softness,
+            _ => return,
+        };
+
+        if let Some(m) = mapping {
+            prop.set_sensor_mapping(m);
+        } else {
+            prop.clear();
         }
+    }
+
+    /// Sets or updates a specific sensor mapping for a given brush parameter.
+    pub fn set_sensor_mapping(
+        &mut self,
+        param: &str,
+        sensor: SensorType,
+        enabled: bool,
+        min_output: f32,
+        max_output: f32,
+        curve: DynamicsCurve,
+    ) {
+        let prop = match param.to_ascii_lowercase().as_str() {
+            "size" | "diameter" => &mut self.size,
+            "opacity" => &mut self.opacity,
+            "flow" => &mut self.flow,
+            "angle" | "rotation" => &mut self.angle,
+            "jitter" | "scatter" => &mut self.jitter,
+            "softness" => &mut self.softness,
+            _ => return,
+        };
+
+        if enabled {
+            prop.set_sensor_mapping(SensorDynamicsMapping {
+                sensor,
+                curve,
+                min_output,
+                max_output,
+                enabled: true,
+            });
+        } else {
+            prop.set_sensor_enabled(sensor, false);
+        }
+    }
+
+    /// Sets the curves calculation mode (multiply, add, max, min) for a parameter.
+    pub fn set_calculation_mode(&mut self, param: &str, mode: DynamicsCalculationMode) {
+        let prop = match param.to_ascii_lowercase().as_str() {
+            "size" | "diameter" => &mut self.size,
+            "opacity" => &mut self.opacity,
+            "flow" => &mut self.flow,
+            "angle" | "rotation" => &mut self.angle,
+            "jitter" | "scatter" => &mut self.jitter,
+            "softness" => &mut self.softness,
+            _ => return,
+        };
+        prop.calculation_mode = mode;
     }
 
     /// Clears all dynamic mappings back to static brush behavior.
     pub fn clear(&mut self) {
-        self.size = None;
-        self.opacity = None;
-        self.flow = None;
-        self.angle = None;
-        self.jitter = None;
-        self.softness = None;
+        self.size.clear();
+        self.opacity.clear();
+        self.flow.clear();
+        self.angle.clear();
+        self.jitter.clear();
+        self.softness.clear();
     }
 }
 
@@ -244,20 +420,42 @@ mod tests {
     #[test]
     fn test_brush_dynamics_config_set_mapping_and_clear() {
         let mut config = BrushDynamicsConfig::default();
-        assert!(config.size.is_none());
-        assert!(config.softness.is_none());
+        assert!(!config.size.is_active());
+        assert!(!config.softness.is_active());
 
         let mapping = SensorDynamicsMapping::new(SensorType::Pressure, 0.2, 1.0);
         config.set_mapping("size", Some(mapping.clone()));
         config.set_mapping("softness", Some(mapping.clone()));
-        assert!(config.size.is_some());
-        assert!(config.softness.is_some());
+        assert!(config.size.is_active());
+        assert!(config.softness.is_active());
 
         config.set_mapping("size", None);
-        assert!(config.size.is_none());
-        assert!(config.softness.is_some());
+        assert!(!config.size.is_active());
+        assert!(config.softness.is_active());
 
         config.clear();
-        assert!(config.softness.is_none());
+        assert!(!config.softness.is_active());
+    }
+
+    #[test]
+    fn test_multi_sensor_dynamics_combination() {
+        let mut prop = PropertyDynamicsConfig::default();
+        let pressure_map = SensorDynamicsMapping::new(SensorType::Pressure, 0.5, 1.0);
+        let velocity_map = SensorDynamicsMapping::new(SensorType::Velocity, 0.5, 1.0);
+
+        prop.set_sensor_mapping(pressure_map);
+        prop.set_sensor_mapping(velocity_map);
+
+        let event = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
+        // Pressure 1.0 -> 1.0; Velocity 1250 (0.5) -> 0.75
+        // Multiply: 1.0 * 0.75 = 0.75
+        prop.calculation_mode = DynamicsCalculationMode::Multiply;
+        let mult = prop.evaluate(&event, 1250.0, 0.0, 0.0);
+        assert!((mult - 0.75).abs() < 0.05);
+
+        // Add: (1.0 + 0.75).min(1.0) = 1.0
+        prop.calculation_mode = DynamicsCalculationMode::Add;
+        let add = prop.evaluate(&event, 1250.0, 0.0, 0.0);
+        assert!((add - 1.0).abs() < 0.01);
     }
 }

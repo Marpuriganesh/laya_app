@@ -364,22 +364,36 @@ impl WasmBrushEngine {
         max_output: f32,
         lut: &[f32],
     ) {
+        let sensor_type = crate::brush::dynamics::SensorType::from_str(sensor);
         if enabled && lut.len() == 256 {
-            let sensor_type = crate::brush::dynamics::SensorType::from_str(sensor);
             let mut arr = [0.0f32; 256];
             arr.copy_from_slice(lut);
             let curve = crate::brush::dynamics::DynamicsCurve::from_lut(arr);
-            let mapping = crate::brush::dynamics::SensorDynamicsMapping {
-                sensor: sensor_type,
-                curve,
+            self.engine.config.dynamics.set_sensor_mapping(
+                param,
+                sensor_type,
+                true,
                 min_output,
                 max_output,
-                enabled: true,
-            };
-            self.engine.config.dynamics.set_mapping(param, Some(mapping));
+                curve,
+            );
         } else {
-            self.engine.config.dynamics.set_mapping(param, None);
+            let curve = crate::brush::dynamics::DynamicsCurve::linear();
+            self.engine.config.dynamics.set_sensor_mapping(
+                param,
+                sensor_type,
+                false,
+                min_output,
+                max_output,
+                curve,
+            );
         }
+    }
+
+    /// Sets the calculation mode for combining multiple sensor dynamics on a brush property (multiply, add, max, min).
+    pub fn set_dynamics_calculation_mode(&mut self, param: &str, mode: &str) {
+        let calc_mode = crate::brush::dynamics::DynamicsCalculationMode::from_str(mode);
+        self.engine.config.dynamics.set_calculation_mode(param, calc_mode);
     }
 
     /// Clears all dynamic sensor modulations back to static defaults.
@@ -405,6 +419,29 @@ impl WasmBrushEngine {
             .map(rect_to_boxed_slice)
     }
 
+    /// Begins a stroke at (x, y) with pressure, timestamp, and stylus tilt angles.
+    pub fn begin_stroke_with_tilt(
+        &mut self,
+        x: f32,
+        y: f32,
+        pressure: f32,
+        time: Option<f32>,
+        tilt_x: Option<f32>,
+        tilt_y: Option<f32>,
+    ) -> Option<Box<[i32]>> {
+        let event = StrokeEvent::with_tilt(
+            x,
+            y,
+            pressure,
+            time.unwrap_or(0.0),
+            tilt_x.unwrap_or(0.0),
+            tilt_y.unwrap_or(0.0),
+        );
+        self.engine
+            .begin_stroke_on_stack(event, &mut self.stack)
+            .map(rect_to_boxed_slice)
+    }
+
     /// Extends a stroke to (x, y) with pressure and optional timestamp using quadratic Bézier splines.
     pub fn paint_to(
         &mut self,
@@ -419,10 +456,35 @@ impl WasmBrushEngine {
             .map(rect_to_boxed_slice)
     }
 
+    /// Extends a stroke to (x, y) with pressure, timestamp, and stylus tilt angles.
+    pub fn paint_to_with_tilt(
+        &mut self,
+        x: f32,
+        y: f32,
+        pressure: f32,
+        time: Option<f32>,
+        tilt_x: Option<f32>,
+        tilt_y: Option<f32>,
+    ) -> Option<Box<[i32]>> {
+        let event = StrokeEvent::with_tilt(
+            x,
+            y,
+            pressure,
+            time.unwrap_or(0.0),
+            tilt_x.unwrap_or(0.0),
+            tilt_y.unwrap_or(0.0),
+        );
+        self.engine
+            .paint_to_stack(event, &mut self.stack)
+            .map(rect_to_boxed_slice)
+    }
+
     /// Paints a batch of coalesced pointer events flatly laid out as [x0, y0, p0, ...].
     pub fn paint_batch(&mut self, flat_events: &[f32]) -> Option<Box<[i32]>> {
         let mut combined: Option<Rect> = None;
-        let stride = if !flat_events.is_empty() && flat_events.len() % 4 == 0 {
+        let stride = if !flat_events.is_empty() && flat_events.len() % 6 == 0 {
+            6
+        } else if !flat_events.is_empty() && flat_events.len() % 4 == 0 {
             4
         } else {
             3
@@ -433,8 +495,13 @@ impl WasmBrushEngine {
             let x = flat_events[offset];
             let y = flat_events[offset + 1];
             let p = flat_events[offset + 2];
-            let t = if stride == 4 { flat_events[offset + 3] } else { 0.0 };
-            let event = StrokeEvent::new(x, y, p, t);
+            let t = if stride >= 4 { flat_events[offset + 3] } else { 0.0 };
+            let (tx, ty) = if stride == 6 {
+                (flat_events[offset + 4], flat_events[offset + 5])
+            } else {
+                (0.0, 0.0)
+            };
+            let event = StrokeEvent::with_tilt(x, y, p, t, tx, ty);
             if let Some(r) = self.engine.paint_to_stack(event, &mut self.stack) {
                 combined = match combined {
                     None => Some(r),

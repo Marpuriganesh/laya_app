@@ -156,7 +156,7 @@ impl PullStringStabilizer {
         if !config.enabled || config.max_string_length <= 0.0 {
             self.smoothed_tip = Some(current_cursor);
             self.current_string_length = 0.0;
-            return Some(StrokeEvent::new(current_cursor.0, current_cursor.1, smoothed_p, event.time));
+            return Some(StrokeEvent::with_tilt(current_cursor.0, current_cursor.1, smoothed_p, event.time, event.tilt_x, event.tilt_y));
         }
 
         let target_string_length = (velocity * config.velocity_multiplier)
@@ -179,7 +179,7 @@ impl PullStringStabilizer {
 
             self.smoothed_tip = Some((new_tip_x, new_tip_y));
 
-            Some(StrokeEvent::new(new_tip_x, new_tip_y, smoothed_p, event.time))
+            Some(StrokeEvent::with_tilt(new_tip_x, new_tip_y, smoothed_p, event.time, event.tilt_x, event.tilt_y))
         } else {
             None
         }

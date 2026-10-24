@@ -279,13 +279,9 @@ impl PixelBrushEngine {
         velocity_px_sec: f32,
         distance_px: f32,
     ) -> f32 {
-        if let Some(ref size_dyn) = config.dynamics.size {
-            let out = size_dyn.evaluate(event, velocity_px_sec, distance_px, 0.0);
-            if size_dyn.max_output <= 1.0 {
-                (config.diameter * out).max(1.0)
-            } else {
-                out.max(1.0)
-            }
+        if config.dynamics.size.is_active() {
+            let out = config.dynamics.size.evaluate(event, velocity_px_sec, distance_px, 0.0);
+            (config.diameter * out).max(1.0)
         } else if config.size_by_pressure {
             let mapped = Self::map_pressure(event.pressure, config);
             config.diameter * mapped.max(0.05)
@@ -331,12 +327,12 @@ impl PixelBrushEngine {
             crate::brush::tip::BrushTipType::Predefined { angle_radians, .. } => angle_radians,
         };
 
-        if let Some(ref angle_dyn) = config.dynamics.angle {
-            angle_radians += angle_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+        if config.dynamics.angle.is_active() {
+            angle_radians += config.dynamics.angle.evaluate(&event, velocity_px_sec, distance_px, 0.0);
         }
 
-        let effective_softness = if let Some(ref soft_dyn) = config.dynamics.softness {
-            let scale = soft_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+        let effective_softness = if config.dynamics.softness.is_active() {
+            let scale = config.dynamics.softness.evaluate(&event, velocity_px_sec, distance_px, 0.0);
             (config.softness * scale).clamp(0.0, 1.0)
         } else {
             config.softness
@@ -387,26 +383,22 @@ impl PixelBrushEngine {
         }
 
         let mut flow_opacity = config.flow * config.opacity;
-        if let Some(ref op_dyn) = config.dynamics.opacity {
-            flow_opacity *= op_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+        if config.dynamics.opacity.is_active() {
+            flow_opacity *= config.dynamics.opacity.evaluate(&event, velocity_px_sec, distance_px, 0.0);
         } else if config.opacity_by_pressure {
             flow_opacity *= Self::map_pressure(event.pressure, config);
         }
 
-        if let Some(ref flow_dyn) = config.dynamics.flow {
-            flow_opacity *= flow_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+        if config.dynamics.flow.is_active() {
+            flow_opacity *= config.dynamics.flow.evaluate(&event, velocity_px_sec, distance_px, 0.0);
         }
 
         let mut final_dest_x = dest_x;
         let mut final_dest_y = dest_y;
 
-        if let Some(ref jitter_dyn) = config.dynamics.jitter {
-            let jitter_eval = jitter_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.5);
-            let max_jitter = if jitter_dyn.max_output <= 1.0 {
-                jitter_eval * radius
-            } else {
-                jitter_eval
-            };
+        if config.dynamics.jitter.is_active() {
+            let jitter_eval = config.dynamics.jitter.evaluate(&event, velocity_px_sec, distance_px, 0.5);
+            let max_jitter = jitter_eval * radius;
             if max_jitter > 0.01 {
                 let seed = ((event.x * 12.9898 + event.y * 78.233).sin() * 43758.5453).fract().abs();
                 let jitter_angle = seed * std::f32::consts::TAU;

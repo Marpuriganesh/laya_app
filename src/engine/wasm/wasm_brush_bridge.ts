@@ -130,6 +130,14 @@ export class WasmBrushBridge {
   }
 
   /**
+   * Sets calculation mode for combining multiple sensor curves (multiply, add, max, min).
+   */
+  public setDynamicsCalculationMode(param: string, mode: string): void {
+    if (!this.engine) return;
+    this.engine.set_dynamics_calculation_mode(param, mode);
+  }
+
+  /**
    * Clears all dynamic sensor modulations back to static defaults.
    */
   public clearDynamics(): void {
@@ -337,9 +345,11 @@ export class WasmBrushBridge {
    */
   public beginStroke(point: StrokePoint, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
-    const pressure = typeof point.pressure === "number" ? Math.max(0.05, Math.min(1.0, point.pressure)) : 1.0;
+    const pressure = typeof point.pressure === "number" ? Math.max(0.01, Math.min(1.0, point.pressure)) : 1.0;
     const timeSec = point.timeMs ? point.timeMs * 0.001 : 0.0;
-    const dirty = this.engine.begin_stroke(point.canvasX, point.canvasY, pressure, timeSec);
+    const tiltX = typeof point.tiltX === "number" ? point.tiltX : 0.0;
+    const tiltY = typeof point.tiltY === "number" ? point.tiltY : 0.0;
+    const dirty = this.engine.begin_stroke_with_tilt(point.canvasX, point.canvasY, pressure, timeSec, tiltX, tiltY);
     if (dirty) {
       this.blitDirtyRect(dirty, ctx);
     }
@@ -350,9 +360,11 @@ export class WasmBrushBridge {
    */
   public extendStroke(point: StrokePoint, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
-    const pressure = typeof point.pressure === "number" ? Math.max(0.05, Math.min(1.0, point.pressure)) : 1.0;
+    const pressure = typeof point.pressure === "number" ? Math.max(0.01, Math.min(1.0, point.pressure)) : 1.0;
     const timeSec = point.timeMs ? point.timeMs * 0.001 : 0.0;
-    const dirty = this.engine.paint_to(point.canvasX, point.canvasY, pressure, timeSec);
+    const tiltX = typeof point.tiltX === "number" ? point.tiltX : 0.0;
+    const tiltY = typeof point.tiltY === "number" ? point.tiltY : 0.0;
+    const dirty = this.engine.paint_to_with_tilt(point.canvasX, point.canvasY, pressure, timeSec, tiltX, tiltY);
     if (dirty) {
       this.blitDirtyRect(dirty, ctx);
     }
@@ -364,19 +376,21 @@ export class WasmBrushBridge {
   public extendStrokeBatch(points: readonly StrokePoint[], ctx: CanvasRenderingContext2D): void {
     if (!this.engine || points.length === 0) return;
 
-    const requiredLen = points.length * 4;
+    const requiredLen = points.length * 6;
     if (this.flatEventsScratch.length < requiredLen) {
       this.flatEventsScratch = new Float32Array(Math.max(requiredLen, this.flatEventsScratch.length * 2));
     }
 
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
-      const offset = i * 4;
+      const offset = i * 6;
       this.flatEventsScratch[offset] = p.canvasX;
       this.flatEventsScratch[offset + 1] = p.canvasY;
       this.flatEventsScratch[offset + 2] =
-        typeof p.pressure === "number" ? Math.max(0.05, Math.min(1.0, p.pressure)) : 1.0;
+        typeof p.pressure === "number" ? Math.max(0.01, Math.min(1.0, p.pressure)) : 1.0;
       this.flatEventsScratch[offset + 3] = p.timeMs ? p.timeMs * 0.001 : 0.0;
+      this.flatEventsScratch[offset + 4] = typeof p.tiltX === "number" ? p.tiltX : 0.0;
+      this.flatEventsScratch[offset + 5] = typeof p.tiltY === "number" ? p.tiltY : 0.0;
     }
 
     const slice = this.flatEventsScratch.subarray(0, requiredLen);

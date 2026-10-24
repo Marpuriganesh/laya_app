@@ -3,15 +3,20 @@
  * Ultra-lightweight, memory-efficient live drawing canvas for instant brush experimentation.
  * Powered by an isolated WasmBrushBridge instance running Rust sketch_core's
  * continuous midpoint quadratic Bézier splines and subpixel dab stepping (zero faceting),
- * with graceful smooth spline fallback for headless environments.
+ * with full hardware Apple Pencil / stylus pressure & tilt support and simulated dynamics stroke.
  */
 
 import { useRef, useEffect, useCallback, useState, type FC, type PointerEvent } from "react";
-import { Trash2, Sparkles } from "lucide-react";
+import { Trash2, Sparkles, Wand2 } from "lucide-react";
 import { useTheme } from "@/ui/theme/ThemeProvider";
+import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { WasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
+import { generateCurveLookupTable256 } from "@/engine/math/dynamics_curve";
+import type { BrushPreset } from "@/types/brush";
+import type { StrokePoint } from "@/types/stroke";
 
 export interface BrushScratchpadProps {
+  activeBrush?: BrushPreset | null;
   brushSize: number;
   brushOpacity: number;
   softness?: number;
@@ -30,6 +35,7 @@ interface PointWithPressure {
 }
 
 export const BrushScratchpad: FC<BrushScratchpadProps> = ({
+  activeBrush,
   brushSize,
   brushOpacity,
   softness = 0.45,
@@ -44,9 +50,12 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
   const bridgeRef = useRef<WasmBrushBridge | null>(null);
   const [isReady, setIsReady] = useState(false);
   const { resolvedTheme } = useTheme();
+  const brushSettingsRevision = useDocumentStore((s) => s.brushSettingsRevision);
+  const globalPressureCurve = useDocumentStore((s) => s.globalPressureCurve);
 
   const isDrawingRef = useRef(false);
   const pointsRef = useRef<PointWithPressure[]>([]);
+  const strokeStepCountRef = useRef(0);
 
   // Clear canvas and Wasm buffer
   const clearCanvas = useCallback(() => {
@@ -60,6 +69,107 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     }
   }, []);
 
+  // Synchronizes full brush parameters, tip geometry, dynamics, and scattering to Wasm bridge
+  const syncBridgeConfig = useCallback(() => {
+    if (!bridgeRef.current?.ready) return;
+    const bridge = bridgeRef.current;
+    const strokeRgb: [number, number, number] = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
+
+    const params = activeBrush?.engineParameters;
+    let scatterAmp = 0;
+    let hasScatter = false;
+
+    if (params && params.engineId === "pixelbrush") {
+      scatterAmp = typeof params.scatterAmplitude === "number" ? params.scatterAmplitude : 0;
+      hasScatter = Boolean((params.scatterDynamics && params.scatterDynamics.isEnabled) || scatterAmp > 0.01);
+    }
+
+    // Configure base parameters
+    bridge.setBrushConfig({
+      diameter: Math.max(1, brushSize),
+      spacing: Math.max(0.01, (spacing ?? 8) / 100),
+      softness: Math.max(0, Math.min(1, softness ?? 0.45)),
+      color: [strokeRgb[0], strokeRgb[1], strokeRgb[2], 255],
+      opacity: Math.max(0, Math.min(1, brushOpacity)),
+      flow: 1.0,
+      sizeByPressure: sizeDynamics ?? true,
+      opacityByPressure: opacityDynamics ?? false,
+      isErase: false,
+      antialias: true,
+    });
+
+    // 1. Sync global pressure LUT
+    if (globalPressureCurve && globalPressureCurve.length >= 2) {
+      const pLut = generateCurveLookupTable256(globalPressureCurve);
+      bridge.setPressureLut(pLut);
+    }
+
+    // 2. Sync dynamics (multi-sensor or legacy single sensor)
+    const multiDyn = params && "multiDynamics" in params ? params.multiDynamics : null;
+    if (multiDyn) {
+      for (const [paramKey, pConfig] of Object.entries(multiDyn)) {
+        if (!pConfig) continue;
+        if (pConfig.calculationMode) {
+          bridge.setDynamicsCalculationMode(paramKey, pConfig.calculationMode);
+        }
+        if (pConfig.sensors) {
+          for (const [sensorKey, sVal] of Object.entries(pConfig.sensors)) {
+            if (!sVal) continue;
+            const lut = sVal.curvePoints && sVal.curvePoints.length >= 2
+              ? generateCurveLookupTable256(sVal.curvePoints.map((p) => ({ x: p.inputValue, y: p.outputValue })))
+              : new Float32Array(256);
+            bridge.setDynamicsMapping(
+              paramKey,
+              sVal.isEnabled,
+              sensorKey,
+              sVal.minOutput ?? 0.0,
+              sVal.maxOutput ?? 1.0,
+              lut
+            );
+          }
+        }
+      }
+    } else {
+      // Legacy single dynamics fallback
+      const sizeDyn = params && "sizeDynamics" in params ? params.sizeDynamics : null;
+      if (sizeDyn && sizeDyn.isEnabled && sizeDyn.curvePoints.length >= 2) {
+        const pts = sizeDyn.curvePoints.map((p) => ({ x: p.inputValue, y: p.outputValue }));
+        const lut = generateCurveLookupTable256(pts);
+        bridge.setDynamicsMapping("size", true, sizeDyn.sensorInput, 0.02, 1.0, lut);
+      } else {
+        bridge.setDynamicsMapping("size", false, "pressure", 0.0, 1.0, new Float32Array(256));
+      }
+
+      const opDyn = params && "opacityDynamics" in params ? params.opacityDynamics : null;
+      if (opDyn && opDyn.isEnabled && opDyn.curvePoints.length >= 2) {
+        const pts = opDyn.curvePoints.map((p) => ({ x: p.inputValue, y: p.outputValue }));
+        const lut = generateCurveLookupTable256(pts);
+        bridge.setDynamicsMapping("opacity", true, opDyn.sensorInput, 0.05, 1.0, lut);
+      } else {
+        bridge.setDynamicsMapping("opacity", false, "pressure", 0.0, 1.0, new Float32Array(256));
+      }
+
+      if (hasScatter) {
+        const lut = new Float32Array(256);
+        for (let i = 0; i < 256; i++) lut[i] = 1.0;
+        const maxOut = Math.max(scatterAmp, 0.6);
+        bridge.setDynamicsMapping("jitter", true, "random", 0.0, maxOut, lut);
+      } else {
+        bridge.setDynamicsMapping("jitter", false, "random", 0.0, 0.0, new Float32Array(256));
+      }
+    }
+  }, [
+    activeBrush,
+    brushSize,
+    brushOpacity,
+    softness,
+    spacing,
+    sizeDynamics,
+    opacityDynamics,
+    resolvedTheme,
+    globalPressureCurve,
+  ]);
+
   // Initialize isolated Wasm engine for scratchpad
   useEffect(() => {
     const bridge = new WasmBrushBridge();
@@ -69,6 +179,7 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
       if (ready) {
         bridge.resizeCanvas(width, height, 0, 0, 0, 0);
         setIsReady(true);
+        syncBridgeConfig();
       }
     });
 
@@ -82,26 +193,132 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     return () => {
       bridgeRef.current = null;
     };
-  }, [width, height, clearCanvas]);
+  }, [width, height, clearCanvas, syncBridgeConfig]);
 
-  // Sync brush parameters to Wasm bridge whenever they change:
-  // Always pure white in dark mode, pure black in light mode (no need to follow selected color)
+  // Sync brush parameters whenever dependencies change
   useEffect(() => {
-    if (!bridgeRef.current) return;
-    const strokeRgb: [number, number, number] = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
-    bridgeRef.current.setBrushConfig({
-      diameter: Math.max(1, brushSize),
-      spacing: Math.max(0.01, (spacing ?? 8) / 100),
-      softness: Math.max(0, Math.min(1, softness ?? 0.45)),
-      color: [strokeRgb[0], strokeRgb[1], strokeRgb[2], 255],
-      opacity: Math.max(0, Math.min(1, brushOpacity)),
-      flow: 1.0,
-      sizeByPressure: sizeDynamics ?? true,
-      opacityByPressure: opacityDynamics ?? false,
-      isErase: false,
-      antialias: true,
-    });
-  }, [brushSize, brushOpacity, softness, spacing, sizeDynamics, opacityDynamics, resolvedTheme]);
+    syncBridgeConfig();
+  }, [syncBridgeConfig, brushSettingsRevision, isReady]);
+
+  // Draw default simulated test stroke (ramping pressure, tilt, velocity & scattering)
+  const handleDrawDefaultStroke = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Generate ~75 points along an authentic hand-painted S-curve
+    const steps = 75;
+    const points: StrokePoint[] = [];
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // Fluid S-curve trajectory
+      const x = w * (0.24 + 0.52 * t + Math.sin(t * Math.PI * 2) * 0.18);
+      const y = h * (0.12 + 0.76 * t);
+
+      // Realistic stylus pressure: start delicate, swell in center, taper at tail
+      const pressure = Math.pow(Math.sin(t * Math.PI), 0.75) * 0.88 + 0.08;
+
+      // Realistic Apple Pencil / stylus tilt: sweeps from 10 deg to 45 deg tilt and back
+      const tiltX = Math.sin(t * Math.PI) * 0.65;
+      const tiltY = Math.cos(t * Math.PI * 2) * 0.35;
+
+      const timeMs = i * 16.6; // 60fps velocity pacing
+      const speed = 400 + Math.sin(t * Math.PI) * 1200;
+
+      points.push({
+        canvasX: x,
+        canvasY: y,
+        pressure,
+        tiltX,
+        tiltY,
+        rotation: t * Math.PI,
+        timeMs,
+        speed,
+      });
+    }
+
+    if (bridgeRef.current?.ready) {
+      bridgeRef.current.beginStroke(points[0], ctx);
+      for (let i = 1; i < points.length; i++) {
+        bridgeRef.current.extendStroke(points[i], ctx);
+      }
+      bridgeRef.current.finishStroke(ctx);
+    } else {
+      // Fallback: draw smooth spline on 2D context
+      const strokeRgb = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      for (let i = 1; i < points.length; i++) {
+        const pPrev = points[i - 1];
+        const pCurr = points[i];
+        const avgPressure = (pPrev.pressure + pCurr.pressure) * 0.5;
+        const effSize = sizeDynamics ? Math.max(1, brushSize * avgPressure) : brushSize;
+        const effAlpha = opacityDynamics ? brushOpacity * avgPressure : brushOpacity;
+
+        ctx.strokeStyle = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha})`;
+        ctx.lineWidth = effSize;
+
+        ctx.beginPath();
+        ctx.moveTo(pPrev.canvasX, pPrev.canvasY);
+        ctx.lineTo(pCurr.canvasX, pCurr.canvasY);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }, [brushSize, brushOpacity, sizeDynamics, opacityDynamics, resolvedTheme]);
+
+  // Extracts true normalized pressure [0.01 .. 1.0] across all devices (Apple Pencil, Wacom, Mac Force Touch, mouse)
+  const extractPressure = (e: PointerEvent<HTMLCanvasElement>, isMove = false): number => {
+    // 1. Apple Pencil / Stylus (pointerType === "pen")
+    if (e.pointerType === "pen") {
+      if (typeof e.pressure === "number" && e.pressure > 0.0001) {
+        return Math.max(0.01, Math.min(1.0, e.pressure));
+      }
+      return 0.5;
+    }
+
+    // 2. Hardware tablet sending analog pressure (non-default value)
+    if (typeof e.pressure === "number" && e.pressure > 0 && e.pressure !== 0.5) {
+      return Math.max(0.01, Math.min(1.0, e.pressure));
+    }
+
+    // 3. Apple MacBook Force Touch trackpad (WebKit webkitForce API)
+    const webkitForce = (e as any).webkitForce;
+    if (typeof webkitForce === "number" && webkitForce > 0) {
+      // 1.0 = standard click down, 2.0 = medium, 3.0 = full deep press
+      return Math.max(0.05, Math.min(1.0, (webkitForce - 1.0) / 2.0));
+    }
+
+    // 4. Fallback for mouse / trackpad without force touch:
+    // When drawing with mouse, simulate a natural dynamic pressure ramp along the stroke:
+    // Starts delicate (0.18), swells with progress, and smoothly modulates
+    if (!isMove) {
+      strokeStepCountRef.current = 0;
+      return 0.18;
+    }
+
+    strokeStepCountRef.current++;
+    const step = strokeStepCountRef.current;
+    const cycle = Math.min(step / 35, 1.0);
+    const wave = Math.sin(cycle * Math.PI);
+    return Math.max(0.12, Math.min(1.0, 0.18 + wave * 0.82));
+  };
+
+  // Extracts normalized tilt from hardware degrees [-90 .. 90]
+  const extractTilt = (e: PointerEvent<HTMLCanvasElement>): { tiltX: number; tiltY: number } => {
+    const rawX = typeof e.tiltX === "number" ? e.tiltX : 0;
+    const rawY = typeof e.tiltY === "number" ? e.tiltY : 0;
+    const tiltX = rawX !== 0 ? Math.sin((rawX * Math.PI) / 180) : 0;
+    const tiltY = rawY !== 0 ? Math.sin((rawY * Math.PI) / 180) : 0;
+    return { tiltX, tiltY };
+  };
 
   const handlePointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
     e.stopPropagation();
@@ -116,7 +333,9 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const pressure = e.pointerType === "pen" ? Math.max(0.05, Math.min(1.0, e.pressure)) : 0.75;
+    const pressure = extractPressure(e, false);
+    const { tiltX, tiltY } = extractTilt(e);
+    const rotation = typeof e.twist === "number" && e.twist !== 0 ? (e.twist * Math.PI) / 180 : 0;
     const timeMs = performance.now();
 
     isDrawingRef.current = true;
@@ -127,11 +346,10 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
 
     if (bridgeRef.current?.ready) {
       bridgeRef.current.beginStroke(
-        { canvasX: x, canvasY: y, pressure, timeMs, tiltX: 0, tiltY: 0, rotation: 0, speed: 0 },
+        { canvasX: x, canvasY: y, pressure, timeMs, tiltX, tiltY, rotation, speed: 0 },
         ctx
       );
     } else {
-      // Spline fallback: Stamp single initial dab (white in dark mode, black in light mode)
       const strokeRgb = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
       const effSize = sizeDynamics ? Math.max(1, brushSize * pressure) : brushSize;
       const effAlpha = opacityDynamics ? brushOpacity * pressure : brushOpacity;
@@ -153,58 +371,67 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const pressure = e.pointerType === "pen" ? Math.max(0.05, Math.min(1.0, e.pressure)) : 0.75;
     const timeMs = performance.now();
+    const { tiltX, tiltY } = extractTilt(e);
+    const rotation = typeof e.twist === "number" && e.twist !== 0 ? (e.twist * Math.PI) / 180 : 0;
 
-    const points = pointsRef.current;
-    const prev = points[points.length - 1];
-    if (prev) {
-      const dx = x - prev.x;
-      const dy = y - prev.y;
-      if (dx * dx + dy * dy < 0.8) return;
-    }
+    // Use coalesced events if available for 120Hz-240Hz stylus fidelity
+    const coalescedEvents =
+      typeof (e as any).getCoalescedEvents === "function"
+        ? ((e as any).getCoalescedEvents() as PointerEvent<HTMLCanvasElement>[])
+        : [e];
 
-    points.push({ x, y, pressure });
+    for (const evt of coalescedEvents) {
+      const x = evt.clientX - rect.left;
+      const y = evt.clientY - rect.top;
+      const pressure = extractPressure(evt, true);
 
-    if (bridgeRef.current?.ready) {
-      // Canonical Rust brush engine: continuous midpoint quadratic Bézier splines
-      bridgeRef.current.extendStroke(
-        { canvasX: x, canvasY: y, pressure, timeMs, tiltX: 0, tiltY: 0, rotation: 0, speed: 0 },
-        ctx
-      );
-    } else {
-      // Continuous Midpoint Quadratic Bézier Spline Fallback (NO linear faceting!)
-      if (points.length >= 3) {
-        const p0 = points[points.length - 3];
-        const p1 = points[points.length - 2];
-        const p2 = points[points.length - 1];
+      const points = pointsRef.current;
+      const prev = points[points.length - 1];
+      if (prev) {
+        const dx = x - prev.x;
+        const dy = y - prev.y;
+        if (dx * dx + dy * dy < 0.6) continue;
+      }
 
-        const midPrev = { x: (p0.x + p1.x) * 0.5, y: (p0.y + p1.y) * 0.5 };
-        const midNext = { x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5 };
+      points.push({ x, y, pressure });
 
-        const avgPressure = (p1.pressure + p2.pressure) * 0.5;
-        const effSize = sizeDynamics ? Math.max(1, brushSize * avgPressure) : brushSize;
-        const effAlpha = opacityDynamics ? brushOpacity * avgPressure : brushOpacity;
-        const strokeRgb = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
+      if (bridgeRef.current?.ready) {
+        bridgeRef.current.extendStroke(
+          { canvasX: x, canvasY: y, pressure, timeMs, tiltX, tiltY, rotation, speed: 0 },
+          ctx
+        );
+      } else {
+        if (points.length >= 3) {
+          const p0 = points[points.length - 3];
+          const p1 = points[points.length - 2];
+          const p2 = points[points.length - 1];
 
-        ctx.save();
-        ctx.strokeStyle = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha})`;
-        ctx.lineWidth = effSize;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
+          const midPrev = { x: (p0.x + p1.x) * 0.5, y: (p0.y + p1.y) * 0.5 };
+          const midNext = { x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5 };
 
-        if (softness > 0.05) {
-          ctx.shadowBlur = effSize * softness * 0.6;
-          ctx.shadowColor = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha * 0.5})`;
+          const avgPressure = (p1.pressure + p2.pressure) * 0.5;
+          const effSize = sizeDynamics ? Math.max(1, brushSize * avgPressure) : brushSize;
+          const effAlpha = opacityDynamics ? brushOpacity * avgPressure : brushOpacity;
+          const strokeRgb = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
+
+          ctx.save();
+          ctx.strokeStyle = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha})`;
+          ctx.lineWidth = effSize;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+
+          if (softness > 0.05) {
+            ctx.shadowBlur = effSize * softness * 0.6;
+            ctx.shadowColor = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${effAlpha * 0.5})`;
+          }
+
+          ctx.beginPath();
+          ctx.moveTo(midPrev.x, midPrev.y);
+          ctx.quadraticCurveTo(p1.x, p1.y, midNext.x, midNext.y);
+          ctx.stroke();
+          ctx.restore();
         }
-
-        ctx.beginPath();
-        ctx.moveTo(midPrev.x, midPrev.y);
-        ctx.quadraticCurveTo(p1.x, p1.y, midNext.x, midNext.y);
-        ctx.stroke();
-        ctx.restore();
       }
     }
   };
@@ -234,23 +461,37 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
       className={`relative flex flex-col items-center bg-white dark:bg-zinc-950/80 rounded-xl border border-zinc-200 dark:border-white/10 shadow-inner overflow-hidden ${className}`}
       style={{ width: `${width}px`, height: `${height}px` }}
     >
-      {/* Scratchpad Header Info */}
-      <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between pointer-events-none select-none z-10">
+      {/* Scratchpad Header: Title Badge & Actions */}
+      <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between select-none z-10 pointer-events-none">
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-900/10 dark:bg-white/10 backdrop-blur-md text-[10px] font-medium text-zinc-600 dark:text-zinc-300">
           <Sparkles className="w-3 h-3 text-blue-500" />
           <span>Scratchpad</span>
           {isReady && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Wasm Engine Active" />}
         </div>
 
-        <button
-          type="button"
-          onClick={clearCanvas}
-          title="Clear Scratchpad"
-          aria-label="Clear Scratchpad"
-          className="pointer-events-auto p-1.5 rounded-lg bg-white/80 dark:bg-zinc-800/80 hover:bg-red-50 dark:hover:bg-red-950/40 text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 border border-zinc-200/80 dark:border-white/10 shadow-xs transition-colors cursor-pointer"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          {/* Default Simulated Test Stroke Button */}
+          <button
+            type="button"
+            onClick={handleDrawDefaultStroke}
+            title="Draw simulated test stroke with pressure, tilt & velocity dynamics"
+            aria-label="Draw simulated test stroke"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/90 dark:bg-zinc-800/90 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-zinc-600 hover:text-blue-600 dark:text-zinc-300 dark:hover:text-blue-400 border border-zinc-200/80 dark:border-white/10 shadow-xs text-[10px] font-medium transition-colors cursor-pointer"
+          >
+            <Wand2 className="w-3 h-3 text-blue-500 shrink-0" />
+            <span>Test Stroke</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={clearCanvas}
+            title="Clear Scratchpad"
+            aria-label="Clear Scratchpad"
+            className="p-1.5 rounded-lg bg-white/90 dark:bg-zinc-800/90 hover:bg-red-50 dark:hover:bg-red-950/40 text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 border border-zinc-200/80 dark:border-white/10 shadow-xs transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Drawing Canvas */}

@@ -40,7 +40,10 @@ export type SensorInputName =
   | "pressure"
   | "tiltX"
   | "tiltY"
+  | "tilt_elevation"
+  | "tilt_azimuth"
   | "speed"
+  | "velocity"
   | "rotation"
   | "random"
   | "distance"
@@ -170,6 +173,20 @@ export const DEFAULT_STROKE_SMOOTHING_CONFIG: StrokeSmoothingConfig = {
   predictiveLookAheadFrames: 2,
 };
 
+export type DynamicsCalculationMode = "multiply" | "add" | "max" | "min";
+
+export interface SensorDynamicsConfig {
+  readonly isEnabled: boolean;
+  readonly curvePoints: readonly DynamicsCurvePoint[];
+  readonly minOutput?: number;
+  readonly maxOutput?: number;
+}
+
+export interface MultiDynamicsConfig {
+  readonly calculationMode?: DynamicsCalculationMode;
+  readonly sensors: Partial<Record<SensorInputName, SensorDynamicsConfig>>;
+}
+
 /**
  * Parameter block for Krita's Pixel Brush engine (paintopid="pixelbrush").
  */
@@ -188,6 +205,8 @@ export interface PixelBrushParameters {
   readonly flowDynamics: DynamicsMapping | null;
   readonly angleDynamics: DynamicsMapping | null;
   readonly scatterDynamics: DynamicsMapping | null;
+  /** Multi-sensor dynamics configurations per parameter */
+  readonly multiDynamics?: Partial<Record<string, MultiDynamicsConfig>>;
   /** Optional paper grain texture modulation (Krita KisTextureOption) */
   readonly grainTexture?: BrushTextureConfig | null;
 }

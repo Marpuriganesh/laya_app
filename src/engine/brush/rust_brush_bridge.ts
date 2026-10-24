@@ -111,6 +111,15 @@ export class RustBrushBridge {
     }
   }
 
+  public async setDynamicsCalculationMode(param: string, mode: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_set_dynamics_calculation_mode", { param, mode });
+    } catch (err) {
+      console.warn("Failed to set dynamics calculation mode in Rust:", err);
+    }
+  }
+
   public async clearDynamics(): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

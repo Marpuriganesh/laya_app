@@ -1,7 +1,8 @@
 /**
  * Brush Library Content
  * Displays categorized brush presets with real-time selection,
- * Procreate-style smooth S-curve stroke preview thumbnails,
+ * authentic brush tip mask/silhouette icons,
+ * Procreate-style smooth S-curve stroke preview thumbnails that update with live dynamics,
  * gear icons to open and customize brush settings in the Brush Studio,
  * and support for importing Krita bundles and presets.
  */
@@ -9,11 +10,6 @@
 import { useState, useRef, useEffect, type FC, type ChangeEvent } from "react";
 import {
   Brush,
-  PenLine,
-  Pencil,
-  Sparkles,
-  Feather,
-  Paintbrush,
   Settings2,
   Upload,
   Check,
@@ -29,13 +25,132 @@ export interface BrushLibraryContentProps {
 
 const CATEGORIES = ["All", "Inking", "Pencils", "Painting", "Airbrush", "Imported"] as const;
 
+/**
+ * Authentic Brush Tip Silhouette Icon component.
+ * Renders the actual tip mask/geometry (auto circle/ellipse/airbrush glow or predefined mask)
+ * instead of generic tool icons.
+ */
+const BrushTipIcon: FC<{ preset: BrushPreset; thumbUrl: string | null }> = ({
+  preset,
+  thumbUrl,
+}) => {
+  if (thumbUrl) {
+    return (
+      <img
+        src={thumbUrl}
+        alt={preset.displayName}
+        className="w-5 h-5 object-contain rounded shrink-0"
+      />
+    );
+  }
+
+  const params = preset.engineParameters;
+  if (params && params.engineId === "pixelbrush") {
+    const tip = params.brushTip;
+    const softness = params.softness ?? 0.45;
+
+    // Generated (analytical) brush tip: render exact silhouette geometry
+    if (tip && tip.tipType === "generated") {
+      const aspectRatio = tip.aspectRatio ?? 1.0;
+      const angleDeg = ((tip.angleRadians ?? 0) * 180) / Math.PI;
+
+      // Chisel / Calligraphy Elliptical Tip
+      if (aspectRatio < 0.85) {
+        return (
+          <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
+            <ellipse
+              cx="11"
+              cy="11"
+              rx="8.5"
+              ry={Math.max(2.5, 8.5 * aspectRatio)}
+              transform={`rotate(${angleDeg} 11 11)`}
+              className="fill-zinc-900 dark:fill-zinc-100"
+            />
+          </svg>
+        );
+      }
+
+      // Soft Airbrush Radial Glow Tip
+      if (softness >= 0.55) {
+        return (
+          <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
+            <defs>
+              <radialGradient id={`glow-${preset.presetId}`} cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="currentColor" stopOpacity="0.95" />
+                <stop offset="50%" stopColor="currentColor" stopOpacity="0.45" />
+                <stop offset="100%" stopColor="currentColor" stopOpacity="0.0" />
+              </radialGradient>
+            </defs>
+            <circle
+              cx="11"
+              cy="11"
+              r="10"
+              fill={`url(#glow-${preset.presetId})`}
+              className="text-zinc-900 dark:text-zinc-100"
+            />
+          </svg>
+        );
+      }
+
+      // Technical Pencil: Fine tip with subtle texture ring
+      if (preset.tags.some((t) => t.toLowerCase().includes("pencil"))) {
+        return (
+          <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
+            <circle
+              cx="11"
+              cy="11"
+              r="4.5"
+              className="fill-zinc-900 dark:fill-zinc-100"
+            />
+            <circle
+              cx="11"
+              cy="11"
+              r="7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1"
+              strokeDasharray="2 2"
+              className="text-zinc-400 dark:text-zinc-500"
+            />
+          </svg>
+        );
+      }
+
+      // Studio Pen: Crisp solid circle
+      return (
+        <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
+          <circle
+            cx="11"
+            cy="11"
+            r="7.5"
+            className="fill-zinc-900 dark:fill-zinc-100"
+          />
+        </svg>
+      );
+    }
+  }
+
+  // Fallback: standard tip dab
+  return (
+    <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
+      <circle cx="11" cy="11" r="6.5" className="fill-zinc-800 dark:fill-zinc-200" />
+    </svg>
+  );
+};
+
 export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
   onOpenSettings,
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const thumbnailUrlsRef = useRef<Map<string, string>>(new Map());
-  const { activePresetId, setActivePresetId, setBrushSize, setBrushOpacity } = useDocumentStore();
+  const {
+    activePresetId,
+    setActivePresetId,
+    setBrushSize,
+    setBrushOpacity,
+    brushSettingsRevision,
+  } = useDocumentStore();
 
   useEffect(() => {
     return () => {
@@ -72,9 +187,10 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
     }
   };
 
+  // Refresh whenever presets or brushSettingsRevision updates
   useEffect(() => {
     refreshPresets();
-  }, []);
+  }, [brushSettingsRevision]);
 
   const handleSelectBrush = (preset: BrushPreset) => {
     globalDrawingEngine.setActiveBrush(preset);
@@ -117,25 +233,6 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
     return p.tags.some((tag) => tag.toLowerCase() === activeCategory.toLowerCase());
   });
 
-  const getPresetIcon = (preset: BrushPreset) => {
-    const thumbUrl = getPresetThumbnailUrl(preset);
-    if (thumbUrl) {
-      return (
-        <img
-          src={thumbUrl}
-          alt={preset.displayName}
-          className="w-5 h-5 object-contain rounded"
-        />
-      );
-    }
-    const lowerTags = preset.tags.map((t) => t.toLowerCase());
-    if (lowerTags.includes("inking")) return <PenLine className="w-4 h-4 text-blue-500" />;
-    if (lowerTags.includes("pencils")) return <Pencil className="w-4 h-4 text-amber-500" />;
-    if (lowerTags.includes("airbrush")) return <Feather className="w-4 h-4 text-purple-500" />;
-    if (lowerTags.includes("painting")) return <Paintbrush className="w-4 h-4 text-emerald-500" />;
-    return <Sparkles className="w-4 h-4 text-zinc-400" />;
-  };
-
   return (
     <div className="flex flex-col h-full w-full select-none overflow-hidden">
       {/* Category Filter Tabs */}
@@ -156,7 +253,7 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
         ))}
       </div>
 
-      {/* Preset Cards List with Procreate-Style Stroke Thumbnails */}
+      {/* Preset Cards List with Real Brush Tip Icons & Live S-Curve Stroke Thumbnails */}
       <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-1.5">
         {filteredPresets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center text-zinc-400 text-xs">
@@ -166,6 +263,8 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
         ) : (
           filteredPresets.map((preset) => {
             const isActive = preset.presetId === activePresetId;
+            const thumbUrl = getPresetThumbnailUrl(preset);
+
             return (
               <div
                 key={preset.presetId}
@@ -176,10 +275,10 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
                     : "bg-white/60 dark:bg-zinc-800/25 border-zinc-200/60 dark:border-white/5 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200"
                 }`}
               >
-                {/* Left: Icon & Info */}
+                {/* Left: Authentic Brush Tip Mask & Name */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 shrink-0">
-                    {getPresetIcon(preset)}
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800/90 flex items-center justify-center shrink-0 border border-zinc-200/60 dark:border-white/5 overflow-hidden shadow-xs">
+                    <BrushTipIcon preset={preset} thumbUrl={thumbUrl} />
                   </div>
                   <div className="flex flex-col min-w-0 pr-2">
                     <span className="text-xs font-semibold truncate leading-tight">
@@ -191,8 +290,8 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
                   </div>
                 </div>
 
-                {/* Center / Procreate-Style Stroke Preview (White in Dark Mode, Black in Light Mode) */}
-                <div className="hidden sm:flex items-center justify-center px-2 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                {/* Center / Procreate-Style Stroke Preview (Reflects live scattering & size dynamics) */}
+                <div className="hidden sm:flex items-center justify-center px-2 shrink-0 opacity-85 group-hover:opacity-100 transition-opacity">
                   <BrushStrokePreview
                     preset={preset}
                     width={160}
