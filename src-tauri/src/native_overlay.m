@@ -131,6 +131,17 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     return NSMakePoint(winX, winY);
 }
 
+- (NSRect)windowRectFromCanvasRectX:(int32_t)cx y:(int32_t)cy w:(int32_t)cw h:(int32_t)ch {
+    NSPoint p0 = [self windowPointFromCanvasPoint:NSMakePoint(cx, cy)];
+    NSPoint p1 = [self windowPointFromCanvasPoint:NSMakePoint(cx + cw, cy + ch)];
+    float minX = fminf(p0.x, p1.x);
+    float maxX = fmaxf(p0.x, p1.x);
+    float minY = fminf(p0.y, p1.y);
+    float maxY = fmaxf(p0.y, p1.y);
+    float pad = fmaxf(rust_overlay_get_diameter() * 2.5f, 48.0f);
+    return NSMakeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2.0f, (maxY - minY) + pad * 2.0f);
+}
+
 - (void)handleMouseDown:(NSEvent *)event {
     NSPoint loc = [event locationInWindow];
     g_cursor_x = (float)loc.x;
@@ -151,8 +162,13 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     g_last_pressure = pressure;
     g_is_drawing = YES;
 
-    rust_overlay_begin_stroke((float)cp.x, (float)cp.y, pressure);
-    [self setNeedsDisplay:YES];
+    int32_t dx = 0, dy = 0, dw = 0, dh = 0;
+    bool hasDirty = rust_overlay_begin_stroke_dirty((float)cp.x, (float)cp.y, pressure, &dx, &dy, &dw, &dh);
+    if (hasDirty && dw > 0 && dh > 0) {
+        [self setNeedsDisplayInRect:[self windowRectFromCanvasRectX:dx y:dy w:dw h:dh]];
+    } else {
+        [self setNeedsDisplay:YES];
+    }
 }
 
 - (void)handleMouseDragged:(NSEvent *)event {
@@ -174,8 +190,13 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
 
     g_last_pressure = pressure;
 
-    rust_overlay_paint_event((float)cp.x, (float)cp.y, pressure);
-    [self setNeedsDisplay:YES];
+    int32_t dx = 0, dy = 0, dw = 0, dh = 0;
+    bool hasDirty = rust_overlay_paint_event_dirty((float)cp.x, (float)cp.y, pressure, &dx, &dy, &dw, &dh);
+    if (hasDirty && dw > 0 && dh > 0) {
+        [self setNeedsDisplayInRect:[self windowRectFromCanvasRectX:dx y:dy w:dw h:dh]];
+    } else {
+        [self setNeedsDisplay:YES];
+    }
 }
 
 - (void)handleMouseUp:(NSEvent *)event {
@@ -196,22 +217,31 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     }
     g_last_pressure = pressure;
 
-    rust_overlay_paint_event((float)cp.x, (float)cp.y, pressure);
+    int32_t dx = 0, dy = 0, dw = 0, dh = 0;
+    rust_overlay_paint_event_dirty((float)cp.x, (float)cp.y, pressure, &dx, &dy, &dw, &dh);
     g_is_drawing = NO;
-    rust_overlay_end_stroke();
+    int32_t ex = 0, ey = 0, ew = 0, eh = 0;
+    rust_overlay_end_stroke_dirty(&ex, &ey, &ew, &eh);
     [self setNeedsDisplay:YES];
 }
 
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint loc = [event locationInWindow];
     if (NSPointInRect(loc, g_artboard_rect)) {
+        float oldX = g_cursor_x;
+        float oldY = g_cursor_y;
         g_cursor_x = (float)loc.x;
         g_cursor_y = (float)loc.y;
+
+        float r = rust_overlay_get_diameter() * 0.5f + 4.0f;
+        NSRect oldRect = NSMakeRect(oldX - r, oldY - r, r * 2.0f, r * 2.0f);
+        NSRect newRect = NSMakeRect(g_cursor_x - r, g_cursor_y - r, r * 2.0f, r * 2.0f);
+        [self setNeedsDisplayInRect:NSUnionRect(oldRect, newRect)];
     } else {
         g_cursor_x = -100.0f;
         g_cursor_y = -100.0f;
+        [self setNeedsDisplay:YES];
     }
-    [self setNeedsDisplay:YES];
 }
 
 - (void)drawRect:(NSRect)dirtyRect {

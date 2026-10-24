@@ -94,31 +94,101 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_overlay_begin_stroke(x: f32, y: f32, pressure: f32) {
+    let _ = rust_overlay_begin_stroke_dirty(x, y, pressure, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_begin_stroke_dirty(
+    x: f32,
+    y: f32,
+    pressure: f32,
+    out_x: *mut i32,
+    out_y: *mut i32,
+    out_w: *mut i32,
+    out_h: *mut i32,
+) -> bool {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         session.stroke_start_time = std::time::Instant::now();
         let event = StrokeEvent::new(x, y, pressure, 0.0);
-        let _ = session.engine.begin_stroke_on_stack(event, &mut session.stack);
+        if let Some(r) = session.engine.begin_stroke_on_stack(event, &mut session.stack) {
+            if !out_x.is_null() && !out_y.is_null() && !out_w.is_null() && !out_h.is_null() {
+                unsafe {
+                    *out_x = r.x;
+                    *out_y = r.y;
+                    *out_w = r.w;
+                    *out_h = r.h;
+                }
+            }
+            return true;
+        }
     }
+    false
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_overlay_paint_event(x: f32, y: f32, pressure: f32) {
+    let _ = rust_overlay_paint_event_dirty(x, y, pressure, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_paint_event_dirty(
+    x: f32,
+    y: f32,
+    pressure: f32,
+    out_x: *mut i32,
+    out_y: *mut i32,
+    out_w: *mut i32,
+    out_h: *mut i32,
+) -> bool {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         let time_sec = session.stroke_start_time.elapsed().as_secs_f32();
         let event = StrokeEvent::new(x, y, pressure, time_sec);
-        let _ = session.engine.paint_to_stack(event, &mut session.stack);
+        if let Some(r) = session.engine.paint_to_stack(event, &mut session.stack) {
+            if !out_x.is_null() && !out_y.is_null() && !out_w.is_null() && !out_h.is_null() {
+                unsafe {
+                    *out_x = r.x;
+                    *out_y = r.y;
+                    *out_w = r.w;
+                    *out_h = r.h;
+                }
+            }
+            return true;
+        }
     }
+    false
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_overlay_end_stroke() {
+    let _ = rust_overlay_end_stroke_dirty(std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_end_stroke_dirty(
+    out_x: *mut i32,
+    out_y: *mut i32,
+    out_w: *mut i32,
+    out_h: *mut i32,
+) -> bool {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
-        let _ = session.engine.finish_stroke_on_stack(&mut session.stack);
+        let dirty = session.engine.finish_stroke_on_stack(&mut session.stack);
         session.engine.end_stroke();
+        if let Some(r) = dirty {
+            if !out_x.is_null() && !out_y.is_null() && !out_w.is_null() && !out_h.is_null() {
+                unsafe {
+                    *out_x = r.x;
+                    *out_y = r.y;
+                    *out_w = r.w;
+                    *out_h = r.h;
+                }
+            }
+            return true;
+        }
     }
+    false
 }
 
 #[unsafe(no_mangle)]
@@ -641,6 +711,8 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
         let existing_texture = session.engine.config.texture.clone();
         let existing_texture_by_pressure = session.engine.config.texture_by_pressure;
         let existing_tip_type = session.engine.config.tip_type.clone();
+        let existing_blend_mode = session.engine.config.blend_mode;
+        let preserve_blend_mode = config.blend_mode.is_none() && !config.is_erase;
 
         let mut new_config: BrushConfig = config.into();
         new_config.pressure_lut = existing_lut;
@@ -648,6 +720,10 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
         new_config.pull_string = existing_pull_string;
         new_config.texture = existing_texture;
         new_config.texture_by_pressure = existing_texture_by_pressure;
+
+        if preserve_blend_mode {
+            new_config.blend_mode = existing_blend_mode;
+        }
 
         if matches!(existing_tip_type, BrushTipType::Predefined { .. })
             && new_config.tip_type == BrushTipType::default()
@@ -660,6 +736,15 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
     #[cfg(target_os = "macos")]
     unsafe {
         trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_blend_mode(mode: String) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.blend_mode = ColorBlendMode::from_str(&mode);
     }
     Ok(())
 }

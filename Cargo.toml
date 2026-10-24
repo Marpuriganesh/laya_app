@@ -5,3 +5,7 @@ members = [
     "src-tauri",
 ]
 resolver = "2"
+
+# Compile drawing engine with release optimizations even during 'tauri dev'
+[profile.dev.package.sketch_core]
+opt-level = 3

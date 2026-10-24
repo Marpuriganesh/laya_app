@@ -110,6 +110,27 @@ pub fn apply_texture_to_dab(
     let pat_data = &config.pattern.bytes;
     let pat_w_usize = config.pattern.width as usize;
 
+    // Precompute 256-entry lookup table for luminance curve (contrast, brightness, cutoff, invert)
+    // Avoids 40,000+ floating-point calculations per dab stamp!
+    let mut lum_lut = [0u8; 256];
+    for b in 0..=255 {
+        let raw_lum = b as f32 / 255.0;
+        let l1 = ((raw_lum - 0.5) * config.contrast + 0.5 + config.brightness).clamp(0.0, 1.0);
+        let mut t = if l1 <= config.cutoff_left {
+            0.0
+        } else if l1 >= config.cutoff_right {
+            1.0
+        } else {
+            (l1 - config.cutoff_left) / cutoff_range
+        };
+        if config.invert {
+            t = 1.0 - t;
+        }
+        lum_lut[b as usize] = (t * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+
+    let is_unit_scale = (config.scale - 1.0).abs() < 0.001;
+
     for y in 0..dab_h {
         let world_y = canvas_origin_y + y as i32;
         let dab_row = y * dab_w;
@@ -118,42 +139,49 @@ pub fn apply_texture_to_dab(
         let v = (((world_y - config.offset_y) as f32 * inv_scale).floor() as isize).rem_euclid(pat_h) as usize;
         let pat_row = v * pat_w_usize;
 
-        for x in 0..dab_w {
-            let dab_idx = dab_row + x;
-            let current_alpha = dab_mask[dab_idx];
-            if current_alpha == 0 {
-                continue;
+        if is_unit_scale {
+            let mut u = ((canvas_origin_x - config.offset_x) as isize).rem_euclid(pat_w) as usize;
+
+            for x in 0..dab_w {
+                let dab_idx = dab_row + x;
+                let current_alpha = dab_mask[dab_idx];
+                if current_alpha > 0 {
+                    let raw_sample = pat_data[pat_row + u];
+                    let pattern_sample = lum_lut[raw_sample as usize];
+
+                    dab_mask[dab_idx] = modulate_texture_alpha(
+                        current_alpha,
+                        pattern_sample,
+                        total_strength,
+                        config.mode,
+                    );
+                }
+
+                u += 1;
+                if u >= pat_w_usize {
+                    u = 0;
+                }
             }
+        } else {
+            for x in 0..dab_w {
+                let dab_idx = dab_row + x;
+                let current_alpha = dab_mask[dab_idx];
+                if current_alpha == 0 {
+                    continue;
+                }
 
-            let world_x = canvas_origin_x + x as i32;
-            let u = (((world_x - config.offset_x) as f32 * inv_scale).floor() as isize).rem_euclid(pat_w) as usize;
+                let world_x = canvas_origin_x + x as i32;
+                let u = (((world_x - config.offset_x) as f32 * inv_scale).floor() as isize).rem_euclid(pat_w) as usize;
+                let raw_sample = pat_data[pat_row + u];
+                let pattern_sample = lum_lut[raw_sample as usize];
 
-            let raw_lum = pat_data[pat_row + u] as f32 / 255.0;
-
-            // Apply contrast and brightness: L1 = (L0 - 0.5) * contrast + 0.5 + brightness
-            let l1 = ((raw_lum - 0.5) * config.contrast + 0.5 + config.brightness).clamp(0.0, 1.0);
-
-            // Cutoff thresholding
-            let mut t = if l1 <= config.cutoff_left {
-                0.0
-            } else if l1 >= config.cutoff_right {
-                1.0
-            } else {
-                (l1 - config.cutoff_left) / cutoff_range
-            };
-
-            if config.invert {
-                t = 1.0 - t;
+                dab_mask[dab_idx] = modulate_texture_alpha(
+                    current_alpha,
+                    pattern_sample,
+                    total_strength,
+                    config.mode,
+                );
             }
-
-            let pattern_sample = (t * 255.0).round().clamp(0.0, 255.0) as u8;
-
-            dab_mask[dab_idx] = modulate_texture_alpha(
-                current_alpha,
-                pattern_sample,
-                total_strength,
-                config.mode,
-            );
         }
     }
 }

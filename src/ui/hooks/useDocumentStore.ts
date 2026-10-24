@@ -50,6 +50,8 @@ export interface DocumentState {
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
   setActiveColor: (color: string) => void;
+  brushBlendMode: string;
+  setBrushBlendMode: (mode: string) => void;
   setBrushSize: (size: number) => void;
   setBrushOpacity: (opacity: number) => void;
   setTransform: (transform: CanvasTransform) => void;
@@ -96,6 +98,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   document: createDefaultDocumentConfiguration(),
   activeTool: "brush",
   activeColor: "#1e1e1e",
+  brushBlendMode: "normal",
   brushSize: 32,
   brushOpacity: 1.0,
   transform: {
@@ -157,6 +160,12 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setActiveColor: (activeColor) => set({ activeColor }),
+  setBrushBlendMode: (mode: string) => {
+    set({ brushBlendMode: mode });
+    globalDrawingEngine.setBlendMode?.(mode as any);
+    void globalRustBrushBridge.setBrushBlendMode(mode);
+    globalWasmBrushBridge.setBrushBlendMode(mode);
+  },
   setBrushSize: (brushSize) => set({ brushSize }),
   setBrushOpacity: (brushOpacity) => set({ brushOpacity }),
   setTransform: (transform) => set({ transform }),

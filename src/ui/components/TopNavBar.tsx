@@ -74,6 +74,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     setHoldThresholdMs,
     globalPressureCurve,
     setGlobalPressureCurve,
+    brushBlendMode,
   } = useDocumentStore();
   const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -515,7 +516,9 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           type="button"
           onClick={handleBrushClick}
           aria-label="Paint Tool (B)"
-          title="Paint Brush (B) • Tap to switch, hold for quick switch"
+          title={`Paint Brush (B) • Tap to switch, hold for quick switch${
+            brushBlendMode && brushBlendMode !== "normal" ? ` • Blend Mode: ${brushBlendMode.toUpperCase()}` : ""
+          }`}
           className={`p-2 rounded-lg transition-colors relative ${
             activeTool === "brush"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
@@ -523,6 +526,14 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           }`}
         >
           <Paintbrush className="w-4 h-4" />
+          {brushBlendMode && brushBlendMode !== "normal" && (
+            <span
+              title={`Active Brush Blend Mode: ${brushBlendMode}`}
+              className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-extrabold uppercase bg-amber-500 text-zinc-950 rounded shadow-xs tracking-tighter"
+            >
+              {brushBlendMode.slice(0, 3)}
+            </span>
+          )}
         </button>
 
         {/* Smudge (S) */}

@@ -243,48 +243,102 @@ impl BrushTipRasterizer {
 
         let scale = target_diameter / max_dim;
         let inv_scale = 1.0 / scale.max(0.001);
-
-        let cos_a = (-angle_rad).cos();
-        let sin_a = (-angle_rad).sin();
-
         let src_cx = src_w * 0.5;
         let src_cy = src_h * 0.5;
 
-        for y in 0..size {
-            let dy = (y as f32 + 0.5) - sub_y;
-            let row = y * size;
-            for x in 0..size {
-                let dx = (x as f32 + 0.5) - sub_x;
+        let w = tip.width as usize;
+        let h = tip.height as usize;
+        let mask = &tip.mask;
 
-                // Rotate and scale back to source image coordinates
-                let xr = (dx * cos_a - dy * sin_a) * inv_scale + src_cx;
-                let yr = (dx * sin_a + dy * cos_a) * inv_scale + src_cy;
+        // Fast path for non-rotated brush tips (common 95% case)
+        if angle_rad.abs() < 0.0001 {
+            let step_x = inv_scale;
+            let start_dx = 0.5 - sub_x;
 
-                if xr < 0.0 || xr >= src_w - 1.0 || yr < 0.0 || yr >= src_h - 1.0 {
-                    out_mask[row + x] = 0;
+            for y in 0..size {
+                let dy = (y as f32 + 0.5) - sub_y;
+                let yr = dy * inv_scale + src_cy;
+                let row = y * size;
+
+                if yr < 0.0 || yr >= src_h - 1.0 {
+                    out_mask[row..row + size].fill(0);
                     continue;
                 }
 
-                // Bilinear interpolation
-                let x0 = xr.floor() as usize;
                 let y0 = yr.floor() as usize;
-                let x1 = (x0 + 1).min(tip.width as usize - 1);
-                let y1 = (y0 + 1).min(tip.height as usize - 1);
-
-                let fx = xr - x0 as f32;
+                let y1 = (y0 + 1).min(h - 1);
                 let fy = yr - y0 as f32;
+                let one_minus_fy = 1.0 - fy;
+                let row0 = y0 * w;
+                let row1 = y1 * w;
 
-                let w = tip.width as usize;
-                let p00 = tip.mask[y0 * w + x0] as f32;
-                let p10 = tip.mask[y0 * w + x1] as f32;
-                let p01 = tip.mask[y1 * w + x0] as f32;
-                let p11 = tip.mask[y1 * w + x1] as f32;
+                let mut xr = start_dx * inv_scale + src_cx;
 
-                let top = p00 * (1.0 - fx) + p10 * fx;
-                let bottom = p01 * (1.0 - fx) + p11 * fx;
-                let sample = top * (1.0 - fy) + bottom * fy;
+                for x in 0..size {
+                    if xr < 0.0 || xr >= src_w - 1.0 {
+                        out_mask[row + x] = 0;
+                    } else {
+                        let x0 = xr.floor() as usize;
+                        let x1 = (x0 + 1).min(w - 1);
+                        let fx = xr - x0 as f32;
 
-                out_mask[row + x] = sample.round().clamp(0.0, 255.0) as u8;
+                        let p00 = mask[row0 + x0] as f32;
+                        let p10 = mask[row0 + x1] as f32;
+                        let p01 = mask[row1 + x0] as f32;
+                        let p11 = mask[row1 + x1] as f32;
+
+                        let top = p00 + (p10 - p00) * fx;
+                        let bottom = p01 + (p11 - p01) * fx;
+                        let sample = top * one_minus_fy + bottom * fy;
+
+                        out_mask[row + x] = (sample + 0.5) as u8;
+                    }
+                    xr += step_x;
+                }
+            }
+        } else {
+            // General rotated path with 2D incremental affine stepping
+            let cos_a = (-angle_rad).cos();
+            let sin_a = (-angle_rad).sin();
+            let step_xr = cos_a * inv_scale;
+            let step_yr = sin_a * inv_scale;
+            let start_dx = 0.5 - sub_x;
+
+            for y in 0..size {
+                let dy = (y as f32 + 0.5) - sub_y;
+                let row = y * size;
+
+                let mut xr = (start_dx * cos_a - dy * sin_a) * inv_scale + src_cx;
+                let mut yr = (start_dx * sin_a + dy * cos_a) * inv_scale + src_cy;
+
+                for x in 0..size {
+                    if xr < 0.0 || xr >= src_w - 1.0 || yr < 0.0 || yr >= src_h - 1.0 {
+                        out_mask[row + x] = 0;
+                    } else {
+                        let x0 = xr.floor() as usize;
+                        let y0 = yr.floor() as usize;
+                        let x1 = (x0 + 1).min(w - 1);
+                        let y1 = (y0 + 1).min(h - 1);
+
+                        let fx = xr - x0 as f32;
+                        let fy = yr - y0 as f32;
+
+                        let row0 = y0 * w;
+                        let row1 = y1 * w;
+                        let p00 = mask[row0 + x0] as f32;
+                        let p10 = mask[row0 + x1] as f32;
+                        let p01 = mask[row1 + x0] as f32;
+                        let p11 = mask[row1 + x1] as f32;
+
+                        let top = p00 + (p10 - p00) * fx;
+                        let bottom = p01 + (p11 - p01) * fx;
+                        let sample = top * (1.0 - fy) + bottom * fy;
+
+                        out_mask[row + x] = (sample + 0.5) as u8;
+                    }
+                    xr += step_xr;
+                    yr += step_yr;
+                }
             }
         }
 

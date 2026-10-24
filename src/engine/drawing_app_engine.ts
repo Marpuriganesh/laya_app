@@ -594,6 +594,9 @@ export class DrawingAppEngine implements IDrawingEngine {
       antialias: this.brushAntialias,
     });
 
+    globalWasmBrushBridge.setBrushBlendMode(this.blendMode);
+    void globalRustBrushBridge.setBrushBlendMode(this.blendMode);
+
     globalWasmBrushBridge.setMovingAverageConfig(this.movingAverageConfig);
     void globalRustBrushBridge.setMovingAverageConfig(this.movingAverageConfig);
     globalWasmBrushBridge.setPullStringConfig(this.pullStringConfig);
@@ -648,6 +651,10 @@ export class DrawingAppEngine implements IDrawingEngine {
   public setBlendMode(mode: BlendMode): void {
     this.blendMode = mode;
     this.syncBrushConfigToRust();
+  }
+
+  public getBlendMode(): BlendMode {
+    return this.blendMode;
   }
 
   public setSmoothingConfig(config: StrokeSmoothingConfig): void {

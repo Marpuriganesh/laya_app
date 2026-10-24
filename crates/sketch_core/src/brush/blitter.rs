@@ -53,6 +53,9 @@ impl CanvasBlitter {
             (ba as f32 / 255.0) * flow_opacity
         };
 
+        let flow_scale_256 = (flow_alpha_scale * 256.0).round().clamp(0.0, 256.0) as u32;
+        let is_normal_mode = blend_mode == crate::brush::ColorBlendMode::Normal;
+
         let canvas_width = canvas.width as usize;
         let buffer = &mut canvas.buffer;
 
@@ -69,19 +72,51 @@ impl CanvasBlitter {
 
                 let c_idx = canvas_row + (x as usize * 4);
 
-                let src_pixel = [br, bg, bb, dab_alpha];
-                let dst_pixel = [
-                    buffer[c_idx + 0],
-                    buffer[c_idx + 1],
-                    buffer[c_idx + 2],
-                    buffer[c_idx + 3],
-                ];
+                // High-performance integer fast path for standard Normal blend mode
+                if is_normal_mode {
+                    let sa = ((dab_alpha as u32 * flow_scale_256) >> 8).min(255);
+                    if sa == 0 {
+                        continue;
+                    }
 
-                let out = crate::brush::composite_pixel(dst_pixel, src_pixel, flow_alpha_scale, blend_mode);
-                buffer[c_idx + 0] = out[0];
-                buffer[c_idx + 1] = out[1];
-                buffer[c_idx + 2] = out[2];
-                buffer[c_idx + 3] = out[3];
+                    let da = buffer[c_idx + 3] as u32;
+
+                    if da == 0 {
+                        buffer[c_idx + 0] = br;
+                        buffer[c_idx + 1] = bg;
+                        buffer[c_idx + 2] = bb;
+                        buffer[c_idx + 3] = sa as u8;
+                    } else if sa == 255 {
+                        buffer[c_idx + 0] = br;
+                        buffer[c_idx + 1] = bg;
+                        buffer[c_idx + 2] = bb;
+                        buffer[c_idx + 3] = 255;
+                    } else {
+                        let inv_sa = 255 - sa;
+                        let out_a = sa + (da * inv_sa + 127) / 255;
+                        if out_a > 0 {
+                            let factor_dst = (da * inv_sa + 127) / 255;
+                            buffer[c_idx + 0] = ((br as u32 * sa + buffer[c_idx + 0] as u32 * factor_dst) / out_a).min(255) as u8;
+                            buffer[c_idx + 1] = ((bg as u32 * sa + buffer[c_idx + 1] as u32 * factor_dst) / out_a).min(255) as u8;
+                            buffer[c_idx + 2] = ((bb as u32 * sa + buffer[c_idx + 2] as u32 * factor_dst) / out_a).min(255) as u8;
+                            buffer[c_idx + 3] = out_a.min(255) as u8;
+                        }
+                    }
+                } else {
+                    let src_pixel = [br, bg, bb, dab_alpha];
+                    let dst_pixel = [
+                        buffer[c_idx + 0],
+                        buffer[c_idx + 1],
+                        buffer[c_idx + 2],
+                        buffer[c_idx + 3],
+                    ];
+
+                    let out = crate::brush::composite_pixel(dst_pixel, src_pixel, flow_alpha_scale, blend_mode);
+                    buffer[c_idx + 0] = out[0];
+                    buffer[c_idx + 1] = out[1];
+                    buffer[c_idx + 2] = out[2];
+                    buffer[c_idx + 3] = out[3];
+                }
             }
         }
 

@@ -138,6 +138,15 @@ export class RustBrushBridge {
     }
   }
 
+  public async setBrushBlendMode(mode: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_set_blend_mode", { mode });
+    } catch (err) {
+      console.warn("Failed to set brush blend mode in Rust:", err);
+    }
+  }
+
   public async updateArtboardRect(x: number, y: number, width: number, height: number): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

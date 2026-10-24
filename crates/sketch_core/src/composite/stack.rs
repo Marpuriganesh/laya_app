@@ -301,8 +301,22 @@ impl CompositeStack {
                         src_a,
                     ];
 
-                    current_color =
-                        composite_pixel(current_color, src, layer.opacity, layer.blend_mode);
+                    // Ultra-fast integer path for standard Normal layer composited over solid paper
+                    if layer.blend_mode == ColorBlendMode::Normal && layer.opacity >= 0.999 && current_color[3] == 255 {
+                        let sa = src_a as u32;
+                        if sa == 255 {
+                            current_color = [src[0], src[1], src[2], 255];
+                        } else {
+                            let inv_sa = 255 - sa;
+                            current_color[0] = ((src[0] as u32 * sa + current_color[0] as u32 * inv_sa + 127) / 255) as u8;
+                            current_color[1] = ((src[1] as u32 * sa + current_color[1] as u32 * inv_sa + 127) / 255) as u8;
+                            current_color[2] = ((src[2] as u32 * sa + current_color[2] as u32 * inv_sa + 127) / 255) as u8;
+                            current_color[3] = 255;
+                        }
+                    } else {
+                        current_color =
+                            composite_pixel(current_color, src, layer.opacity, layer.blend_mode);
+                    }
                 }
 
                 self.display_framebuffer.buffer[pixel_offset..pixel_offset + 4]

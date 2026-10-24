@@ -58,6 +58,8 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     brushOpacity,
     setBrushSize,
     setBrushOpacity,
+    brushBlendMode,
+    setBrushBlendMode,
     activePresetId,
     globalPressureCurve,
     setGlobalPressureCurve,
@@ -324,7 +326,9 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     if (mv) setMovingAverageConfig(mv);
     const ps = globalDrawingEngine.getPullStringConfig?.();
     if (ps) setPullStringConfig(ps);
-  }, [setBrushSize, setBrushOpacity, setMovingAverageConfig, setPullStringConfig]);
+    const currentMode = globalDrawingEngine.getBlendMode?.();
+    if (currentMode) setBrushBlendMode(currentMode);
+  }, [setBrushSize, setBrushOpacity, setBrushBlendMode, setMovingAverageConfig, setPullStringConfig]);
 
   // Only re-sync parameters when activePresetId actually changes (preventing slider overwrites on color change or re-renders)
   useEffect(() => {
@@ -377,6 +381,13 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   const handleAntialiasToggle = (enabled: boolean) => {
     setAntialias(enabled);
     globalDrawingEngine.setAntialias?.(enabled);
+  };
+
+  const handleBlendModeChange = (mode: string) => {
+    setBrushBlendMode(mode);
+    globalDrawingEngine.setBlendMode?.(mode as any);
+    void globalRustBrushBridge.setBrushBlendMode(mode);
+    globalWasmBrushBridge.setBrushBlendMode(mode);
   };
 
   const handleClear = () => {
@@ -463,6 +474,38 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
             onChange={(e) => setBrushOpacity(Number(e.target.value))}
             className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
           />
+        </div>
+
+        {/* Brush Color Blending Mode */}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-medium text-zinc-800 dark:text-zinc-200">Blending Mode</span>
+            <span className="font-mono text-zinc-500 capitalize">{brushBlendMode}</span>
+          </div>
+          <select
+            value={brushBlendMode}
+            onChange={(e) => handleBlendModeChange(e.target.value)}
+            className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 text-xs text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          >
+            <option value="normal">Normal (Standard Over)</option>
+            <option value="parallel">Krita Parallel (Harmonic Mean)</option>
+            <option value="multiply">Multiply (Darken / Glaze)</option>
+            <option value="screen">Screen (Lighten / Glow)</option>
+            <option value="overlay">Overlay (Contrast)</option>
+            <option value="colordodge">Color Dodge (Vibrant Glow)</option>
+            <option value="colorburn">Color Burn (Deep Shadow)</option>
+            <option value="darken">Darken</option>
+            <option value="lighten">Lighten</option>
+            <option value="hardlight">Hard Light</option>
+            <option value="softlight">Soft Light</option>
+            <option value="difference">Difference</option>
+            <option value="exclusion">Exclusion</option>
+            <option value="add">Add (Linear Dodge)</option>
+            <option value="subtract">Subtract</option>
+            <option value="divide">Divide</option>
+            <option value="behind">Behind (Paint Underneath)</option>
+            <option value="erase">Erase (Clear Mask)</option>
+          </select>
         </div>
 
         {/* Tip Softness */}

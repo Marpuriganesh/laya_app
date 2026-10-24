@@ -258,4 +258,67 @@ mod tests {
         let untouched = stack.display_framebuffer.get_pixel(10, 10).unwrap();
         assert_eq!(untouched, [255, 255, 255, 255]);
     }
+
+    #[test]
+    fn test_benchmark_a4_sweep_predefined_tip_and_texture() {
+        use std::time::Instant;
+        use std::sync::Arc;
+        use crate::brush::tip::{BrushTipType, PredefinedTipData};
+        use crate::brush::texture::{TextureConfig, PatternData};
+
+        let mut stack = crate::composite::CompositeStack::new(2480, 3508);
+        let tip = Arc::new(PredefinedTipData::from_gbr_grayscale(128, 128, &vec![200; 128*128], false));
+        let pat = Arc::new(PatternData::from_grayscale(64, 64, vec![180; 64*64]));
+
+        let config = BrushConfig {
+            diameter: 200.0,
+            spacing: 0.08,
+            softness: 0.5,
+            color: [30, 30, 30, 255],
+            tip_type: BrushTipType::Predefined {
+                tip_data: tip,
+                scale: 1.0,
+                angle_radians: 0.0,
+            },
+            texture: Some(TextureConfig {
+                pattern: pat,
+                scale: 1.0,
+                mode: crate::brush::TextureBlendMode::Multiply,
+                strength: 0.8,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mut engine = PixelBrushEngine::new(config);
+
+        let t0 = Instant::now();
+        engine.begin_stroke_on_stack(StrokeEvent::new(100.0, 500.0, 1.0, 0.0), &mut stack);
+
+        let mut time_paint_to = std::time::Duration::ZERO;
+        let mut time_composite = std::time::Duration::ZERO;
+
+        for i in 1..=50 {
+            let x = 100.0 + i as f32 * 40.0;
+            let y = 500.0 + (i as f32 * 0.1).sin() * 50.0;
+            let tp0 = Instant::now();
+            let dirty = if let Some(active_layer) = stack.active_layer_mut() {
+                engine.paint_to(StrokeEvent::new(x, y, 1.0, i as f32 * 0.016), &mut active_layer.buffer)
+            } else { None };
+            time_paint_to += tp0.elapsed();
+
+            let tc0 = Instant::now();
+            if let Some(ref r) = dirty {
+                stack.composite_rect(r);
+            }
+            time_composite += tc0.elapsed();
+        }
+        engine.finish_stroke_on_stack(&mut stack);
+        engine.end_stroke();
+        let elapsed = t0.elapsed();
+
+        println!("\n>>> BENCHMARK: 50 events across 2480x3508 canvas with 200px brush: {:?}", elapsed);
+        println!(">>> Total in paint_to (dab stamping + texture): {:?}", time_paint_to);
+        println!(">>> Total in composite_rect (multi-layer compositing): {:?}", time_composite);
+    }
 }

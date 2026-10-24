@@ -5,7 +5,7 @@ pub mod resources;
 pub mod settings;
 
 use brush_commands::{
-    rust_brush_clear, rust_brush_set_config, rust_brush_set_modal_open,
+    rust_brush_clear, rust_brush_set_blend_mode, rust_brush_set_config, rust_brush_set_modal_open,
     rust_brush_set_moving_average_config, rust_brush_set_pan_active,
     rust_brush_set_pressure_lut, rust_brush_set_pull_string_config,
     rust_layer_add, rust_layer_clear_active, rust_layer_delete,
@@ -114,6 +114,7 @@ pub fn run() {
             set_always_on_top,
             close_window,
             rust_brush_set_config,
+            rust_brush_set_blend_mode,
             rust_brush_set_pressure_lut,
             rust_brush_set_moving_average_config,
             rust_brush_set_pull_string_config,
