@@ -94,6 +94,18 @@ export function generateUniqueLayerId(): string {
   return `layer-${Date.now()}-${layerSequence++}`;
 }
 
+let pendingLayerOpacityRaf: number | null = null;
+const pendingLayerOpacities: Map<string, number> = new Map();
+
+function flushLayerOpacities() {
+  pendingLayerOpacityRaf = null;
+  pendingLayerOpacities.forEach((opacity, id) => {
+    globalRustBrushBridge.setLayerOpacity(id, opacity);
+    globalWasmBrushBridge.setLayerOpacity(id, opacity);
+  });
+  pendingLayerOpacities.clear();
+}
+
 export const useDocumentStore = create<DocumentState>((set) => ({
   document: createDefaultDocumentConfiguration(),
   activeTool: "brush",
@@ -404,8 +416,6 @@ export const useDocumentStore = create<DocumentState>((set) => ({
 
   setLayerOpacity: (id: string, opacity: number) => {
     const clamped = Math.max(0, Math.min(1, opacity));
-    globalRustBrushBridge.setLayerOpacity(id, clamped);
-    globalWasmBrushBridge.setLayerOpacity(id, clamped);
     set((state) => ({
       layerStack: {
         ...state.layerStack,
@@ -414,6 +424,16 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         ),
       },
     }));
+
+    // Debounce expensive multi-layer composite IPC across the Rust/Wasm bridge to animation frame cadence
+    pendingLayerOpacities.set(id, clamped);
+    if (typeof requestAnimationFrame !== "undefined") {
+      if (pendingLayerOpacityRaf === null) {
+        pendingLayerOpacityRaf = requestAnimationFrame(flushLayerOpacities);
+      }
+    } else {
+      flushLayerOpacities();
+    }
   },
 
   setLayerBlendMode: (id: string, blendMode: LayerBlendMode) => {

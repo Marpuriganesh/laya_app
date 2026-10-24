@@ -433,13 +433,11 @@ export const TopNavBar: FC<TopNavBarProps> = ({
               {isCurveModalOpen && (
                 <div
                   data-native-ui="pressure-curve-editor"
-                  className="p-2 bg-zinc-50/90 dark:bg-zinc-800/40 rounded-xl mt-1 border border-zinc-200/80 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100"
+                  className="p-2 bg-zinc-50/90 dark:bg-zinc-800/40 rounded-xl mt-1 border border-zinc-200/80 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100 w-full max-w-full overflow-hidden"
                 >
                   <CurveEditor
                     value={globalPressureCurve}
                     onChange={setGlobalPressureCurve}
-                    width={236}
-                    height={150}
                     inputLabel="Pressure"
                     outputLabel="Response"
                     showLiveTelemetry={true}

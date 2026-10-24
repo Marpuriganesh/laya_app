@@ -111,6 +111,11 @@ export function useNativeUiRectsSync(activePopover: PopoverType): void {
     // Continuous rAF synchronization while dragging or resizing a window/slider (buttons pressed)
     const handlePointerMove = (e: globalThis.PointerEvent) => {
       if (e.buttons !== 0) {
+        // Ignore pointer moves that originate on the canvas or artboard (avoids IPC spam during drawing)
+        const target = e.target as HTMLElement | null;
+        if (target && !target.closest(NATIVE_UI_SELECTOR)) {
+          return;
+        }
         if (rafId === null) {
           rafId = requestAnimationFrame(() => {
             syncUiRects();

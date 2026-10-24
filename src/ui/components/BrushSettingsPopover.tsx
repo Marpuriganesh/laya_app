@@ -3,7 +3,6 @@ import {
   SlidersHorizontal,
   Trash2,
   Activity,
-  Spline,
   ChevronRight,
   Waves,
   PenLine,
@@ -12,13 +11,14 @@ import {
   FolderOpen,
   RefreshCw,
   Sparkles,
+  Paintbrush,
 } from "lucide-react";
 import { FloatingWindowPanel } from "@/ui/components/FloatingWindowPanel";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { globalRustBrushBridge, type ResourceItemDto } from "@/engine/brush/rust_brush_bridge";
 import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
-import { CurveEditor } from "@/ui/components/CurveEditor";
+import { BrushDynamicsPanel } from "@/ui/components/BrushDynamicsPanel";
 import { BrushScratchpad } from "@/ui/components/BrushScratchpad";
 import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
 import type { BrushPreset } from "@/types/brush";
@@ -52,6 +52,89 @@ async function decodeImageToRgba(
   }
 }
 
+function parseGbrToThumbnailDataUrl(bytes: Uint8Array, size = 36): string {
+  try {
+    if (bytes.length < 24) return "";
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const headerSize = view.getUint32(0);
+    const width = view.getUint32(8);
+    const height = view.getUint32(12);
+    const bytesPerPixel = view.getUint32(16);
+    const dataOffset = headerSize;
+
+    if (width === 0 || height === 0 || dataOffset >= bytes.length) return "";
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+
+    const imgData = ctx.createImageData(width, height);
+    if (bytesPerPixel === 1) {
+      for (let i = 0; i < width * height; i++) {
+        const alpha = bytes[dataOffset + i];
+        const p = i * 4;
+        imgData.data[p] = 24;
+        imgData.data[p + 1] = 24;
+        imgData.data[p + 2] = 27;
+        imgData.data[p + 3] = alpha;
+      }
+    } else if (bytesPerPixel === 4) {
+      for (let i = 0; i < width * height * 4; i += 4) {
+        imgData.data[i] = bytes[dataOffset + i];
+        imgData.data[i + 1] = bytes[dataOffset + i + 1];
+        imgData.data[i + 2] = bytes[dataOffset + i + 2];
+        imgData.data[i + 3] = bytes[dataOffset + i + 3];
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    const thumbCanvas = document.createElement("canvas");
+    thumbCanvas.width = size;
+    thumbCanvas.height = size;
+    const tctx = thumbCanvas.getContext("2d");
+    if (tctx) {
+      tctx.drawImage(canvas, 0, 0, size, size);
+      return thumbCanvas.toDataURL("image/png");
+    }
+    return canvas.toDataURL("image/png");
+  } catch (err) {
+    return "";
+  }
+}
+
+async function generateThumbnailDataUrl(
+  bytes: Uint8Array | number[],
+  fileName: string,
+  size = 36
+): Promise<string> {
+  const uint8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (fileName.endsWith(".gbr")) {
+    return parseGbrToThumbnailDataUrl(uint8, size);
+  }
+  const decoded = await decodeImageToRgba(uint8);
+  if (!decoded) return "";
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  const srcCanvas = document.createElement("canvas");
+  srcCanvas.width = decoded.width;
+  srcCanvas.height = decoded.height;
+  const sctx = srcCanvas.getContext("2d");
+  if (sctx) {
+    const imgData = sctx.createImageData(decoded.width, decoded.height);
+    imgData.data.set(decoded.rgba);
+    sctx.putImageData(imgData, 0, 0);
+    ctx.drawImage(srcCanvas, 0, 0, size, size);
+    return canvas.toDataURL("image/png");
+  }
+  return "";
+}
+
 export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   const {
     brushSize,
@@ -61,8 +144,6 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     brushBlendMode,
     setBrushBlendMode,
     activePresetId,
-    globalPressureCurve,
-    setGlobalPressureCurve,
     movingAverageConfig,
     setMovingAverageConfig,
     pullStringConfig,
@@ -87,6 +168,8 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   // Disk-backed resource state
   const [brushResources, setBrushResources] = useState<ResourceItemDto[]>([]);
   const [patternResources, setPatternResources] = useState<ResourceItemDto[]>([]);
+  const [tipThumbnails, setTipThumbnails] = useState<Record<string, string>>({});
+  const [patternThumbnails, setPatternThumbnails] = useState<Record<string, string>>({});
   const [selectedTipId, setSelectedTipId] = useState<string | null>(null);
   const [textureEnabled, setTextureEnabled] = useState(false);
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
@@ -105,6 +188,58 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   useEffect(() => {
     refreshResources();
   }, [refreshResources]);
+
+  // Asynchronously generate visual stamp thumbnails for predefined tips
+  useEffect(() => {
+    let active = true;
+    async function loadTipThumbnails() {
+      const thumbs: Record<string, string> = {};
+      for (const res of brushResources) {
+        try {
+          const bytes = await globalRustBrushBridge.readResourceFile(res.path);
+          if (bytes && active) {
+            const thumb = await generateThumbnailDataUrl(bytes, res.file_name, 36);
+            if (thumb) thumbs[res.id] = thumb;
+          }
+        } catch {}
+      }
+      if (active) {
+        setTipThumbnails(thumbs);
+      }
+    }
+    if (brushResources.length > 0) {
+      loadTipThumbnails();
+    }
+    return () => {
+      active = false;
+    };
+  }, [brushResources]);
+
+  // Asynchronously generate tile thumbnails for paper textures
+  useEffect(() => {
+    let active = true;
+    async function loadPatternThumbnails() {
+      const thumbs: Record<string, string> = {};
+      for (const pat of patternResources) {
+        try {
+          const bytes = await globalRustBrushBridge.readResourceFile(pat.path);
+          if (bytes && active) {
+            const thumb = await generateThumbnailDataUrl(bytes, pat.file_name, 36);
+            if (thumb) thumbs[pat.id] = thumb;
+          }
+        } catch {}
+      }
+      if (active) {
+        setPatternThumbnails(thumbs);
+      }
+    }
+    if (patternResources.length > 0) {
+      loadPatternThumbnails();
+    }
+    return () => {
+      active = false;
+    };
+  }, [patternResources]);
 
   const handleSelectTip = async (item: ResourceItemDto | null) => {
     if (!item) {
@@ -358,26 +493,6 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     globalDrawingEngine.updateActivePreset?.({ baseFlow: fl });
   };
 
-  const handleSizeDynamicsToggle = (enabled: boolean) => {
-    setSizeDynamics(enabled);
-    globalDrawingEngine.setSizeDynamicsEnabled?.(enabled);
-    globalDrawingEngine.updateActivePreset?.({
-      sizeDynamics: enabled
-        ? { sensorInput: "pressure", curvePoints: [{ inputValue: 0, outputValue: 0.1 }, { inputValue: 1, outputValue: 1 }], isEnabled: true }
-        : null,
-    });
-  };
-
-  const handleOpacityDynamicsToggle = (enabled: boolean) => {
-    setOpacityDynamics(enabled);
-    globalDrawingEngine.setOpacityDynamicsEnabled?.(enabled);
-    globalDrawingEngine.updateActivePreset?.({
-      opacityDynamics: enabled
-        ? { sensorInput: "pressure", curvePoints: [{ inputValue: 0, outputValue: 0.1 }, { inputValue: 1, outputValue: 1 }], isEnabled: true }
-        : null,
-    });
-  };
-
   const handleAntialiasToggle = (enabled: boolean) => {
     setAntialias(enabled);
     globalDrawingEngine.setAntialias?.(enabled);
@@ -395,9 +510,9 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   };
 
   return (
-    <div className="flex h-135 w-full overflow-hidden select-none">
+    <div className="flex h-135 w-full max-w-full overflow-hidden select-none">
       {/* Left Column: Scrollable Settings Inspector */}
-      <div className="flex-1 p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 overflow-y-auto border-r border-zinc-200 dark:border-white/5">
+      <div className="flex-1 p-4 flex flex-col gap-4 text-xs text-zinc-700 dark:text-zinc-200 overflow-y-auto overflow-x-hidden min-w-0 border-r border-zinc-200 dark:border-white/5">
         {/* Active Brush Header Card with Display Name & Procreate-Style Stroke Thumbnail */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/50 shadow-xs">
           <div className="flex items-center gap-3 min-w-0">
@@ -605,14 +720,19 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
             <button
               type="button"
               onClick={() => handleSelectTip(null)}
-              className={`p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+              className={`p-2 rounded-lg border text-left transition-colors cursor-pointer flex items-center gap-2.5 ${
                 selectedTipId === null
                   ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200"
                   : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300"
               }`}
             >
-              <div className="text-xs font-medium">Auto Circle</div>
-              <div className="text-[10px] text-zinc-500">Procedural analytical tip</div>
+              <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-200 dark:border-zinc-700">
+                <div className="w-4 h-4 rounded-full bg-zinc-900 dark:bg-zinc-100 shadow-xs" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium">Auto Circle</div>
+                <div className="text-[10px] text-zinc-500">Analytical tip</div>
+              </div>
             </button>
 
             {brushResources.map((res) => (
@@ -620,14 +740,23 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
                 key={res.id}
                 type="button"
                 onClick={() => handleSelectTip(res)}
-                className={`p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                className={`p-2 rounded-lg border text-left transition-colors cursor-pointer flex items-center gap-2.5 ${
                   selectedTipId === res.id
                     ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200"
                     : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300"
                 }`}
               >
-                <div className="text-xs font-medium truncate">{res.name}</div>
-                <div className="text-[10px] text-zinc-500 truncate">{res.file_name}</div>
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center overflow-hidden shrink-0">
+                  {tipThumbnails[res.id] ? (
+                    <img src={tipThumbnails[res.id]} alt={res.name} className="w-7 h-7 object-contain" />
+                  ) : (
+                    <Paintbrush className="w-3.5 h-3.5 text-zinc-400" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium truncate">{res.name}</div>
+                  <div className="text-[10px] text-zinc-500 truncate">{res.file_name}</div>
+                </div>
               </button>
             ))}
           </div>
@@ -671,14 +800,23 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
                     key={pat.id}
                     type="button"
                     onClick={() => handleSelectPattern(pat)}
-                    className={`p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                    className={`p-2 rounded-lg border text-left transition-colors cursor-pointer flex items-center gap-2.5 ${
                       selectedPatternId === pat.id
                         ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200"
                         : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300"
                     }`}
                   >
-                    <div className="text-xs font-medium truncate">{pat.name}</div>
-                    <div className="text-[10px] text-zinc-500 truncate">{pat.file_name}</div>
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center overflow-hidden shrink-0">
+                      {patternThumbnails[pat.id] ? (
+                        <img src={patternThumbnails[pat.id]} alt={pat.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <Waves className="w-3.5 h-3.5 text-zinc-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium truncate">{pat.name}</div>
+                      <div className="text-[10px] text-zinc-500 truncate">{pat.file_name}</div>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -767,32 +905,26 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
 
         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
 
-        {/* Hardware Pressure Dynamics */}
+        {/* Hardware & Stylus Sensor Dynamics */}
         <div className="flex flex-col gap-2.5">
-          <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-blue-500" />
-            Hardware Stylus Dynamics
-          </span>
-
-          <label className="flex items-center justify-between cursor-pointer p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors">
-            <span className="text-xs">Pressure &rarr; Size</span>
-            <input
-              type="checkbox"
-              checked={sizeDynamics}
-              onChange={(e) => handleSizeDynamicsToggle(e.target.checked)}
-              className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
-            />
-          </label>
-
-          <label className="flex items-center justify-between cursor-pointer p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors">
-            <span className="text-xs">Pressure &rarr; Opacity</span>
-            <input
-              type="checkbox"
-              checked={opacityDynamics}
-              onChange={(e) => handleOpacityDynamicsToggle(e.target.checked)}
-              className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
-            />
-          </label>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-blue-500" />
+              Sensor Dynamics & Transfer Curves
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsCurveOpen(!isCurveOpen)}
+              className="flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+            >
+              <span>{isCurveOpen ? "Collapse" : "Open Dynamics Studio"}</span>
+              <ChevronRight
+                className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                  isCurveOpen ? "rotate-90" : ""
+                }`}
+              />
+            </button>
+          </div>
 
           {/* Pressure Smoothing (Independent of spatial leash) */}
           <div className="flex flex-col gap-1 p-2 rounded-md bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-white/5">
@@ -817,35 +949,10 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
             </div>
           </div>
 
-          {/* Collapsible Curve Editor for Brush Dynamics */}
-          <button
-            type="button"
-            onClick={() => setIsCurveOpen(!isCurveOpen)}
-            className="flex items-center justify-between p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-1.5">
-              <Spline className="w-3.5 h-3.5 text-blue-500" />
-              <span>Pressure Response Curve</span>
-            </div>
-            <ChevronRight
-              className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-150 ${
-                isCurveOpen ? "rotate-90" : ""
-              }`}
-            />
-          </button>
-
+          {/* Reusable Krita-Style Brush Dynamics Studio Panel */}
           {isCurveOpen && (
-            <div className="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
-              <CurveEditor
-                value={globalPressureCurve}
-                onChange={setGlobalPressureCurve}
-                width={360}
-                height={160}
-                inputLabel="Pressure"
-                outputLabel="Response"
-                showLiveTelemetry={true}
-                showPresets={true}
-              />
+            <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100">
+              <BrushDynamicsPanel />
             </div>
           )}
         </div>
@@ -1081,8 +1188,8 @@ export const BrushSettingsPopover: FC<BrushSettingsPopoverProps> = ({
       icon={<SlidersHorizontal className="w-4 h-4 text-blue-500" />}
       isOpen={isOpen}
       onClose={onClose}
-      width={720}
-      height={550}
+      width={820}
+      height={560}
       allowPopout={true}
       onPopout={onDetach}
       anchorClassName="fixed right-132 top-16"

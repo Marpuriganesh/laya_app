@@ -114,6 +114,30 @@ export class WasmBrushBridge {
   }
 
   /**
+   * Sets or clears a dynamic sensor mapping and transfer curve for a brush property.
+   */
+  public setDynamicsMapping(
+    param: string,
+    enabled: boolean,
+    sensor: string,
+    minOutput: number,
+    maxOutput: number,
+    lut: Float32Array | number[]
+  ): void {
+    if (!this.engine) return;
+    const slice = lut instanceof Float32Array ? lut : new Float32Array(lut);
+    this.engine.set_dynamics_mapping(param, enabled, sensor, minOutput, maxOutput, slice);
+  }
+
+  /**
+   * Clears all dynamic sensor modulations back to static defaults.
+   */
+  public clearDynamics(): void {
+    if (!this.engine) return;
+    this.engine.clear_dynamics();
+  }
+
+  /**
    * Configures the dynamic moving average stroke stabilizer.
    */
   public setMovingAverageConfig(config: MovingAverageConfig): void {

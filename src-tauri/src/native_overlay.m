@@ -15,6 +15,9 @@ static NSRect g_ui_blocking_rects[MAX_UI_BLOCKING_RECTS];
 static uint32_t g_ui_blocking_count = 0;
 static BOOL g_is_dark_theme = YES;
 
+static CGImageRef g_cached_canvas_image = NULL;
+static BOOL g_canvas_image_needs_update = YES;
+
 static float g_pressure_lut[256];
 static BOOL g_has_pressure_lut = NO;
 
@@ -161,9 +164,14 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
 
     g_last_pressure = pressure;
     g_is_drawing = YES;
+    g_canvas_image_needs_update = YES;
+
+    NSPoint tilt = isTablet ? [event tilt] : NSMakePoint(0.0f, 0.0f);
+    float tiltX = (float)tilt.x;
+    float tiltY = (float)tilt.y;
 
     int32_t dx = 0, dy = 0, dw = 0, dh = 0;
-    bool hasDirty = rust_overlay_begin_stroke_dirty((float)cp.x, (float)cp.y, pressure, &dx, &dy, &dw, &dh);
+    bool hasDirty = rust_overlay_begin_stroke_tilt_dirty((float)cp.x, (float)cp.y, pressure, tiltX, tiltY, &dx, &dy, &dw, &dh);
     if (hasDirty && dw > 0 && dh > 0) {
         [self setNeedsDisplayInRect:[self windowRectFromCanvasRectX:dx y:dy w:dw h:dh]];
     } else {
@@ -189,9 +197,14 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     }
 
     g_last_pressure = pressure;
+    g_canvas_image_needs_update = YES;
+
+    NSPoint tilt = isTablet ? [event tilt] : NSMakePoint(0.0f, 0.0f);
+    float tiltX = (float)tilt.x;
+    float tiltY = (float)tilt.y;
 
     int32_t dx = 0, dy = 0, dw = 0, dh = 0;
-    bool hasDirty = rust_overlay_paint_event_dirty((float)cp.x, (float)cp.y, pressure, &dx, &dy, &dw, &dh);
+    bool hasDirty = rust_overlay_paint_event_tilt_dirty((float)cp.x, (float)cp.y, pressure, tiltX, tiltY, &dx, &dy, &dw, &dh);
     if (hasDirty && dw > 0 && dh > 0) {
         [self setNeedsDisplayInRect:[self windowRectFromCanvasRectX:dx y:dy w:dw h:dh]];
     } else {
@@ -217,11 +230,16 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     }
     g_last_pressure = pressure;
 
+    NSPoint tilt = isTablet ? [event tilt] : NSMakePoint(0.0f, 0.0f);
+    float tiltX = (float)tilt.x;
+    float tiltY = (float)tilt.y;
+
     int32_t dx = 0, dy = 0, dw = 0, dh = 0;
-    rust_overlay_paint_event_dirty((float)cp.x, (float)cp.y, pressure, &dx, &dy, &dw, &dh);
+    rust_overlay_paint_event_tilt_dirty((float)cp.x, (float)cp.y, pressure, tiltX, tiltY, &dx, &dy, &dw, &dh);
     g_is_drawing = NO;
     int32_t ex = 0, ey = 0, ew = 0, eh = 0;
     rust_overlay_end_stroke_dirty(&ex, &ey, &ew, &eh);
+    g_canvas_image_needs_update = YES;
     [self setNeedsDisplay:YES];
 }
 
@@ -238,9 +256,13 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
         NSRect newRect = NSMakeRect(g_cursor_x - r, g_cursor_y - r, r * 2.0f, r * 2.0f);
         [self setNeedsDisplayInRect:NSUnionRect(oldRect, newRect)];
     } else {
-        g_cursor_x = -100.0f;
-        g_cursor_y = -100.0f;
-        [self setNeedsDisplay:YES];
+        if (g_cursor_x >= 0 || g_cursor_y >= 0) {
+            float r = rust_overlay_get_diameter() * 0.5f + 4.0f;
+            NSRect oldRect = NSMakeRect(g_cursor_x - r, g_cursor_y - r, r * 2.0f, r * 2.0f);
+            g_cursor_x = -100.0f;
+            g_cursor_y = -100.0f;
+            [self setNeedsDisplayInRect:oldRect];
+        }
     }
 }
 
@@ -248,7 +270,7 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     if (!ctx) return;
 
-    // 1. Draw Native Workspace Backdrop with theme awareness
+    // 1. Draw Native Workspace Backdrop with theme awareness (clipped to dirty rect)
     if (g_is_dark_theme) {
         // Dark theme workbench (#18181b / zinc-900)
         [[NSColor colorWithCalibratedRed:24.0f/255.0f green:24.0f/255.0f blue:27.0f/255.0f alpha:1.0f] setFill];
@@ -256,68 +278,79 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
         // Light theme workbench (#e4e4e7 / zinc-200 for clean contrast against white paper)
         [[NSColor colorWithCalibratedRed:228.0f/255.0f green:228.0f/255.0f blue:231.0f/255.0f alpha:1.0f] setFill];
     }
-    NSRectFill(self.bounds);
+    NSRectFill(dirtyRect);
 
     if (g_artboard_rect.size.width <= 0 || g_artboard_rect.size.height <= 0) {
         return;
     }
 
-    // 2. Draw Artboard Paper Drop Shadow & Surface
-    CGContextSaveGState(ctx);
-    CGColorRef shadowColor = g_is_dark_theme
-        ? CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.40)
-        : CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.18);
-    CGContextSetShadowWithColor(ctx, CGSizeMake(0, -4), 14.0f, shadowColor);
-    CGColorRelease(shadowColor);
-
-    // Clean white paper background
-    [[NSColor whiteColor] setFill];
     NSBezierPath *paperPath = [NSBezierPath bezierPathWithRoundedRect:g_artboard_rect xRadius:2.0f yRadius:2.0f];
-    [paperPath fill];
-    CGContextRestoreGState(ctx); // Clear shadow state
-
-    // Artboard subtle border
-    if (g_is_dark_theme) {
-        [[NSColor colorWithCalibratedWhite:0.3f alpha:0.4f] setStroke];
-    } else {
-        [[NSColor colorWithCalibratedWhite:0.75f alpha:0.8f] setStroke];
-    }
-    [paperPath setLineWidth:1.0f];
-    [paperPath stroke];
-
-    // 3. Draw Rust Canvas Framebuffer onto Artboard Paper
     int32_t bufferWidth = 0;
     int32_t bufferHeight = 0;
-    const uint8_t *pixelBuffer = rust_overlay_get_pixels(&bufferWidth, &bufferHeight);
 
-    if (pixelBuffer && bufferWidth > 0 && bufferHeight > 0) {
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-        CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixelBuffer, bufferWidth * bufferHeight * 4, NULL);
-        if (provider) {
-            CGImageRef image = CGImageCreate(
-                bufferWidth,
-                bufferHeight,
-                8,
-                32,
-                bufferWidth * 4,
-                colorSpace,
-                kCGImageAlphaLast | kCGBitmapByteOrder32Big,
-                provider,
-                NULL,
-                NO,
-                kCGRenderingIntentDefault
-            );
+    // Only draw artboard and canvas if dirtyRect intersects the artboard
+    if (NSIntersectsRect(dirtyRect, g_artboard_rect)) {
+        // 2. Draw Artboard Paper Drop Shadow & Surface
+        CGContextSaveGState(ctx);
+        CGColorRef shadowColor = g_is_dark_theme
+            ? CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.40)
+            : CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.18);
+        CGContextSetShadowWithColor(ctx, CGSizeMake(0, -4), 14.0f, shadowColor);
+        CGColorRelease(shadowColor);
 
-            if (image) {
-                CGContextSaveGState(ctx);
-                [paperPath addClip]; // Clip strokes to artboard paper boundary
-                CGContextDrawImage(ctx, g_artboard_rect, image);
-                CGContextRestoreGState(ctx);
-                CGImageRelease(image);
-            }
-            CGDataProviderRelease(provider);
+        // Clean white paper background
+        [[NSColor whiteColor] setFill];
+        [paperPath fill];
+        CGContextRestoreGState(ctx); // Clear shadow state
+
+        // Artboard subtle border
+        if (g_is_dark_theme) {
+            [[NSColor colorWithCalibratedWhite:0.3f alpha:0.4f] setStroke];
+        } else {
+            [[NSColor colorWithCalibratedWhite:0.75f alpha:0.8f] setStroke];
         }
-        CGColorSpaceRelease(colorSpace);
+        [paperPath setLineWidth:1.0f];
+        [paperPath stroke];
+
+        // 3. Draw Rust Canvas Framebuffer onto Artboard Paper (cached CGImage)
+        if (g_canvas_image_needs_update || g_cached_canvas_image == NULL) {
+            if (g_cached_canvas_image) {
+                CGImageRelease(g_cached_canvas_image);
+                g_cached_canvas_image = NULL;
+            }
+
+            const uint8_t *pixelBuffer = rust_overlay_get_pixels(&bufferWidth, &bufferHeight);
+
+            if (pixelBuffer && bufferWidth > 0 && bufferHeight > 0) {
+                CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+                CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixelBuffer, bufferWidth * bufferHeight * 4, NULL);
+                if (provider) {
+                    g_cached_canvas_image = CGImageCreate(
+                        bufferWidth,
+                        bufferHeight,
+                        8,
+                        32,
+                        bufferWidth * 4,
+                        colorSpace,
+                        kCGImageAlphaLast | kCGBitmapByteOrder32Big,
+                        provider,
+                        NULL,
+                        NO,
+                        kCGRenderingIntentDefault
+                    );
+                    CGDataProviderRelease(provider);
+                }
+                CGColorSpaceRelease(colorSpace);
+            }
+            g_canvas_image_needs_update = NO;
+        }
+
+        if (g_cached_canvas_image) {
+            CGContextSaveGState(ctx);
+            [paperPath addClip]; // Clip strokes to artboard paper boundary
+            CGContextDrawImage(ctx, g_artboard_rect, g_cached_canvas_image);
+            CGContextRestoreGState(ctx);
+        }
     }
 
     // 3.5. Attach the last point to the brush tip with same pressure and size
@@ -401,6 +434,7 @@ void set_native_overlay_pan_active(bool is_panning) {
 }
 
 void trigger_native_overlay_repaint(void) {
+    g_canvas_image_needs_update = YES;
     if (g_active_workspace_view) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [g_active_workspace_view setNeedsDisplay:YES];
@@ -416,6 +450,7 @@ void update_canvas_artboard_rect(float x, float y, float width, float height) {
         float winH = (float)window.contentView.bounds.size.height;
         // Invert Y for Cocoa window coordinates (0 is bottom-left):
         g_artboard_rect = NSMakeRect(x, winH - y - height, width, height);
+        g_canvas_image_needs_update = YES;
         [g_active_workspace_view setNeedsDisplay:YES];
     };
 
@@ -470,6 +505,7 @@ void set_ui_blocking_rects(const float *rects, uint32_t count) {
 
 void set_workspace_theme(bool is_dark) {
     g_is_dark_theme = is_dark;
+    g_canvas_image_needs_update = YES;
     if (g_active_workspace_view) {
         void (^applyBlock)(void) = ^{
             [g_active_workspace_view setNeedsDisplay:YES];

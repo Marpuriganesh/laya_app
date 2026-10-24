@@ -87,6 +87,39 @@ export class RustBrushBridge {
     }
   }
 
+  public async setDynamicsMapping(
+    param: string,
+    enabled: boolean,
+    sensor: string,
+    minOutput: number,
+    maxOutput: number,
+    lut: Float32Array | number[]
+  ): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      const lutArray = Array.from(lut);
+      await this.invokeFn("rust_brush_set_dynamics_mapping", {
+        param,
+        enabled,
+        sensor,
+        minOutput,
+        maxOutput,
+        lut: lutArray,
+      });
+    } catch (err) {
+      console.warn("Failed to sync dynamics mapping to Rust:", err);
+    }
+  }
+
+  public async clearDynamics(): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_brush_clear_dynamics");
+    } catch (err) {
+      console.warn("Failed to clear dynamics in Rust:", err);
+    }
+  }
+
   public async setMovingAverageConfig(config: {
     enabled: boolean;
     windowSize: number;

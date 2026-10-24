@@ -34,7 +34,29 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailUrlsRef = useRef<Map<string, string>>(new Map());
   const { activePresetId, setActivePresetId, setBrushSize, setBrushOpacity } = useDocumentStore();
+
+  useEffect(() => {
+    return () => {
+      thumbnailUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      thumbnailUrlsRef.current.clear();
+    };
+  }, []);
+
+  const getPresetThumbnailUrl = (preset: BrushPreset): string | null => {
+    if (!preset.thumbnailPngData || preset.thumbnailPngData.length === 0) return null;
+    const existing = thumbnailUrlsRef.current.get(preset.presetId);
+    if (existing) return existing;
+    try {
+      const blob = new Blob([preset.thumbnailPngData.buffer as ArrayBuffer], { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      thumbnailUrlsRef.current.set(preset.presetId, url);
+      return url;
+    } catch {
+      return null;
+    }
+  };
 
   // Read loaded presets from drawing engine
   const [presets, setPresets] = useState<readonly BrushPreset[]>(() =>
@@ -96,6 +118,16 @@ export const BrushLibraryContent: FC<BrushLibraryContentProps> = ({
   });
 
   const getPresetIcon = (preset: BrushPreset) => {
+    const thumbUrl = getPresetThumbnailUrl(preset);
+    if (thumbUrl) {
+      return (
+        <img
+          src={thumbUrl}
+          alt={preset.displayName}
+          className="w-5 h-5 object-contain rounded"
+        />
+      );
+    }
     const lowerTags = preset.tags.map((t) => t.toLowerCase());
     if (lowerTags.includes("inking")) return <PenLine className="w-4 h-4 text-blue-500" />;
     if (lowerTags.includes("pencils")) return <Pencil className="w-4 h-4 text-amber-500" />;

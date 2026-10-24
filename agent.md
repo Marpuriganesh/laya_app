@@ -231,6 +231,16 @@ To guarantee that multiple agents can work in parallel without integration failu
   - Do not introduce alternative icon packages (e.g. Heroicons, FontAwesome, Material Icons) or inline raw SVG paths.
   - Consistent icon sizing and accessible labels: Always provide accessible `aria-label` or tooltip text for icon-only buttons.
 
+- **Concise Iconography Over Verbose Labels**:
+  - Labels for inputs or visual clues are **not always required** if an icon conveys the meaning cleanly; an icon is enough.
+  - Avoid redundant, wordy text labels (e.g. "Response (100%)", "Start (0.0):", long descriptive headers) that waste precious horizontal space, cause awkward word-wrapping, and break responsive bounds.
+  - Provide rich explanatory information via accessible `title` and `aria-label` tooltips (structured to transition smoothly to a dedicated custom tooltip component).
+
+- **Zero Horizontal Overflow & Strict Container Responsiveness**:
+  - Every UI component (curve editors, dynamics controls, toolbars, color pickers) **must be 100% fluid and responsive** to its parent container (`w-full`, `max-w-full`, `overflow-hidden`).
+  - **Never hardcode rigid pixel widths** that exceed narrow popovers (e.g. 236px action popovers or sub-panels).
+  - **Critical Canvas Overlap & Blocking Rect Hijack Prevention**: When interactive elements overflow their popup/window boundaries into the canvas area, `useNativeUiRectsSync` extracts their bounding rects and registers them with Tauri AppKit's `g_ui_blocking_rects`. Any overflowing rects will intercept stylus/mouse events over the canvas and **completely break native painting**! All floating components must strictly contain their bounds (`overflow-hidden`).
+
 - **FigCraft Canvas Vector Icons (`lucide-figcraft` skill)**:
   - When designing or creating mockups/components in FigCraft, use the **`lucide-figcraft`** skill (`.agents/skills/lucide-figcraft/SKILL.md`).
   - **Zero-Dependency CLI Tool**: `scripts/figcraft-lucide.mjs` allows querying, converting, and inspecting any of the 1,600+ icons:

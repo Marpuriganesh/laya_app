@@ -266,6 +266,7 @@ impl WasmBrushEngine {
         let existing_tip_type = self.engine.config.tip_type.clone();
         let existing_texture = self.engine.config.texture.clone();
         let existing_texture_by_pressure = self.engine.config.texture_by_pressure;
+        let existing_dynamics = self.engine.config.dynamics.clone();
 
         self.engine.config = BrushConfig {
             diameter,
@@ -289,6 +290,7 @@ impl WasmBrushEngine {
             pressure_lut: existing_lut,
             moving_average: existing_moving_average,
             pull_string: existing_pull_string,
+            dynamics: existing_dynamics,
         };
     }
 
@@ -350,6 +352,39 @@ impl WasmBrushEngine {
         } else {
             self.engine.config.pressure_lut = None;
         }
+    }
+
+    /// Sets or clears a dynamic sensor mapping and transfer curve for a brush property.
+    pub fn set_dynamics_mapping(
+        &mut self,
+        param: &str,
+        enabled: bool,
+        sensor: &str,
+        min_output: f32,
+        max_output: f32,
+        lut: &[f32],
+    ) {
+        if enabled && lut.len() == 256 {
+            let sensor_type = crate::brush::dynamics::SensorType::from_str(sensor);
+            let mut arr = [0.0f32; 256];
+            arr.copy_from_slice(lut);
+            let curve = crate::brush::dynamics::DynamicsCurve::from_lut(arr);
+            let mapping = crate::brush::dynamics::SensorDynamicsMapping {
+                sensor: sensor_type,
+                curve,
+                min_output,
+                max_output,
+                enabled: true,
+            };
+            self.engine.config.dynamics.set_mapping(param, Some(mapping));
+        } else {
+            self.engine.config.dynamics.set_mapping(param, None);
+        }
+    }
+
+    /// Clears all dynamic sensor modulations back to static defaults.
+    pub fn clear_dynamics(&mut self) {
+        self.engine.config.dynamics.clear();
     }
 
     // ========================================================================

@@ -42,6 +42,7 @@ impl Default for BrushEngineState {
                     pressure_lut: None,
                     moving_average: sketch_core::stroke::MovingAverageConfig::default(),
                     pull_string: sketch_core::stroke::PullStringConfig::default(),
+                    dynamics: sketch_core::brush::BrushDynamicsConfig::default(),
                 }),
                 tip_registry: TipRegistry::new(),
                 pattern_registry: PatternRegistry::new(),
@@ -75,6 +76,7 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         pressure_lut: None,
         moving_average: sketch_core::stroke::MovingAverageConfig::default(),
         pull_string: sketch_core::stroke::PullStringConfig::default(),
+        dynamics: sketch_core::brush::BrushDynamicsConfig::default(),
     });
 
     let (tips, patterns) = if let Some(s) = guard.as_ref() {
@@ -107,10 +109,25 @@ pub extern "C" fn rust_overlay_begin_stroke_dirty(
     out_w: *mut i32,
     out_h: *mut i32,
 ) -> bool {
+    rust_overlay_begin_stroke_tilt_dirty(x, y, pressure, 0.0, 0.0, out_x, out_y, out_w, out_h)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_begin_stroke_tilt_dirty(
+    x: f32,
+    y: f32,
+    pressure: f32,
+    tilt_x: f32,
+    tilt_y: f32,
+    out_x: *mut i32,
+    out_y: *mut i32,
+    out_w: *mut i32,
+    out_h: *mut i32,
+) -> bool {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         session.stroke_start_time = std::time::Instant::now();
-        let event = StrokeEvent::new(x, y, pressure, 0.0);
+        let event = StrokeEvent::with_tilt(x, y, pressure, 0.0, tilt_x, tilt_y);
         if let Some(r) = session.engine.begin_stroke_on_stack(event, &mut session.stack) {
             if !out_x.is_null() && !out_y.is_null() && !out_w.is_null() && !out_h.is_null() {
                 unsafe {
@@ -141,10 +158,25 @@ pub extern "C" fn rust_overlay_paint_event_dirty(
     out_w: *mut i32,
     out_h: *mut i32,
 ) -> bool {
+    rust_overlay_paint_event_tilt_dirty(x, y, pressure, 0.0, 0.0, out_x, out_y, out_w, out_h)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_overlay_paint_event_tilt_dirty(
+    x: f32,
+    y: f32,
+    pressure: f32,
+    tilt_x: f32,
+    tilt_y: f32,
+    out_x: *mut i32,
+    out_y: *mut i32,
+    out_w: *mut i32,
+    out_h: *mut i32,
+) -> bool {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         let time_sec = session.stroke_start_time.elapsed().as_secs_f32();
-        let event = StrokeEvent::new(x, y, pressure, time_sec);
+        let event = StrokeEvent::with_tilt(x, y, pressure, time_sec, tilt_x, tilt_y);
         if let Some(r) = session.engine.paint_to_stack(event, &mut session.stack) {
             if !out_x.is_null() && !out_y.is_null() && !out_w.is_null() && !out_h.is_null() {
                 unsafe {
@@ -697,6 +729,7 @@ impl From<BrushConfigDto> for BrushConfig {
             pressure_lut: None,
             moving_average: sketch_core::stroke::MovingAverageConfig::default(),
             pull_string: sketch_core::stroke::PullStringConfig::default(),
+            dynamics: sketch_core::brush::BrushDynamicsConfig::default(),
         }
     }
 }
@@ -712,6 +745,7 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
         let existing_texture_by_pressure = session.engine.config.texture_by_pressure;
         let existing_tip_type = session.engine.config.tip_type.clone();
         let existing_blend_mode = session.engine.config.blend_mode;
+        let existing_dynamics = session.engine.config.dynamics.clone();
         let preserve_blend_mode = config.blend_mode.is_none() && !config.is_erase;
 
         let mut new_config: BrushConfig = config.into();
@@ -720,6 +754,7 @@ pub async fn rust_brush_set_config(config: BrushConfigDto) -> Result<(), String>
         new_config.pull_string = existing_pull_string;
         new_config.texture = existing_texture;
         new_config.texture_by_pressure = existing_texture_by_pressure;
+        new_config.dynamics = existing_dynamics;
 
         if preserve_blend_mode {
             new_config.blend_mode = existing_blend_mode;
@@ -812,6 +847,46 @@ pub async fn rust_brush_set_pressure_lut(lut: Vec<f32>) -> Result<(), String> {
         } else {
             set_native_pressure_lut(std::ptr::null(), 0);
         }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_set_dynamics_mapping(
+    param: String,
+    enabled: bool,
+    sensor: String,
+    min_output: f32,
+    max_output: f32,
+    lut: Vec<f32>,
+) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        if enabled && lut.len() == 256 {
+            let sensor_type = sketch_core::brush::SensorType::from_str(&sensor);
+            let mut arr = [0.0f32; 256];
+            arr.copy_from_slice(&lut);
+            let curve = sketch_core::brush::DynamicsCurve::from_lut(arr);
+            let mapping = sketch_core::brush::SensorDynamicsMapping {
+                sensor: sensor_type,
+                curve,
+                min_output,
+                max_output,
+                enabled: true,
+            };
+            session.engine.config.dynamics.set_mapping(&param, Some(mapping));
+        } else {
+            session.engine.config.dynamics.set_mapping(&param, None);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_brush_clear_dynamics() -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.engine.config.dynamics.clear();
     }
     Ok(())
 }

@@ -12,6 +12,7 @@ pub mod blend;
 pub mod blitter;
 pub mod canvas;
 pub mod config;
+pub mod dynamics;
 pub mod engine;
 pub mod rasterizer;
 pub mod rect;
@@ -32,6 +33,7 @@ pub use blend::{
 pub use blitter::CanvasBlitter;
 pub use canvas::CanvasView;
 pub use config::BrushConfig;
+pub use dynamics::{BrushDynamicsConfig, DynamicsCurve, SensorDynamicsMapping, SensorType};
 pub use engine::PixelBrushEngine;
 pub use rasterizer::MaskRasterizer;
 pub use rect::Rect;

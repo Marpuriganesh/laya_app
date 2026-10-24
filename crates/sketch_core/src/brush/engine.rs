@@ -20,6 +20,9 @@ pub struct PixelBrushEngine {
     pub rasterizer: MaskRasterizer,
     pub tip_rasterizer: crate::brush::tip::BrushTipRasterizer,
     pub blitter: CanvasBlitter,
+    pub current_velocity: f32,
+    pub total_distance: f32,
+    prev_raw_event: Option<StrokeEvent>,
     scratch_mask: Vec<u8>,
 }
 
@@ -34,6 +37,9 @@ impl PixelBrushEngine {
             rasterizer: MaskRasterizer::new(),
             tip_rasterizer: crate::brush::tip::BrushTipRasterizer::new(),
             blitter: CanvasBlitter::new(),
+            current_velocity: 0.0,
+            total_distance: 0.0,
+            prev_raw_event: None,
             scratch_mask: Vec::with_capacity(4096),
         }
     }
@@ -50,12 +56,16 @@ impl PixelBrushEngine {
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
 
+        self.current_velocity = 0.0;
+        self.total_distance = 0.0;
+        self.prev_raw_event = Some(start_event);
+
         // Composable smoothing pipeline: Moving Average -> Pull String -> Trajectory
         let event_after_avg = self.moving_average.begin_stroke(start_event, &self.config.moving_average);
         let seed_event = self.pull_string.begin_stroke(event_after_avg, &self.config.pull_string);
 
         self.trajectory.begin_stroke(seed_event, |dab| {
-            dirty = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas);
+            dirty = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, 0.0, 0.0);
         });
 
         dirty
@@ -64,6 +74,20 @@ impl PixelBrushEngine {
     /// Paints from the current stroke trajectory to `next_event` using continuous
     /// Midpoint Quadratic Bézier Spline interpolation (C¹ smooth tangent continuity).
     pub fn paint_to(&mut self, next_event: StrokeEvent, canvas: &mut CanvasView) -> Option<Rect> {
+        let (velocity, dist_step) = if let Some(p) = self.prev_raw_event {
+            let dt = (next_event.time - p.time).max(0.001);
+            let dist = ((next_event.x - p.x).powi(2) + (next_event.y - p.y).powi(2)).sqrt();
+            ((dist / dt).min(5000.0), dist)
+        } else {
+            (0.0, 0.0)
+        };
+        self.current_velocity = velocity;
+        self.total_distance += dist_step;
+        self.prev_raw_event = Some(next_event);
+
+        let current_velocity = self.current_velocity;
+        let current_distance = self.total_distance;
+
         // Composable smoothing pipeline: Moving Average -> Pull String -> Trajectory
         if let Some(event_after_avg) = self.moving_average.add_event(next_event, &self.config.moving_average) {
             if let Some(stabilized_event) = self.pull_string.add_event(event_after_avg, &self.config.pull_string) {
@@ -75,9 +99,9 @@ impl PixelBrushEngine {
 
                 self.trajectory.add_event(
                     stabilized_event,
-                    |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
+                    |dab| Self::compute_diameter_impl(dab, config, current_velocity, current_distance) * config.spacing,
                     |dab| {
-                        if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas) {
+                        if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, current_velocity, current_distance) {
                             dirty_rect = match dirty_rect {
                                 None => Some(r),
                                 Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -127,11 +151,13 @@ impl PixelBrushEngine {
 
         // If pull string stabilizer has connect_to_tip_on_release enabled, bridge remaining leash slack
         if let Some(final_event) = self.pull_string.finish_stroke(&self.config.pull_string) {
+            let vel = self.current_velocity;
+            let dist = self.total_distance;
             self.trajectory.add_event(
                 final_event,
-                |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
+                |dab| Self::compute_diameter_impl(dab, config, vel, dist) * config.spacing,
                 |dab| {
-                    if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas) {
+                    if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist) {
                         dirty_rect = match dirty_rect {
                             None => Some(r),
                             Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -144,11 +170,14 @@ impl PixelBrushEngine {
         self.moving_average.reset();
         self.pull_string.reset();
 
+        let vel = self.current_velocity;
+        let dist = self.total_distance;
+
         // Finish remaining trajectory segment to the final smoothed event
         self.trajectory.finish_stroke(
-            |dab| Self::compute_diameter_impl(dab.pressure, config) * config.spacing,
+            |dab| Self::compute_diameter_impl(dab, config, vel, dist) * config.spacing,
             |dab| {
-                if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas) {
+                if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist) {
                     dirty_rect = match dirty_rect {
                         None => Some(r),
                         Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -165,6 +194,9 @@ impl PixelBrushEngine {
         self.moving_average.reset();
         self.pull_string.reset();
         self.trajectory.end_stroke();
+        self.current_velocity = 0.0;
+        self.total_distance = 0.0;
+        self.prev_raw_event = None;
     }
 
     /// Begins a stroke on the active layer of a composite stack, immediately
@@ -224,9 +256,10 @@ impl PixelBrushEngine {
         dirty
     }
 
-    /// Computes instantaneous dab diameter accounting for pressure sensitivity.
+    /// Computes instantaneous dab diameter accounting for dynamics and pressure sensitivity.
     pub fn compute_diameter(&self, pressure: f32) -> f32 {
-        Self::compute_diameter_impl(pressure, &self.config)
+        let dummy_event = StrokeEvent::new(0.0, 0.0, pressure, 0.0);
+        Self::compute_diameter_impl(&dummy_event, &self.config, self.current_velocity, self.total_distance)
     }
 
     #[inline]
@@ -240,9 +273,21 @@ impl PixelBrushEngine {
     }
 
     #[inline]
-    fn compute_diameter_impl(pressure: f32, config: &BrushConfig) -> f32 {
-        if config.size_by_pressure {
-            let mapped = Self::map_pressure(pressure, config);
+    fn compute_diameter_impl(
+        event: &StrokeEvent,
+        config: &BrushConfig,
+        velocity_px_sec: f32,
+        distance_px: f32,
+    ) -> f32 {
+        if let Some(ref size_dyn) = config.dynamics.size {
+            let out = size_dyn.evaluate(event, velocity_px_sec, distance_px, 0.0);
+            if size_dyn.max_output <= 1.0 {
+                (config.diameter * out).max(1.0)
+            } else {
+                out.max(1.0)
+            }
+        } else if config.size_by_pressure {
+            let mapped = Self::map_pressure(event.pressure, config);
             config.diameter * mapped.max(0.05)
         } else {
             config.diameter
@@ -258,6 +303,8 @@ impl PixelBrushEngine {
             &self.blitter,
             &mut self.scratch_mask,
             canvas,
+            self.current_velocity,
+            self.total_distance,
         )
     }
 
@@ -269,29 +316,47 @@ impl PixelBrushEngine {
         blitter: &CanvasBlitter,
         scratch_mask: &mut Vec<u8>,
         canvas: &mut CanvasView,
+        velocity_px_sec: f32,
+        distance_px: f32,
     ) -> Option<Rect> {
-        let diameter = Self::compute_diameter_impl(event.pressure, config);
+        let diameter = Self::compute_diameter_impl(&event, config, velocity_px_sec, distance_px);
         let radius = diameter * 0.5;
         let dest_x = (event.x - radius).floor() as i32;
         let dest_y = (event.y - radius).floor() as i32;
         let sub_x = event.x - dest_x as f32;
         let sub_y = event.y - dest_y as f32;
 
+        let mut angle_radians = match config.tip_type {
+            crate::brush::tip::BrushTipType::Auto { angle_radians, .. } => angle_radians,
+            crate::brush::tip::BrushTipType::Predefined { angle_radians, .. } => angle_radians,
+        };
+
+        if let Some(ref angle_dyn) = config.dynamics.angle {
+            angle_radians += angle_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+        }
+
+        let effective_softness = if let Some(ref soft_dyn) = config.dynamics.softness {
+            let scale = soft_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+            (config.softness * scale).clamp(0.0, 1.0)
+        } else {
+            config.softness
+        };
+
         // 1. Generate dab mask according to tip geometry (Auto ellipse vs Predefined image)
         let (dab_w, dab_h) = match config.tip_type {
-            crate::brush::tip::BrushTipType::Auto { aspect_ratio, angle_radians } => {
+            crate::brush::tip::BrushTipType::Auto { aspect_ratio, .. } => {
                 tip_rasterizer.render_auto_brush(
                     radius,
                     aspect_ratio,
                     angle_radians,
-                    config.softness,
+                    effective_softness,
                     sub_x,
                     sub_y,
                     config.antialias,
                     scratch_mask,
                 )
             }
-            crate::brush::tip::BrushTipType::Predefined { ref tip_data, scale, angle_radians } => {
+            crate::brush::tip::BrushTipType::Predefined { ref tip_data, scale, .. } => {
                 tip_rasterizer.render_predefined_tip(
                     tip_data,
                     diameter * scale,
@@ -322,8 +387,33 @@ impl PixelBrushEngine {
         }
 
         let mut flow_opacity = config.flow * config.opacity;
-        if config.opacity_by_pressure {
+        if let Some(ref op_dyn) = config.dynamics.opacity {
+            flow_opacity *= op_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+        } else if config.opacity_by_pressure {
             flow_opacity *= Self::map_pressure(event.pressure, config);
+        }
+
+        if let Some(ref flow_dyn) = config.dynamics.flow {
+            flow_opacity *= flow_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.0);
+        }
+
+        let mut final_dest_x = dest_x;
+        let mut final_dest_y = dest_y;
+
+        if let Some(ref jitter_dyn) = config.dynamics.jitter {
+            let jitter_eval = jitter_dyn.evaluate(&event, velocity_px_sec, distance_px, 0.5);
+            let max_jitter = if jitter_dyn.max_output <= 1.0 {
+                jitter_eval * radius
+            } else {
+                jitter_eval
+            };
+            if max_jitter > 0.01 {
+                let seed = ((event.x * 12.9898 + event.y * 78.233).sin() * 43758.5453).fract().abs();
+                let jitter_angle = seed * std::f32::consts::TAU;
+                let jitter_r = seed * max_jitter;
+                final_dest_x += (jitter_angle.cos() * jitter_r).round() as i32;
+                final_dest_y += (jitter_angle.sin() * jitter_r).round() as i32;
+            }
         }
 
         let mode = if config.is_erase {
@@ -337,8 +427,8 @@ impl PixelBrushEngine {
             scratch_mask,
             dab_w,
             dab_h,
-            dest_x,
-            dest_y,
+            final_dest_x,
+            final_dest_y,
             config.color,
             flow_opacity,
             mode,

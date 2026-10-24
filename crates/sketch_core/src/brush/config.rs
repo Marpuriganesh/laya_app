@@ -35,6 +35,8 @@ pub struct BrushConfig {
     pub moving_average: crate::stroke::MovingAverageConfig,
     /// Pulled string (leash) stroke smoothing configuration.
     pub pull_string: crate::stroke::PullStringConfig,
+    /// Multi-sensor brush dynamics (pressure, tilt, velocity, jitter, distance).
+    pub dynamics: crate::brush::dynamics::BrushDynamicsConfig,
 }
 
 impl Default for BrushConfig {
@@ -57,6 +59,7 @@ impl Default for BrushConfig {
             pressure_lut: None,
             moving_average: crate::stroke::MovingAverageConfig::default(),
             pull_string: crate::stroke::PullStringConfig::default(),
+            dynamics: crate::brush::dynamics::BrushDynamicsConfig::default(),
         }
     }
 }

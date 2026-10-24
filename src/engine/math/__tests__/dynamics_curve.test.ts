@@ -12,6 +12,14 @@ import {
   createFirmCurve,
   createSCurve,
   createDeadzoneCurve,
+  evaluateNaturalSplineCurve,
+  createLinearDownCurve,
+  createInvertedSCurve,
+  createCupCurve,
+  createArchCurve,
+  createExponentialCurve,
+  createLogarithmicCurve,
+  KRITA_CURVE_PRESETS,
 } from "../dynamics_curve";
 
 describe("Dynamics Curve Evaluation", () => {
@@ -110,5 +118,62 @@ describe("Steffen Monotonic Spline Interpolation", () => {
     const path = generateSvgPathFromCurve(linear, 200, 100, 10);
     expect(path.startsWith("M 0.00 100.00")).toBe(true);
     expect(path.endsWith("200.00 0.00")).toBe(true);
+  });
+});
+
+describe("Natural Spline Curve & Krita Dynamics Presets", () => {
+  it("evaluates natural cubic spline with C^2 continuity", () => {
+    const sCurve = createSCurve();
+    expect(evaluateNaturalSplineCurve(sCurve, 0.0)).toBe(0.0);
+    expect(evaluateNaturalSplineCurve(sCurve, 1.0)).toBe(1.0);
+    expect(evaluateNaturalSplineCurve(sCurve, 0.5)).toBeCloseTo(0.5, 1);
+  });
+
+  it("evaluates Krita linear down curve", () => {
+    const down = createLinearDownCurve();
+    expect(evaluateNaturalSplineCurve(down, 0.0)).toBe(1.0);
+    expect(evaluateNaturalSplineCurve(down, 0.5)).toBeCloseTo(0.5, 2);
+    expect(evaluateNaturalSplineCurve(down, 1.0)).toBe(0.0);
+
+    const invS = createInvertedSCurve();
+    expect(evaluateNaturalSplineCurve(invS, 0.0)).toBe(1.0);
+    expect(evaluateNaturalSplineCurve(invS, 0.5)).toBeCloseTo(0.5, 1);
+    expect(evaluateNaturalSplineCurve(invS, 1.0)).toBe(0.0);
+  });
+
+  it("evaluates Krita cup (concave) curve", () => {
+    const cup = createCupCurve();
+    expect(evaluateNaturalSplineCurve(cup, 0.0)).toBe(1.0);
+    expect(evaluateNaturalSplineCurve(cup, 0.5)).toBeCloseTo(0.0, 1);
+    expect(evaluateNaturalSplineCurve(cup, 1.0)).toBe(1.0);
+  });
+
+  it("evaluates Krita arch (convex dome) curve", () => {
+    const arch = createArchCurve();
+    expect(evaluateNaturalSplineCurve(arch, 0.0)).toBe(0.0);
+    expect(evaluateNaturalSplineCurve(arch, 0.5)).toBeCloseTo(1.0, 1);
+    expect(evaluateNaturalSplineCurve(arch, 1.0)).toBe(0.0);
+  });
+
+  it("evaluates Krita exponential (J-curve) and fast rise (L-curve)", () => {
+    const exp = createExponentialCurve();
+    const log = createLogarithmicCurve();
+    // At 30% pressure, log curve should be much higher than exp curve
+    const expMid = evaluateNaturalSplineCurve(exp, 0.3);
+    const logMid = evaluateNaturalSplineCurve(log, 0.3);
+    expect(logMid).toBeGreaterThan(expMid);
+  });
+
+  it("contains all 8 Krita preset definitions with valid 256 LUTs", () => {
+    expect(KRITA_CURVE_PRESETS.length).toBe(8);
+    for (const preset of KRITA_CURVE_PRESETS) {
+      expect(preset.points.length).toBeGreaterThanOrEqual(2);
+      const lut = generateCurveLookupTable256(preset.points);
+      expect(lut.length).toBe(256);
+      for (let i = 0; i < 256; i++) {
+        expect(lut[i]).toBeGreaterThanOrEqual(0.0);
+        expect(lut[i]).toBeLessThanOrEqual(1.0);
+      }
+    }
   });
 });
