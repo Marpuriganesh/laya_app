@@ -6,7 +6,7 @@
  */
 
 import { useRef, useEffect, type FC } from "react";
-import type { BrushPreset } from "@/types/brush";
+import type { BrushPreset, PredefinedBrushTip } from "@/types/brush";
 import { useTheme } from "@/ui/theme/ThemeProvider";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
@@ -111,36 +111,130 @@ export const BrushStrokePreview: FC<BrushStrokePreviewProps> = ({
       dabs.push({ x, y, radius, alpha });
     }
 
-    // Draw dabs with soft radial gradients matching brush softness and aspect ratio
-    for (const dab of dabs) {
-      const r = dab.radius;
-      if (r <= 0) continue;
+    // Check if predefined raster tip mask is active
+    let tipCanvas: HTMLCanvasElement | null = null;
+    let tipWidth = 0;
+    let tipHeight = 0;
+    const isPredefinedTip =
+      params &&
+      params.engineId === "pixelbrush" &&
+      params.brushTip &&
+      params.brushTip.tipType === "predefined";
 
-      ctx.save();
-      ctx.translate(dab.x, dab.y);
-      if (angleRadians !== 0) ctx.rotate(angleRadians);
-      if (aspectRatio < 0.99) ctx.scale(1.0, aspectRatio);
-
-      if (softness <= 0.05) {
-        // Hard-edge dab
-        ctx.fillStyle = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${dab.alpha})`;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Soft-edge dab with radial falloff
-        const innerRadius = Math.max(0, r * (1.0 - softness));
-        const gradient = ctx.createRadialGradient(0, 0, innerRadius, 0, 0, r);
-        gradient.addColorStop(0, `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${dab.alpha})`);
-        gradient.addColorStop(1, `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, 0)`);
-
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
+    if (isPredefinedTip) {
+      const tip = params.brushTip as PredefinedBrushTip;
+      if (tip.imageData && tip.width > 0 && tip.height > 0) {
+        tipWidth = tip.width;
+        tipHeight = tip.height;
+        tipCanvas = document.createElement("canvas");
+        tipCanvas.width = tipWidth;
+        tipCanvas.height = tipHeight;
+        const tctx = tipCanvas.getContext("2d");
+        if (tctx) {
+          const imgData = tctx.createImageData(tipWidth, tipHeight);
+          const len = tipWidth * tipHeight;
+          const isRgba = tip.imageData.length === len * 4;
+          for (let j = 0; j < len; j++) {
+            const alpha = isRgba ? tip.imageData[j * 4 + 3] : tip.imageData[j];
+            imgData.data[j * 4 + 0] = strokeRgb[0];
+            imgData.data[j * 4 + 1] = strokeRgb[1];
+            imgData.data[j * 4 + 2] = strokeRgb[2];
+            imgData.data[j * 4 + 3] = alpha;
+          }
+          tctx.putImageData(imgData, 0, 0);
+        }
       }
+    }
 
-      ctx.restore();
+    if (tipCanvas && tipWidth > 0 && tipHeight > 0) {
+      // Draw predefined tip stamps along the trajectory
+      for (const dab of dabs) {
+        const r = dab.radius;
+        if (r <= 0) continue;
+        ctx.save();
+        ctx.translate(dab.x, dab.y);
+        if (angleRadians !== 0) ctx.rotate(angleRadians);
+        ctx.globalAlpha = Math.min(1.0, dab.alpha);
+        ctx.drawImage(tipCanvas, -r, -r, r * 2, r * 2);
+        ctx.restore();
+      }
+    } else {
+      // Draw standard dabs with soft radial gradients matching brush softness and aspect ratio
+      for (const dab of dabs) {
+        const r = dab.radius;
+        if (r <= 0) continue;
+
+        ctx.save();
+        ctx.translate(dab.x, dab.y);
+        if (angleRadians !== 0) ctx.rotate(angleRadians);
+        if (aspectRatio < 0.99) ctx.scale(1.0, aspectRatio);
+
+        if (softness <= 0.05) {
+          // Hard-edge dab
+          ctx.fillStyle = `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${dab.alpha})`;
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Soft-edge dab with radial falloff
+          const innerRadius = Math.max(0, r * (1.0 - softness));
+          const gradient = ctx.createRadialGradient(0, 0, innerRadius, 0, 0, r);
+          gradient.addColorStop(0, `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, ${dab.alpha})`);
+          gradient.addColorStop(1, `rgba(${strokeRgb[0]}, ${strokeRgb[1]}, ${strokeRgb[2]}, 0)`);
+
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // If paper grain texture is active, modulate the preview's alpha mask with texture luminance
+    const grainTexture = params && params.engineId === "pixelbrush" ? params.grainTexture : null;
+    if (grainTexture && grainTexture.bytes && grainTexture.width > 0 && grainTexture.height > 0) {
+      const strength = grainTexture.strength ?? 1.0;
+      if (strength > 0.01) {
+        const frame = ctx.getImageData(0, 0, width, height);
+        const data = frame.data;
+        const patW = grainTexture.width;
+        const patH = grainTexture.height;
+        const scale = Math.max(0.1, grainTexture.scale ?? 1.0);
+        const mode = grainTexture.mode ?? "multiply";
+        const patBytes = grainTexture.bytes;
+
+        for (let py = 0; py < height; py++) {
+          const ty = Math.floor(py / scale) % patH;
+          const safeTy = ((ty % patH) + patH) % patH;
+          const rowOffset = safeTy * patW;
+
+          for (let px = 0; px < width; px++) {
+            const pixelIdx = (py * width + px) * 4;
+            const currentAlpha = data[pixelIdx + 3];
+            if (currentAlpha > 0) {
+              const tx = Math.floor(px / scale) % patW;
+              const safeTx = ((tx % patW) + patW) % patW;
+              const lum = patBytes[rowOffset + safeTx];
+
+              let modAlpha = currentAlpha;
+              if (mode === "multiply") {
+                const lumFactor = lum / 255.0;
+                modAlpha = Math.round(currentAlpha * (1.0 - strength * (1.0 - lumFactor)));
+              } else if (mode === "subtract") {
+                const sub = (255 - lum) * strength;
+                modAlpha = Math.max(0, Math.round(currentAlpha - sub));
+              } else {
+                const lumFactor = lum / 255.0;
+                modAlpha = Math.round(currentAlpha * (1.0 - strength * (1.0 - lumFactor)));
+              }
+              data[pixelIdx + 3] = Math.max(0, Math.min(255, modAlpha));
+            }
+          }
+        }
+        ctx.putImageData(frame, 0, 0);
+      }
     }
 
     ctx.restore();

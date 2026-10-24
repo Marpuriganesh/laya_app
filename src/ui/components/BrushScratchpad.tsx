@@ -56,6 +56,9 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
   const isDrawingRef = useRef(false);
   const pointsRef = useRef<PointWithPressure[]>([]);
   const strokeStepCountRef = useRef(0);
+  const [hasUserDrawn, setHasUserDrawn] = useState(false);
+  const completedStrokesRef = useRef<StrokePoint[][]>([]);
+  const currentStrokePointsRef = useRef<StrokePoint[]>([]);
 
   // Clear canvas and Wasm buffer
   const clearCanvas = useCallback(() => {
@@ -67,6 +70,9 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     if (bridgeRef.current?.ready) {
       bridgeRef.current.clear(0, 0, 0, 0);
     }
+    completedStrokesRef.current = [];
+    currentStrokePointsRef.current = [];
+    setHasUserDrawn(false);
   }, []);
 
   // Synchronizes full brush parameters, tip geometry, dynamics, and scattering to Wasm bridge
@@ -158,6 +164,38 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
         bridge.setDynamicsMapping("jitter", false, "random", 0.0, 0.0, new Float32Array(256));
       }
     }
+
+    // 3. Sync predefined brush tip vs generated
+    if (params && params.engineId === "pixelbrush") {
+      const tip = params.brushTip;
+      if (tip && tip.tipType === "predefined" && tip.imageData && tip.width > 0 && tip.height > 0) {
+        const tipId = `scratch-tip-${activeBrush?.presetId ?? "active"}`;
+        const maskBytes = new Uint8Array(tip.imageData.buffer, tip.imageData.byteOffset, tip.imageData.byteLength);
+        bridge.registerTipMask(tipId, "Scratch Tip", tip.width, tip.height, maskBytes, true);
+        bridge.setBrushPredefinedTip(tipId, 1.0, 0.0);
+      } else {
+        bridge.clearBrushPredefinedTip();
+      }
+
+      // 4. Sync paper grain texture
+      const tex = params.grainTexture;
+      if (tex && tex.bytes && tex.bytes.length > 0) {
+        const patBytes = tex.bytes instanceof Uint8Array ? tex.bytes : new Uint8Array(tex.bytes);
+        bridge.registerPatternGrayscale(tex.patternId, tex.name, tex.width, tex.height, patBytes);
+        bridge.setBrushTextureResource(
+          tex.patternId,
+          tex.scale ?? 1.0,
+          tex.mode ?? "multiply",
+          tex.strength ?? 1.0,
+          tex.invert ?? false,
+          tex.brightness ?? 0.0,
+          tex.contrast ?? 1.0,
+          tex.byPressure ?? false
+        );
+      } else {
+        bridge.clearBrushTexture();
+      }
+    }
   }, [
     activeBrush,
     brushSize,
@@ -194,6 +232,26 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
       bridgeRef.current = null;
     };
   }, [width, height, clearCanvas, syncBridgeConfig]);
+
+  // Replay strokes for Procreate-style memory pruning
+  const replayStrokes = useCallback((strokes: StrokePoint[][]) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (bridgeRef.current?.ready) {
+      bridgeRef.current.clear(0, 0, 0, 0);
+      for (const stroke of strokes) {
+        if (stroke.length === 0) continue;
+        bridgeRef.current.beginStroke(stroke[0], ctx);
+        for (let i = 1; i < stroke.length; i++) {
+          bridgeRef.current.extendStroke(stroke[i], ctx);
+        }
+        bridgeRef.current.finishStroke(ctx);
+      }
+    }
+  }, []);
 
   // Sync brush parameters whenever dependencies change
   useEffect(() => {
@@ -274,6 +332,33 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     }
   }, [brushSize, brushOpacity, sizeDynamics, opacityDynamics, resolvedTheme]);
 
+  // Live auto-updating test stroke: whenever brush settings change, update test stroke if user hasn't drawn
+  useEffect(() => {
+    if (isReady && !hasUserDrawn) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      if (bridgeRef.current?.ready) {
+        bridgeRef.current.clear(0, 0, 0, 0);
+      }
+      handleDrawDefaultStroke();
+    }
+  }, [
+    isReady,
+    hasUserDrawn,
+    brushSettingsRevision,
+    activeBrush,
+    brushSize,
+    brushOpacity,
+    softness,
+    spacing,
+    sizeDynamics,
+    opacityDynamics,
+    handleDrawDefaultStroke,
+  ]);
+
   // Extracts true normalized pressure [0.01 .. 1.0] across all devices (Apple Pencil, Wacom, Mac Force Touch, mouse)
   const extractPressure = (e: PointerEvent<HTMLCanvasElement>, isMove = false): number => {
     // 1. Apple Pencil / Stylus (pointerType === "pen")
@@ -297,18 +382,19 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     }
 
     // 4. Fallback for mouse / trackpad without force touch:
-    // When drawing with mouse, simulate a natural dynamic pressure ramp along the stroke:
-    // Starts delicate (0.18), swells with progress, and smoothly modulates
+    // Continuous dynamic organic stylus pressure modulation along the stroke:
+    // Sweeps and breathes organically without dying out or freezing to a flat line
     if (!isMove) {
       strokeStepCountRef.current = 0;
-      return 0.18;
+      return 0.22;
     }
 
     strokeStepCountRef.current++;
     const step = strokeStepCountRef.current;
-    const cycle = Math.min(step / 35, 1.0);
-    const wave = Math.sin(cycle * Math.PI);
-    return Math.max(0.12, Math.min(1.0, 0.18 + wave * 0.82));
+    const wave1 = Math.sin(step * 0.08);
+    const wave2 = Math.cos(step * 0.035) * 0.5;
+    const normalizedWave = 0.5 + 0.5 * (wave1 * 0.7 + wave2 * 0.3);
+    return Math.max(0.12, Math.min(1.0, 0.20 + normalizedWave * 0.78));
   };
 
   // Extracts normalized tilt from hardware degrees [-90 .. 90]
@@ -330,6 +416,17 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
       // Ignore
     }
 
+    // If switching from auto-test stroke to user drawing, clear canvas first
+    if (!hasUserDrawn) {
+      setHasUserDrawn(true);
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (bridgeRef.current?.ready) {
+        bridgeRef.current.clear(0, 0, 0, 0);
+      }
+      completedStrokesRef.current = [];
+    }
+
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -341,14 +438,23 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     isDrawingRef.current = true;
     pointsRef.current = [{ x, y, pressure }];
 
+    const strokePoint: StrokePoint = {
+      canvasX: x,
+      canvasY: y,
+      pressure,
+      timeMs,
+      tiltX,
+      tiltY,
+      rotation,
+      speed: 0,
+    };
+    currentStrokePointsRef.current = [strokePoint];
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     if (bridgeRef.current?.ready) {
-      bridgeRef.current.beginStroke(
-        { canvasX: x, canvasY: y, pressure, timeMs, tiltX, tiltY, rotation, speed: 0 },
-        ctx
-      );
+      bridgeRef.current.beginStroke(strokePoint, ctx);
     } else {
       const strokeRgb = resolvedTheme === "dark" ? [255, 255, 255] : [0, 0, 0];
       const effSize = sizeDynamics ? Math.max(1, brushSize * pressure) : brushSize;
@@ -396,11 +502,20 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
 
       points.push({ x, y, pressure });
 
+      const strokePoint: StrokePoint = {
+        canvasX: x,
+        canvasY: y,
+        pressure,
+        timeMs,
+        tiltX,
+        tiltY,
+        rotation,
+        speed: 0,
+      };
+      currentStrokePointsRef.current.push(strokePoint);
+
       if (bridgeRef.current?.ready) {
-        bridgeRef.current.extendStroke(
-          { canvasX: x, canvasY: y, pressure, timeMs, tiltX, tiltY, rotation, speed: 0 },
-          ctx
-        );
+        bridgeRef.current.extendStroke(strokePoint, ctx);
       } else {
         if (points.length >= 3) {
           const p0 = points[points.length - 3];
@@ -454,6 +569,17 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
     if (ctx && bridgeRef.current?.ready) {
       bridgeRef.current.finishStroke(ctx);
     }
+
+    // Procreate-style stroke memory bounding: retain up to 5 strokes
+    if (currentStrokePointsRef.current.length > 0) {
+      completedStrokesRef.current.push([...currentStrokePointsRef.current]);
+      currentStrokePointsRef.current = [];
+
+      if (completedStrokesRef.current.length > 5) {
+        completedStrokesRef.current.shift();
+        replayStrokes(completedStrokesRef.current);
+      }
+    }
   };
 
   return (
@@ -473,7 +599,10 @@ export const BrushScratchpad: FC<BrushScratchpadProps> = ({
           {/* Default Simulated Test Stroke Button */}
           <button
             type="button"
-            onClick={handleDrawDefaultStroke}
+            onClick={() => {
+              clearCanvas();
+              handleDrawDefaultStroke();
+            }}
             title="Draw simulated test stroke with pressure, tilt & velocity dynamics"
             aria-label="Draw simulated test stroke"
             className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/90 dark:bg-zinc-800/90 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-zinc-600 hover:text-blue-600 dark:text-zinc-300 dark:hover:text-blue-400 border border-zinc-200/80 dark:border-white/10 shadow-xs text-[10px] font-medium transition-colors cursor-pointer"

@@ -5,6 +5,7 @@
  */
 
 import type { TextureBlendMode } from "./raster";
+export type { TextureBlendMode };
 
 /**
  * Configuration for paper texture / canvas grain modulation (Krita KisTextureOption).

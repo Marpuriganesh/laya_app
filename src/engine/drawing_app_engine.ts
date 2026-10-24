@@ -601,6 +601,53 @@ export class DrawingAppEngine implements IDrawingEngine {
     void globalRustBrushBridge.setMovingAverageConfig(this.movingAverageConfig);
     globalWasmBrushBridge.setPullStringConfig(this.pullStringConfig);
     void globalRustBrushBridge.setPullStringConfig(this.pullStringConfig);
+
+    // Sync predefined tip vs generated tip
+    if (this.activeBrush && this.activeBrush.engineParameters.engineId === "pixelbrush") {
+      const tip = this.activeBrush.engineParameters.brushTip;
+      if (tip && tip.tipType === "predefined" && tip.imageData && tip.width > 0 && tip.height > 0) {
+        const tipId = `tip-${this.activeBrush.presetId}`;
+        const maskBytes = new Uint8Array(tip.imageData.buffer, tip.imageData.byteOffset, tip.imageData.byteLength);
+        globalWasmBrushBridge.registerTipMask(tipId, "Tip", tip.width, tip.height, maskBytes, true);
+        globalWasmBrushBridge.setBrushPredefinedTip(tipId, 1.0, 0.0);
+        void globalRustBrushBridge.registerTipMask(tipId, "Tip", tip.width, tip.height, maskBytes, true);
+        void globalRustBrushBridge.setActiveTip(tipId, 1.0, 0.0);
+      } else {
+        globalWasmBrushBridge.clearBrushPredefinedTip();
+        void globalRustBrushBridge.setActiveTip(null);
+      }
+
+      // Sync grain texture if enabled
+      const tex = this.activeBrush.engineParameters.grainTexture;
+      if (tex && tex.bytes && tex.bytes.length > 0) {
+        const patBytes = tex.bytes instanceof Uint8Array ? tex.bytes : new Uint8Array(tex.bytes);
+        globalWasmBrushBridge.registerPatternGrayscale(tex.patternId, tex.name, tex.width, tex.height, patBytes);
+        globalWasmBrushBridge.setBrushTextureResource(
+          tex.patternId,
+          tex.scale ?? 1.0,
+          tex.mode ?? "multiply",
+          tex.strength ?? 1.0,
+          tex.invert ?? false,
+          tex.brightness ?? 0.0,
+          tex.contrast ?? 1.0,
+          tex.byPressure ?? false
+        );
+        void globalRustBrushBridge.registerPatternGrayscale(tex.patternId, tex.name, tex.width, tex.height, patBytes);
+        void globalRustBrushBridge.setActivePattern(
+          tex.patternId,
+          tex.scale ?? 1.0,
+          tex.mode ?? "multiply",
+          tex.strength ?? 1.0,
+          tex.invert ?? false,
+          tex.brightness ?? 0.0,
+          tex.contrast ?? 1.0,
+          tex.byPressure ?? false
+        );
+      } else {
+        globalWasmBrushBridge.clearBrushTexture();
+        void globalRustBrushBridge.setActivePattern(null);
+      }
+    }
   }
 
   private syncActivePresetEngineParams(updates: Partial<PixelBrushParameters>): void {

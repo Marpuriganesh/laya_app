@@ -21,7 +21,12 @@ import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
 import { BrushDynamicsPanel } from "@/ui/components/BrushDynamicsPanel";
 import { BrushScratchpad } from "@/ui/components/BrushScratchpad";
 import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
-import type { BrushPreset } from "@/types/brush";
+import type { BrushPreset, BrushTextureConfig, TextureBlendMode } from "@/types/brush";
+import {
+  createDefaultCanvasTextureConfig,
+  createDefaultCharcoalTextureConfig,
+  createDefaultColdPressTextureConfig,
+} from "@/engine/brush/procedural_textures";
 
 export interface BrushStudioContentProps {
   activeColor?: string;
@@ -135,6 +140,48 @@ async function generateThumbnailDataUrl(
   return "";
 }
 
+function generateGrayscaleThumbnailDataUrl(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+  size = 36
+): string {
+  if (typeof document === "undefined") return "";
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+
+    const srcCanvas = document.createElement("canvas");
+    srcCanvas.width = width;
+    srcCanvas.height = height;
+    const sctx = srcCanvas.getContext("2d");
+    if (!sctx) return "";
+
+    const imgData = sctx.createImageData(width, height);
+    for (let i = 0; i < width * height; i++) {
+      const lum = bytes[i];
+      imgData.data[i * 4 + 0] = lum;
+      imgData.data[i * 4 + 1] = lum;
+      imgData.data[i * 4 + 2] = lum;
+      imgData.data[i * 4 + 3] = 255;
+    }
+    sctx.putImageData(imgData, 0, 0);
+    ctx.drawImage(srcCanvas, 0, 0, size, size);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return "";
+  }
+}
+
+const BUILTIN_PROCEDURAL_TEXTURES: readonly BrushTextureConfig[] = [
+  createDefaultCanvasTextureConfig(),
+  createDefaultCharcoalTextureConfig(),
+  createDefaultColdPressTextureConfig(),
+];
+
 export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   const {
     brushSize,
@@ -186,8 +233,32 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
   const refreshResources = useCallback(async () => {
     const tips = await globalRustBrushBridge.listResources("brushes");
     const pats = await globalRustBrushBridge.listResources("patterns");
+
+    // Register built-in patterns into Rust & Wasm
+    for (const bp of BUILTIN_PROCEDURAL_TEXTURES) {
+      const bBytes = bp.bytes instanceof Uint8Array ? bp.bytes : new Uint8Array(bp.bytes);
+      globalWasmBrushBridge.registerPatternGrayscale(bp.patternId, bp.name, bp.width, bp.height, bBytes);
+      void globalRustBrushBridge.registerPatternGrayscale(bp.patternId, bp.name, bp.width, bp.height, bBytes);
+    }
+
+    const builtinDtos: ResourceItemDto[] = BUILTIN_PROCEDURAL_TEXTURES.map((bp) => ({
+      id: bp.patternId,
+      name: bp.name,
+      file_name: `${bp.patternId}.pat`,
+      path: `__builtin__:${bp.patternId}`,
+      resource_type: "patterns",
+      file_size_bytes: bp.width * bp.height,
+    }));
+
+    const mergedPats = [...pats];
+    for (const bDto of builtinDtos) {
+      if (!mergedPats.some((p) => p.id === bDto.id)) {
+        mergedPats.push(bDto);
+      }
+    }
+
     setBrushResources(tips);
-    setPatternResources(pats);
+    setPatternResources(mergedPats);
   }, []);
 
   useEffect(() => {
@@ -227,10 +298,18 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
       const thumbs: Record<string, string> = {};
       for (const pat of patternResources) {
         try {
-          const bytes = await globalRustBrushBridge.readResourceFile(pat.path);
-          if (bytes && active) {
-            const thumb = await generateThumbnailDataUrl(bytes, pat.file_name, 36);
-            if (thumb) thumbs[pat.id] = thumb;
+          if (pat.path.startsWith("__builtin__:")) {
+            const bp = BUILTIN_PROCEDURAL_TEXTURES.find((b) => b.patternId === pat.id);
+            if (bp && active) {
+              const bBytes = bp.bytes instanceof Uint8Array ? bp.bytes : new Uint8Array(bp.bytes);
+              thumbs[pat.id] = generateGrayscaleThumbnailDataUrl(bBytes, bp.width, bp.height, 36);
+            }
+          } else {
+            const bytes = await globalRustBrushBridge.readResourceFile(pat.path);
+            if (bytes && active) {
+              const thumb = await generateThumbnailDataUrl(bytes, pat.file_name, 36);
+              if (thumb) thumbs[pat.id] = thumb;
+            }
           }
         } catch {}
       }
@@ -250,7 +329,17 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     if (!item) {
       setSelectedTipId(null);
       await globalRustBrushBridge.setActiveTip(null);
-      globalWasmBrushBridge.setBrushPredefinedTip(null);
+      globalWasmBrushBridge.clearBrushPredefinedTip();
+      globalDrawingEngine.updateActivePreset?.({
+        brushTip: {
+          tipType: "generated",
+          diameter: brushSize,
+          hardness: Math.max(0, 1 - softness),
+          aspectRatio: 1.0,
+          angleRadians: 0,
+        },
+      });
+      useDocumentStore.getState().bumpBrushSettingsRevision();
       return;
     }
     setSelectedTipId(item.id);
@@ -282,10 +371,26 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
             decoded.rgba,
             false
           );
+
+          // Extract 8-bit alpha mask for active preset
+          const alphaMask = new Uint8ClampedArray(decoded.width * decoded.height);
+          for (let i = 0; i < decoded.width * decoded.height; i++) {
+            alphaMask[i] = decoded.rgba[i * 4 + 3];
+          }
+
+          globalDrawingEngine.updateActivePreset?.({
+            brushTip: {
+              tipType: "predefined",
+              imageData: alphaMask,
+              width: decoded.width,
+              height: decoded.height,
+            },
+          });
         }
       }
       await globalRustBrushBridge.setActiveTip(item.id, 1.0, 0.0);
       globalWasmBrushBridge.setBrushPredefinedTip(item.id, 1.0, 0.0);
+      useDocumentStore.getState().bumpBrushSettingsRevision();
     }
   };
 
@@ -293,66 +398,119 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
     if (!item) {
       setSelectedPatternId(null);
       await globalRustBrushBridge.setActivePattern(null);
-      globalWasmBrushBridge.setBrushTextureResource(null);
+      globalWasmBrushBridge.clearBrushTexture();
+      globalDrawingEngine.updateActivePreset?.({ grainTexture: null });
+      useDocumentStore.getState().bumpBrushSettingsRevision();
       return;
     }
     setSelectedPatternId(item.id);
-    const bytes = await globalRustBrushBridge.readResourceFile(item.path);
-    if (bytes) {
-      if (item.file_name.endsWith(".pat")) {
-        await globalRustBrushBridge.registerPatternPat(item.id, bytes);
-        globalWasmBrushBridge.registerPatternPat(item.id, bytes);
-      } else if (
-        item.file_name.endsWith(".png") ||
-        item.file_name.endsWith(".webp") ||
-        item.file_name.endsWith(".jpg")
-      ) {
-        const decoded = await decodeImageToRgba(bytes);
-        if (decoded) {
-          await globalRustBrushBridge.registerPatternRgba(
-            item.id,
-            item.name,
-            decoded.width,
-            decoded.height,
-            decoded.rgba
-          );
-          globalWasmBrushBridge.registerPatternRgba(
-            item.id,
-            item.name,
-            decoded.width,
-            decoded.height,
-            decoded.rgba
-          );
+
+    let texConfig: BrushTextureConfig | null = null;
+
+    if (item.path.startsWith("__builtin__:")) {
+      const bp = BUILTIN_PROCEDURAL_TEXTURES.find((b) => b.patternId === item.id);
+      if (bp) {
+        const bBytes = bp.bytes instanceof Uint8Array ? bp.bytes : new Uint8Array(bp.bytes);
+        globalWasmBrushBridge.registerPatternGrayscale(bp.patternId, bp.name, bp.width, bp.height, bBytes);
+        void globalRustBrushBridge.registerPatternGrayscale(bp.patternId, bp.name, bp.width, bp.height, bBytes);
+        texConfig = {
+          patternId: bp.patternId,
+          name: bp.name,
+          width: bp.width,
+          height: bp.height,
+          bytes: bBytes,
+          scale: textureScale,
+          mode: (textureMode as TextureBlendMode) || bp.mode,
+          strength: textureStrength,
+          byPressure: textureByPressure,
+        };
+      }
+    } else {
+      const bytes = await globalRustBrushBridge.readResourceFile(item.path);
+      if (bytes) {
+        if (item.file_name.endsWith(".pat")) {
+          await globalRustBrushBridge.registerPatternPat(item.id, bytes);
+          globalWasmBrushBridge.registerPatternPat(item.id, bytes);
+        } else if (
+          item.file_name.endsWith(".png") ||
+          item.file_name.endsWith(".webp") ||
+          item.file_name.endsWith(".jpg")
+        ) {
+          const decoded = await decodeImageToRgba(bytes);
+          if (decoded) {
+            await globalRustBrushBridge.registerPatternRgba(
+              item.id,
+              item.name,
+              decoded.width,
+              decoded.height,
+              decoded.rgba
+            );
+            globalWasmBrushBridge.registerPatternRgba(
+              item.id,
+              item.name,
+              decoded.width,
+              decoded.height,
+              decoded.rgba
+            );
+
+            const lumBytes = new Uint8Array(decoded.width * decoded.height);
+            for (let i = 0; i < decoded.width * decoded.height; i++) {
+              const r = decoded.rgba[i * 4 + 0];
+              const g = decoded.rgba[i * 4 + 1];
+              const b = decoded.rgba[i * 4 + 2];
+              lumBytes[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+            }
+
+            texConfig = {
+              patternId: item.id,
+              name: item.name,
+              width: decoded.width,
+              height: decoded.height,
+              bytes: lumBytes,
+              scale: textureScale,
+              mode: (textureMode as TextureBlendMode) || "multiply",
+              strength: textureStrength,
+              byPressure: textureByPressure,
+            };
+          }
         }
       }
-      await globalRustBrushBridge.setActivePattern(
-        item.id,
-        textureScale,
-        textureMode,
-        textureStrength,
-        false,
-        0.0,
-        1.0,
-        textureByPressure
-      );
-      globalWasmBrushBridge.setBrushTextureResource(
-        item.id,
-        textureScale,
-        textureMode,
-        textureStrength,
-        false,
-        0.0,
-        1.0,
-        textureByPressure
-      );
     }
+
+    await globalRustBrushBridge.setActivePattern(
+      item.id,
+      textureScale,
+      textureMode,
+      textureStrength,
+      false,
+      0.0,
+      1.0,
+      textureByPressure
+    );
+    globalWasmBrushBridge.setBrushTextureResource(
+      item.id,
+      textureScale,
+      textureMode,
+      textureStrength,
+      false,
+      0.0,
+      1.0,
+      textureByPressure
+    );
+
+    if (texConfig) {
+      globalDrawingEngine.updateActivePreset?.({ grainTexture: texConfig });
+    }
+    useDocumentStore.getState().bumpBrushSettingsRevision();
   };
 
   const handleTextureToggle = async (enabled: boolean) => {
     setTextureEnabled(enabled);
     if (!enabled) {
       await globalRustBrushBridge.setActivePattern(null);
-      globalWasmBrushBridge.setBrushTextureResource(null);
+      globalWasmBrushBridge.clearBrushTexture();
+      globalDrawingEngine.updateActivePreset?.({ grainTexture: null });
+      useDocumentStore.getState().bumpBrushSettingsRevision();
     } else if (selectedPatternId) {
       const item = patternResources.find((p) => p.id === selectedPatternId);
       if (item) await handleSelectPattern(item);
@@ -388,6 +546,22 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
       1.0,
       byPressure
     );
+
+    const currentTex =
+      activeBrush?.engineParameters.engineId === "pixelbrush"
+        ? activeBrush.engineParameters.grainTexture
+        : null;
+    if (currentTex) {
+      const updatedTex: BrushTextureConfig = {
+        ...currentTex,
+        scale,
+        mode: mode as TextureBlendMode,
+        strength,
+        byPressure,
+      };
+      globalDrawingEngine.updateActivePreset?.({ grainTexture: updatedTex });
+      useDocumentStore.getState().bumpBrushSettingsRevision();
+    }
   };
 
   const handleSave = () => {
@@ -460,6 +634,21 @@ export const BrushStudioContent: FC<BrushStudioContentProps> = () => {
       if (typeof p.baseOpacity === "number") setBrushOpacity(p.baseOpacity);
       if (p.sizeDynamics) setSizeDynamics(p.sizeDynamics.isEnabled);
       if (p.opacityDynamics) setOpacityDynamics(p.opacityDynamics.isEnabled);
+      if (p.grainTexture) {
+        setTextureEnabled(true);
+        setSelectedPatternId(p.grainTexture.patternId);
+        if (typeof p.grainTexture.scale === "number") setTextureScale(p.grainTexture.scale);
+        if (p.grainTexture.mode) setTextureMode(p.grainTexture.mode);
+        if (typeof p.grainTexture.strength === "number") setTextureStrength(p.grainTexture.strength);
+        if (typeof p.grainTexture.byPressure === "boolean") setTextureByPressure(p.grainTexture.byPressure);
+      } else {
+        setTextureEnabled(false);
+      }
+      if (p.brushTip && p.brushTip.tipType === "predefined") {
+        setSelectedTipId(`tip-${brush.presetId}`);
+      } else {
+        setSelectedTipId(null);
+      }
     }
 
     const mv = globalDrawingEngine.getMovingAverageConfig?.();

@@ -277,6 +277,12 @@ export class WasmBrushBridge {
     }
   }
 
+  public clearBrushPredefinedTip(): void {
+    if (this.engine) {
+      this.engine.clear_brush_predefined_tip();
+    }
+  }
+
   public registerPatternPat(id: string, bytes: Uint8Array): string {
     if (!this.engine) return "";
     try {
@@ -333,6 +339,12 @@ export class WasmBrushBridge {
     } else {
       this.engine.clear_brush_texture();
       return true;
+    }
+  }
+
+  public clearBrushTexture(): void {
+    if (this.engine) {
+      this.engine.clear_brush_texture();
     }
   }
 

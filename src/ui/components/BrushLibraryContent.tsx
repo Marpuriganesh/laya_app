@@ -17,7 +17,8 @@ import {
 import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
-import type { BrushPreset } from "@/types/brush";
+import { useTheme } from "@/ui/theme/ThemeProvider";
+import type { BrushPreset, PredefinedBrushTip } from "@/types/brush";
 
 export interface BrushLibraryContentProps {
   onOpenSettings?: (preset: BrushPreset) => void;
@@ -26,14 +27,78 @@ export interface BrushLibraryContentProps {
 const CATEGORIES = ["All", "Inking", "Pencils", "Painting", "Airbrush", "Imported"] as const;
 
 /**
+ * Predefined Raster Brush Tip Silhouette Renderer.
+ * Draws the true 8-bit alpha mask of the brush tip in an authentic thumbnail canvas.
+ */
+const PredefinedTipSilhouette: FC<{ tip: PredefinedBrushTip }> = ({ tip }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { resolvedTheme } = useTheme();
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const size = 22;
+    canvas.width = size;
+    canvas.height = size;
+    ctx.clearRect(0, 0, size, size);
+
+    const isDark = resolvedTheme === "dark";
+    const rgb = isDark ? 240 : 30;
+
+    const tipW = tip.width;
+    const tipH = tip.height;
+    if (tipW <= 0 || tipH <= 0 || !tip.imageData) return;
+
+    const offscreen = document.createElement("canvas");
+    offscreen.width = tipW;
+    offscreen.height = tipH;
+    const octx = offscreen.getContext("2d");
+    if (!octx) return;
+
+    const imgData = octx.createImageData(tipW, tipH);
+    const len = tipW * tipH;
+    const isRgba = tip.imageData.length === len * 4;
+
+    for (let i = 0; i < len; i++) {
+      const alpha = isRgba ? tip.imageData[i * 4 + 3] : tip.imageData[i];
+      imgData.data[i * 4 + 0] = rgb;
+      imgData.data[i * 4 + 1] = rgb;
+      imgData.data[i * 4 + 2] = rgb;
+      imgData.data[i * 4 + 3] = alpha;
+    }
+    octx.putImageData(imgData, 0, 0);
+
+    const scale = Math.min((size - 2) / tipW, (size - 2) / tipH);
+    const drawW = tipW * scale;
+    const drawH = tipH * scale;
+    const offsetX = (size - drawW) * 0.5;
+    const offsetY = (size - drawH) * 0.5;
+
+    ctx.drawImage(offscreen, offsetX, offsetY, drawW, drawH);
+  }, [tip, resolvedTheme]);
+
+  return <canvas ref={canvasRef} className="w-[22px] h-[22px] block shrink-0" />;
+};
+
+/**
  * Authentic Brush Tip Silhouette Icon component.
- * Renders the actual tip mask/geometry (auto circle/ellipse/airbrush glow or predefined mask)
- * instead of generic tool icons.
+ * Displays the brush preset's actual tip mask, nib geometry, and grain structure.
  */
 const BrushTipIcon: FC<{ preset: BrushPreset; thumbUrl: string | null }> = ({
   preset,
   thumbUrl,
 }) => {
+  const params = preset.engineParameters;
+
+  // 1. If preset has a predefined raster tip mask, display authentic tip silhouette
+  if (params && params.engineId === "pixelbrush" && params.brushTip && params.brushTip.tipType === "predefined") {
+    return <PredefinedTipSilhouette tip={params.brushTip} />;
+  }
+
+  // 2. If imported preset has a custom thumbnail
   if (thumbUrl) {
     return (
       <img
@@ -44,7 +109,6 @@ const BrushTipIcon: FC<{ preset: BrushPreset; thumbUrl: string | null }> = ({
     );
   }
 
-  const params = preset.engineParameters;
   if (params && params.engineId === "pixelbrush") {
     const tip = params.brushTip;
     const softness = params.softness ?? 0.45;
@@ -92,7 +156,7 @@ const BrushTipIcon: FC<{ preset: BrushPreset; thumbUrl: string | null }> = ({
         );
       }
 
-      // Technical Pencil: Fine tip with subtle texture ring
+      // Technical Pencil: Fine tip with subtle texture tooth ring
       if (preset.tags.some((t) => t.toLowerCase().includes("pencil"))) {
         return (
           <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
@@ -116,7 +180,22 @@ const BrushTipIcon: FC<{ preset: BrushPreset; thumbUrl: string | null }> = ({
         );
       }
 
-      // Studio Pen: Crisp solid circle
+      // Painting / Oil / Watercolor: Textured flat bristle brush tip
+      if (preset.tags.some((t) => t.toLowerCase().includes("paint") || t.toLowerCase().includes("bristle"))) {
+        return (
+          <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
+            <path
+              d="M4 14C4 9 7 5 11 5C15 5 18 9 18 14C18 16 16.5 17 11 17C5.5 17 4 16 4 14Z"
+              className="fill-zinc-900 dark:fill-zinc-100"
+            />
+            <line x1="8" y1="9" x2="8" y2="15" stroke="currentColor" strokeWidth="1" className="text-zinc-400 dark:text-zinc-500" />
+            <line x1="11" y1="8" x2="11" y2="15" stroke="currentColor" strokeWidth="1" className="text-zinc-400 dark:text-zinc-500" />
+            <line x1="14" y1="9" x2="14" y2="15" stroke="currentColor" strokeWidth="1" className="text-zinc-400 dark:text-zinc-500" />
+          </svg>
+        );
+      }
+
+      // Studio Pen: Crisp solid inking nib
       return (
         <svg width={22} height={22} viewBox="0 0 22 22" className="block shrink-0">
           <circle
