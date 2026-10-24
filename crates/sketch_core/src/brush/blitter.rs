@@ -35,7 +35,7 @@ impl CanvasBlitter {
         dest_y: i32,
         color: [u8; 4],
         flow_opacity: f32,
-        is_erase: bool,
+        blend_mode: crate::brush::ColorBlendMode,
     ) -> Option<Rect> {
         let x_start = dest_x.max(0);
         let y_start = dest_y.max(0);
@@ -47,14 +47,11 @@ impl CanvasBlitter {
         }
 
         let [br, bg, bb, ba] = color;
-        let flow_alpha_scale = if is_erase {
+        let flow_alpha_scale = if blend_mode == crate::brush::ColorBlendMode::Erase {
             flow_opacity
         } else {
             (ba as f32 / 255.0) * flow_opacity
         };
-        let br_f = br as f32;
-        let bg_f = bg as f32;
-        let bb_f = bb as f32;
 
         let canvas_width = canvas.width as usize;
         let buffer = &mut canvas.buffer;
@@ -70,47 +67,21 @@ impl CanvasBlitter {
                     continue;
                 }
 
-                let src_a = (dab_alpha as f32 / 255.0) * flow_alpha_scale;
                 let c_idx = canvas_row + (x as usize * 4);
 
-                let dst_r = buffer[c_idx + 0] as f32;
-                let dst_g = buffer[c_idx + 1] as f32;
-                let dst_b = buffer[c_idx + 2] as f32;
-                let dst_a = buffer[c_idx + 3] as f32 / 255.0;
+                let src_pixel = [br, bg, bb, dab_alpha];
+                let dst_pixel = [
+                    buffer[c_idx + 0],
+                    buffer[c_idx + 1],
+                    buffer[c_idx + 2],
+                    buffer[c_idx + 3],
+                ];
 
-                if is_erase {
-                    // Destination-Out / Erase: reduce destination alpha and colors
-                    let factor = (1.0 - src_a).max(0.0);
-                    let out_a = dst_a * factor;
-                    if out_a <= 0.001 {
-                        buffer[c_idx + 0] = 0;
-                        buffer[c_idx + 1] = 0;
-                        buffer[c_idx + 2] = 0;
-                        buffer[c_idx + 3] = 0;
-                    } else {
-                        buffer[c_idx + 0] = (dst_r * factor).clamp(0.0, 255.0) as u8;
-                        buffer[c_idx + 1] = (dst_g * factor).clamp(0.0, 255.0) as u8;
-                        buffer[c_idx + 2] = (dst_b * factor).clamp(0.0, 255.0) as u8;
-                        buffer[c_idx + 3] = (out_a * 255.0).clamp(0.0, 255.0) as u8;
-                    }
-                    continue;
-                }
-
-                // Standard Porter-Duff "Source Over Destination" compositing formula
-                let out_a = src_a + dst_a * (1.0 - src_a);
-                if out_a > 0.0 {
-                    let inv_src_a = 1.0 - src_a;
-                    let dst_weight = dst_a * inv_src_a;
-
-                    let out_r = (br_f * src_a + dst_r * dst_weight) / out_a;
-                    let out_g = (bg_f * src_a + dst_g * dst_weight) / out_a;
-                    let out_b = (bb_f * src_a + dst_b * dst_weight) / out_a;
-
-                    buffer[c_idx + 0] = out_r.clamp(0.0, 255.0) as u8;
-                    buffer[c_idx + 1] = out_g.clamp(0.0, 255.0) as u8;
-                    buffer[c_idx + 2] = out_b.clamp(0.0, 255.0) as u8;
-                    buffer[c_idx + 3] = (out_a * 255.0).clamp(0.0, 255.0) as u8;
-                }
+                let out = crate::brush::composite_pixel(dst_pixel, src_pixel, flow_alpha_scale, blend_mode);
+                buffer[c_idx + 0] = out[0];
+                buffer[c_idx + 1] = out[1];
+                buffer[c_idx + 2] = out[2];
+                buffer[c_idx + 3] = out[3];
             }
         }
 
@@ -142,7 +113,7 @@ mod tests {
             4,
             [255, 0, 0, 255], // Red
             1.0,
-            false,
+            crate::brush::ColorBlendMode::Normal,
         );
 
         assert_eq!(rect, Some(Rect::new(4, 4, 2, 2)));
@@ -161,7 +132,7 @@ mod tests {
             4,
             [0, 0, 0, 0],
             1.0,
-            true,
+            crate::brush::ColorBlendMode::Erase,
         );
         assert_eq!(erase_rect, Some(Rect::new(4, 4, 2, 2)));
         assert_eq!(canvas.get_pixel(4, 4), Some([0, 0, 0, 0]));

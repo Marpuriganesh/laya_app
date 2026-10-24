@@ -21,6 +21,8 @@ pub struct BrushConfig {
     pub is_erase: bool,
     /// Whether analytical subpixel edge anti-aliasing is applied to brush tips.
     pub antialias: bool,
+    /// Color compositing blend mode (Normal, Multiply, Screen, Overlay, etc.)
+    pub blend_mode: crate::brush::ColorBlendMode,
     /// Optional 256-entry lookup table mapping normalized pressure [0.0..1.0] to response curve output.
     pub pressure_lut: Option<Box<[f32; 256]>>,
     /// Dynamic moving average line art stroke smoothing configuration.
@@ -42,6 +44,7 @@ impl Default for BrushConfig {
             opacity_by_pressure: false,
             is_erase: false,
             antialias: true,
+            blend_mode: crate::brush::ColorBlendMode::Normal,
             pressure_lut: None,
             moving_average: crate::stroke::MovingAverageConfig::default(),
             pull_string: crate::stroke::PullStringConfig::default(),

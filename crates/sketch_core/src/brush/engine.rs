@@ -230,6 +230,12 @@ impl PixelBrushEngine {
             flow_opacity *= Self::map_pressure(event.pressure, config);
         }
 
+        let mode = if config.is_erase {
+            crate::brush::ColorBlendMode::Erase
+        } else {
+            config.blend_mode
+        };
+
         blitter.blit_dab(
             canvas,
             scratch_mask,
@@ -239,7 +245,7 @@ impl PixelBrushEngine {
             dest_y,
             config.color,
             flow_opacity,
-            config.is_erase,
+            mode,
         )
     }
 }

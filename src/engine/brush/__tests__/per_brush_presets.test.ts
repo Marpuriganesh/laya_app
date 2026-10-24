@@ -6,7 +6,11 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { DrawingAppEngine } from "../../drawing_app_engine";
+import {
+  DrawingAppEngine,
+  createDefaultTechnicalPencilPreset,
+  createDefaultCalligraphyPenPreset,
+} from "../../drawing_app_engine";
 
 describe("DrawingAppEngine - Per-Brush Presets", () => {
   let engine: DrawingAppEngine;
@@ -15,9 +19,9 @@ describe("DrawingAppEngine - Per-Brush Presets", () => {
     engine = new DrawingAppEngine(800, 600);
   });
 
-  it("initializes with default presets and sets the first preset as active", () => {
+  it("initializes with 1 default preset and sets it as active", () => {
     const presets = engine.getLoadedPresets();
-    expect(presets.length).toBeGreaterThanOrEqual(4);
+    expect(presets.length).toBe(1);
 
     const active = engine.getActiveBrush();
     expect(active).not.toBeNull();
@@ -25,21 +29,16 @@ describe("DrawingAppEngine - Per-Brush Presets", () => {
   });
 
   it("applies preset parameters to active engine state on setActiveBrush", () => {
-    const presets = engine.getLoadedPresets();
-    const technicalPencil = presets.find((p) => p.displayName === "Technical Pencil");
-    expect(technicalPencil).toBeDefined();
+    const technicalPencil = createDefaultTechnicalPencilPreset();
+    engine.setActiveBrush(technicalPencil);
+    expect(engine.getActiveBrush()?.presetId).toBe(technicalPencil.presetId);
 
-    if (technicalPencil) {
-      engine.setActiveBrush(technicalPencil);
-      expect(engine.getActiveBrush()?.presetId).toBe(technicalPencil.presetId);
-
-      // Verify that engine softness and size match the Technical Pencil preset
-      const params = technicalPencil.engineParameters;
-      if (params.engineId === "pixelbrush") {
-        expect(engine.getBrushSoftness()).toBeCloseTo(params.softness);
-        expect(engine.getBrushSize()).toBe(params.baseSizePx);
-        expect(engine.getBrushSpacing()).toBeCloseTo(params.spacingFraction);
-      }
+    // Verify that engine softness and size match the Technical Pencil preset
+    const params = technicalPencil.engineParameters;
+    if (params.engineId === "pixelbrush") {
+      expect(engine.getBrushSoftness()).toBeCloseTo(params.softness);
+      expect(engine.getBrushSize()).toBe(params.baseSizePx);
+      expect(engine.getBrushSpacing()).toBeCloseTo(params.spacingFraction);
     }
   });
 
@@ -69,9 +68,8 @@ describe("DrawingAppEngine - Per-Brush Presets", () => {
   });
 
   it("preserves independent customizations when switching between brushes", () => {
-    const presets = engine.getLoadedPresets();
-    const studioPen = presets[0];
-    const pencil = presets[1];
+    const studioPen = engine.getLoadedPresets()[0];
+    const pencil = createDefaultTechnicalPencilPreset();
 
     // Select Studio Pen and customize
     engine.setActiveBrush(studioPen);
@@ -95,9 +93,8 @@ describe("DrawingAppEngine - Per-Brush Presets", () => {
   });
 
   it("maintains independent stroke smoothing configurations per brush", () => {
-    const presets = engine.getLoadedPresets();
-    const studioPen = presets.find((p) => p.displayName === "Studio Pen")!;
-    const calligraphy = presets.find((p) => p.displayName === "Calligraphy Pen")!;
+    const studioPen = engine.getLoadedPresets()[0];
+    const calligraphy = createDefaultCalligraphyPenPreset();
 
     expect(studioPen).toBeDefined();
     expect(calligraphy).toBeDefined();

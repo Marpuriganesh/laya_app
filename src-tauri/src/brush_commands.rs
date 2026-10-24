@@ -29,6 +29,7 @@ impl Default for BrushEngineState {
                     opacity_by_pressure: false,
                     is_erase: false,
                     antialias: true,
+                    blend_mode: sketch_core::brush::ColorBlendMode::Normal,
                     pressure_lut: None,
                     moving_average: sketch_core::stroke::MovingAverageConfig::default(),
                     pull_string: sketch_core::stroke::PullStringConfig::default(),
@@ -56,6 +57,7 @@ pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
         opacity_by_pressure: false,
         is_erase: false,
         antialias: true,
+        blend_mode: sketch_core::brush::ColorBlendMode::Normal,
         pressure_lut: None,
         moving_average: sketch_core::stroke::MovingAverageConfig::default(),
         pull_string: sketch_core::stroke::PullStringConfig::default(),
@@ -253,6 +255,8 @@ pub struct BrushConfigDto {
     pub is_erase: bool,
     #[serde(default = "default_true")]
     pub antialias: bool,
+    #[serde(default)]
+    pub blend_mode: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -261,6 +265,14 @@ fn default_true() -> bool {
 
 impl From<BrushConfigDto> for BrushConfig {
     fn from(dto: BrushConfigDto) -> Self {
+        let blend_mode = if dto.is_erase {
+            sketch_core::brush::ColorBlendMode::Erase
+        } else if let Some(ref m) = dto.blend_mode {
+            sketch_core::brush::ColorBlendMode::from_str(m)
+        } else {
+            sketch_core::brush::ColorBlendMode::Normal
+        };
+
         Self {
             diameter: dto.diameter,
             spacing: dto.spacing,
@@ -272,6 +284,7 @@ impl From<BrushConfigDto> for BrushConfig {
             opacity_by_pressure: dto.opacity_by_pressure,
             is_erase: dto.is_erase,
             antialias: dto.antialias,
+            blend_mode,
             pressure_lut: None,
             moving_average: sketch_core::stroke::MovingAverageConfig::default(),
             pull_string: sketch_core::stroke::PullStringConfig::default(),

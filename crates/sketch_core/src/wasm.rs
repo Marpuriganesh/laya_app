@@ -56,6 +56,7 @@ impl WasmBrushEngine {
         let existing_lut = self.engine.config.pressure_lut.take();
         let existing_moving_average = self.engine.config.moving_average;
         let existing_pull_string = self.engine.config.pull_string;
+        let existing_blend_mode = self.engine.config.blend_mode;
         self.engine.config = BrushConfig {
             diameter,
             spacing,
@@ -67,10 +68,20 @@ impl WasmBrushEngine {
             opacity_by_pressure,
             is_erase,
             antialias,
+            blend_mode: if is_erase {
+                crate::brush::ColorBlendMode::Erase
+            } else {
+                existing_blend_mode
+            },
             pressure_lut: existing_lut,
             moving_average: existing_moving_average,
             pull_string: existing_pull_string,
         };
+    }
+
+    /// Sets the color blend mode (e.g. "normal", "multiply", "screen", "overlay", "add", "subtract", etc.).
+    pub fn set_brush_blend_mode(&mut self, mode_name: &str) {
+        self.engine.config.blend_mode = crate::brush::ColorBlendMode::from_str(mode_name);
     }
 
     /// Configures the dynamic moving average line art stroke stabilizer.

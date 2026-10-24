@@ -117,8 +117,6 @@ impl MovingAverageStabilizer {
         let dt = if raw_dt > 0.002 {
             raw_dt.min(0.1)
         } else {
-            // When events arrive unclocked or with identical coalesced timestamps,
-            // assume standard ~120Hz interval (0.0083s) to prevent artificial velocity explosion
             0.00833
         };
         let velocity = if let Some((px, py)) = self.prev_raw {
@@ -132,40 +130,43 @@ impl MovingAverageStabilizer {
         self.prev_raw = Some((next_event.x, next_event.y));
         self.last_time = next_event.time;
 
-        // 2. Compute dynamic effective window size:
-        //    At near-zero velocity (stopping / tight corners), effective window contracts down to 1.
-        //    At normal to high velocity, window expands proportionally up to `max_window`.
-        let speed_ratio = (velocity / 400.0) * config.velocity_multiplier;
-        let dynamic_window = (1.0 + (max_window as f32 - 1.0) * speed_ratio.clamp(0.0, 1.0)).round() as usize;
-        let effective_window = dynamic_window.clamp(1, max_window);
-
-        // 3. Append to history buffer and trim to max needed capacity
+        // 2. Append to history buffer with fixed window size.
+        //    CRITICAL: The window size must remain constant during drawing.
+        //    Dynamically changing the window length causes discrete phase jumps,
+        //    which produce severe jagged sawtooth/sawtooth ripples along strokes.
         self.history.push((next_event.x, next_event.y));
-        if self.history.len() > max_window * 2 {
-            let drain_count = self.history.len() - max_window;
-            self.history.drain(0..drain_count);
+        if self.history.len() > max_window {
+            self.history.remove(0);
         }
 
-        // 4. Calculate weighted moving average over the last `effective_window` samples:
+        // 3. Compute weighted moving average over the window:
         //    Weights: w_i = (i + 1)^1.5 so latest samples have higher authority, avoiding phase lag.
-        let available = self.history.len();
-        let take_count = effective_window.min(available);
-        let start_idx = available - take_count;
-
         let mut sum_x = 0.0f32;
         let mut sum_y = 0.0f32;
         let mut sum_weight = 0.0f32;
 
-        for (i, &(hx, hy)) in self.history[start_idx..].iter().enumerate() {
-            // Quadratic/exponential weighting favoring recent points
+        for (i, &(hx, hy)) in self.history.iter().enumerate() {
             let weight = ((i + 1) as f32).powf(1.5);
             sum_x += hx * weight;
             sum_y += hy * weight;
             sum_weight += weight;
         }
 
-        let smoothed_x = if sum_weight > 0.0 { sum_x / sum_weight } else { next_event.x };
-        let smoothed_y = if sum_weight > 0.0 { sum_y / sum_weight } else { next_event.y };
+        let avg_x = if sum_weight > 0.0 { sum_x / sum_weight } else { next_event.x };
+        let avg_y = if sum_weight > 0.0 { sum_y / sum_weight } else { next_event.y };
+
+        // 4. Smooth corner response:
+        //    At very low velocity (stopping / sharp corners), blend smoothly towards raw point
+        //    to maintain crisp apexes without changing discrete window length.
+        let responsiveness = if config.velocity_multiplier > 0.0 {
+            let speed_ratio = (velocity / 250.0) * config.velocity_multiplier;
+            speed_ratio.clamp(0.2, 1.0)
+        } else {
+            1.0
+        };
+
+        let smoothed_x = next_event.x + (avg_x - next_event.x) * responsiveness;
+        let smoothed_y = next_event.y + (avg_y - next_event.y) * responsiveness;
 
         // Pressure and timestamp are preserved untouched
         Some(StrokeEvent::new(smoothed_x, smoothed_y, next_event.pressure, next_event.time))
@@ -251,6 +252,40 @@ mod tests {
 
         // Effective window contracts at near-zero velocity, pulling close to corner
         assert!((s_corner.x - 100.0).abs() < 15.0);
+    }
+
+    #[test]
+    fn test_moving_average_monotonic_progression_no_sawtooth() {
+        let mut stabilizer = MovingAverageStabilizer::new();
+        let config = MovingAverageConfig {
+            enabled: true,
+            window_size: 8,
+            velocity_multiplier: 1.5,
+        };
+
+        // Start stroke at 0.0
+        stabilizer.begin_stroke(StrokeEvent::new(0.0, 0.0, 1.0, 0.0), &config);
+
+        // Move strictly forward along X with fluctuating dt (simulating real OS timer jitter)
+        let mut prev_smoothed_x = 0.0f32;
+        let dts = [0.001, 0.016, 0.002, 0.008, 0.020, 0.003, 0.015, 0.001, 0.016];
+        let mut cur_time = 0.0;
+        let mut cur_x = 0.0;
+
+        for &dt in dts.iter().cycle().take(50) {
+            cur_time += dt;
+            cur_x += 5.0; // Strictly increasing position
+            let event = StrokeEvent::new(cur_x, 0.0, 1.0, cur_time);
+            if let Some(smoothed) = stabilizer.add_event(event, &config) {
+                assert!(
+                    smoothed.x >= prev_smoothed_x,
+                    "Smoothed X must never move backwards! prev={}, current={}",
+                    prev_smoothed_x,
+                    smoothed.x
+                );
+                prev_smoothed_x = smoothed.x;
+            }
+        }
     }
 
     #[test]

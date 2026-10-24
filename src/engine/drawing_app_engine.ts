@@ -243,9 +243,6 @@ export function createDefaultCalligraphyPenPreset(): BrushPreset {
 export function createDefaultPresets(): BrushPreset[] {
   return [
     createDefaultStudioPenPreset(),
-    createDefaultTechnicalPencilPreset(),
-    createDefaultCalligraphyPenPreset(),
-    createDefaultSoftAirbrushPreset(),
   ];
 }
 
@@ -342,8 +339,12 @@ export class DrawingAppEngine implements IDrawingEngine {
 
   public setActiveBrush(preset: BrushPreset): void {
     // If this preset exists in loadedPresets, use the persisted modified instance
-    const existing = this.loadedPresets.find((p) => p.presetId === preset.presetId);
-    const targetPreset = existing ?? preset;
+    let existing = this.loadedPresets.find((p) => p.presetId === preset.presetId);
+    if (!existing) {
+      existing = preset;
+      this.loadedPresets.push(preset);
+    }
+    const targetPreset = existing;
 
     this.activeBrush = targetPreset;
     this.smoothingConfig = targetPreset.smoothingConfig;

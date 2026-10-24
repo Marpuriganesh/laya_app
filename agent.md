@@ -4,6 +4,24 @@
 
 ---
 
+> [!CAUTION]
+> # CRITICAL ARCHITECTURAL MANDATE: THE DUAL RUNTIME & RUST CORE RULE
+> **NEVER IMPLEMENT DRAWING, RASTER, BLENDING, BRUSH DYNAMICS, OR TEXTURE FEATURES SOLELY IN FRONTEND TYPESCRIPT.**
+>
+> 1. **Why It Breaks Standalone Desktop**:
+>    - The standalone desktop app (macOS AppKit via Tauri) stamps strokes and draws dabs directly into the `crates/sketch_core` Rust framebuffer via a high-frequency native local `NSEvent` monitor and AppKit view (`drawRect:`).
+>    - **Any JavaScript/TypeScript drawing or raster code in `/src` is completely bypassed during native desktop drawing!** If you only add a blend mode, dynamic curve, texture modulation, or brush feature in TypeScript, it **will not work in the standalone app**.
+> 2. **Single Canonical Drawing Engine (`crates/sketch_core`)**:
+>    - All dab stamping, blend modes, texture modulations, brush dynamics, and stroke trajectory math live in **`crates/sketch_core` (Rust)**.
+>    - In Web mode, `crates/sketch_core` is compiled to WebAssembly via `wasm-pack`.
+>    - In Native Desktop mode, `crates/sketch_core` is compiled directly into the Tauri native app.
+> 3. **Mandatory 3-Step Implementation Workflow for Any Drawing/Raster/Brush Feature**:
+>    - **Step 1 (Rust Core Engine)**: Implement pure algorithms & data structures in `crates/sketch_core` (Rust) and verify with `cargo test --manifest-path crates/sketch_core/Cargo.toml`.
+>    - **Step 2 (Bridges)**: Wire parameters into the Tauri Desktop bridge (`src-tauri/src/brush_commands.rs`) and Wasm bridge (`crates/sketch_core/src/wasm.rs`), verifying with `cargo check --manifest-path src-tauri/Cargo.toml`.
+>    - **Step 3 (TypeScript Shell)**: Mirror contracts in `/src/types/` and `/src/engine/` solely for UI state orchestration, thumbnail stroke previews, and headless Node/Vitest test fixtures. Never create an independent TypeScript drawing implementation that diverges from Rust.
+
+---
+
 ## 1. Project Vision & Architecture Overview
 
 This project is a **production-ready, high-performance digital painting and drawing suite** that combines:
@@ -356,6 +374,9 @@ describe('interpolateCatmullRom', () => {
 
 When generating or modifying code in this repository, all AI agents must follow this checklist:
 
+- [ ] **Dual Runtime Verification**: If this feature touches drawing, rasterization, blending, or brush dynamics, is it implemented in `crates/sketch_core` (Rust) and wired into `src-tauri` so it works in the standalone desktop app, NOT just frontend TypeScript?
+- [ ] **Rust Core Tests Passing**: Do all Rust tests pass via `cargo test --manifest-path crates/sketch_core/Cargo.toml`?
+- [ ] **Tauri Desktop Compiling**: Does the native desktop app compile cleanly via `cargo check --manifest-path src-tauri/Cargo.toml`?
 - [ ] **Automated Tests Included**: Did you write or update unit test files for all new or modified functions?
 - [ ] **Tests Passing**: Do all tests pass cleanly via `npm test` without failures or flaky timeouts?
 - [ ] **Single Responsibility**: Does each created function perform exactly one task?
