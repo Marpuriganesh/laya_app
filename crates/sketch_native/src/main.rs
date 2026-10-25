@@ -134,6 +134,7 @@ pub extern "C" fn rust_native_init(width: u32, height: u32) {
         pressure_lut: None,
         pull_string: PullStringConfig::default(),
         moving_average: MovingAverageConfig::default(),
+        ..Default::default()
     };
     *guard = Some(NativeBrushSession {
         canvas: CanvasView::new(width, height),

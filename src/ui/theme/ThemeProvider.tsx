@@ -28,7 +28,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 export const ThemeProvider: FC<ThemeProviderProps> = ({
   children,
   defaultTheme = "dark",
-  storageKey = "sketch-app-theme",
+  storageKey = "laya-app-theme",
 }) => {
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
@@ -75,7 +75,7 @@ export const ThemeProvider: FC<ThemeProviderProps> = ({
     let bc: BroadcastChannel | null = null;
     if (typeof BroadcastChannel !== "undefined") {
       try {
-        bc = new BroadcastChannel("sketch_studio_theme_sync");
+        bc = new BroadcastChannel("laya_theme_sync");
         bc.onmessage = (event) => {
           if (event.data && isValidTheme(event.data)) {
             setThemeState(event.data);
@@ -111,7 +111,7 @@ export const ThemeProvider: FC<ThemeProviderProps> = ({
       if (typeof window !== "undefined") {
         localStorage.setItem(storageKey, newTheme);
         if (typeof BroadcastChannel !== "undefined") {
-          const bc = new BroadcastChannel("sketch_studio_theme_sync");
+          const bc = new BroadcastChannel("laya_theme_sync");
           bc.postMessage(newTheme);
           bc.close();
         }

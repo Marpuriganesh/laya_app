@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "sketch-app",
+  "productName": "Laya",
   "version": "0.1.0",
-  "identifier": "com.sketch.dev",
+  "identifier": "com.laya.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Sketch Studio",
+        "title": "Laya",
         "width": 1440,
         "height": 900,
         "minWidth": 960,
