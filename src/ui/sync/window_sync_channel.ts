@@ -1,6 +1,6 @@
 import type { WindowSyncMessage } from "@/types/window";
 
-export const WINDOW_SYNC_CHANNEL_NAME = "sketch_studio_window_sync";
+export const WINDOW_SYNC_CHANNEL_NAME = "laya_window_sync";
 
 export interface WindowSyncChannelInstance {
   postMessage: (message: WindowSyncMessage) => void;

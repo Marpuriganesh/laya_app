@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
+import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
 import {
   createWindowSyncChannel,
   type WindowSyncChannelInstance,
@@ -40,6 +41,7 @@ export function useDetachedWindowSync({
     layerStack,
     gamutMask,
     wheelConfig,
+    activePresetId,
     setActiveColor,
     setActiveTool,
     setBrushSize,
@@ -47,6 +49,7 @@ export function useDetachedWindowSync({
     setLayerStack,
     setGamutMask,
     setWheelConfig,
+    setActivePresetId,
     dockPanel,
     setPanelDetached,
   } = useDocumentStore();
@@ -81,6 +84,12 @@ export function useDetachedWindowSync({
               layerStack: currentState.layerStack,
               gamutMask: currentState.gamutMask,
               wheelConfig: currentState.wheelConfig,
+              activePresetId: currentState.activePresetId,
+              brushSoftness: globalDrawingEngine.getBrushSoftness?.() ?? 0.45,
+              brushSpacing: (globalDrawingEngine.getBrushSpacing?.() ?? 0.08) * 100,
+              brushFlow: (globalDrawingEngine.getBrushFlow?.() ?? 1.0) * 100,
+              sizeDynamics: globalDrawingEngine.getSizeDynamicsEnabled?.() ?? true,
+              opacityDynamics: globalDrawingEngine.getOpacityDynamicsEnabled?.() ?? false,
             };
             channelRef.current.postMessage({
               type: "STATE_SYNC",
@@ -103,6 +112,29 @@ export function useDetachedWindowSync({
               }
               if (message.payload.wheelConfig) {
                 setWheelConfig(message.payload.wheelConfig);
+              }
+              if (message.payload.activePresetId) {
+                setActivePresetId(message.payload.activePresetId);
+                const loaded = globalDrawingEngine.getLoadedPresets?.() ?? [];
+                const matching = loaded.find((p) => p.presetId === message.payload.activePresetId);
+                if (matching) {
+                  globalDrawingEngine.setActiveBrush(matching);
+                }
+              }
+              if (typeof message.payload.brushSoftness === "number") {
+                globalDrawingEngine.setBrushSoftness?.(message.payload.brushSoftness);
+              }
+              if (typeof message.payload.brushSpacing === "number") {
+                globalDrawingEngine.setBrushSpacing?.(message.payload.brushSpacing / 100);
+              }
+              if (typeof message.payload.brushFlow === "number") {
+                globalDrawingEngine.setBrushFlow?.(message.payload.brushFlow / 100);
+              }
+              if (typeof message.payload.sizeDynamics === "boolean") {
+                globalDrawingEngine.setSizeDynamicsEnabled?.(message.payload.sizeDynamics);
+              }
+              if (typeof message.payload.opacityDynamics === "boolean") {
+                globalDrawingEngine.setOpacityDynamicsEnabled?.(message.payload.opacityDynamics);
               }
             });
           }
@@ -163,6 +195,31 @@ export function useDetachedWindowSync({
               setBrushOpacity(message.opacity);
             });
           }
+          break;
+        }
+
+        case "SET_ACTIVE_PRESET": {
+          if (useDocumentStore.getState().activePresetId !== message.presetId) {
+            applyRemoteUpdate(() => {
+              setActivePresetId(message.presetId);
+              const loaded = globalDrawingEngine.getLoadedPresets?.() ?? [];
+              const matching = loaded.find((p) => p.presetId === message.presetId);
+              if (matching) {
+                globalDrawingEngine.setActiveBrush(matching);
+              }
+            });
+          }
+          break;
+        }
+
+        case "SET_BRUSH_SETTINGS": {
+          applyRemoteUpdate(() => {
+            globalDrawingEngine.setBrushSoftness?.(message.softness);
+            globalDrawingEngine.setBrushSpacing?.(message.spacing / 100);
+            globalDrawingEngine.setBrushFlow?.(message.flow / 100);
+            globalDrawingEngine.setSizeDynamicsEnabled?.(message.sizeDynamics);
+            globalDrawingEngine.setOpacityDynamicsEnabled?.(message.opacityDynamics);
+          });
           break;
         }
 
@@ -262,6 +319,14 @@ export function useDetachedWindowSync({
       opacity: brushOpacity,
     });
   }, [brushOpacity]);
+
+  useEffect(() => {
+    if (isInternalUpdateRef.current || !channelRef.current) return;
+    channelRef.current.postMessage({
+      type: "SET_ACTIVE_PRESET",
+      presetId: activePresetId,
+    });
+  }, [activePresetId]);
 
   useEffect(() => {
     if (isInternalUpdateRef.current || !channelRef.current) return;

@@ -4,7 +4,7 @@
  * raster targets, and preset management.
  */
 
-import type { BrushPreset, StrokeSmoothingConfig } from "./brush";
+import type { BrushPreset, StrokeSmoothingConfig, PullStringConfig, MovingAverageConfig } from "./brush";
 import type { IRasterTarget } from "./raster";
 import type { StrokePoint } from "./stroke";
 
@@ -20,20 +20,30 @@ export interface IDrawingEngine {
   setActiveBrush(preset: BrushPreset): void;
   getActiveBrush(): BrushPreset | null;
   getLoadedPresets(): readonly BrushPreset[];
+  addPreset?(preset: BrushPreset): void;
+  replacePreset?(preset: BrushPreset): void;
+  updateActivePreset?(updates: Partial<import("./brush").PixelBrushParameters>, smoothing?: Partial<StrokeSmoothingConfig>): void;
 
   // --- Active Stroke ---
   beginStroke(point: StrokePoint): void;
   extendStroke(point: StrokePoint): void;
   extendStrokeBatch?(points: readonly StrokePoint[]): void;
   endStroke(): void;
+  getSmoothedTip?(): [number, number] | null;
 
   // --- Real-time Brush Adjustments ---
   setForegroundColor(r: number, g: number, b: number, a?: number): void;
   setBrushSize(sizePx: number): void;
+  getBrushSize?(): number;
   setBrushOpacity(opacityNormalized: number): void;
   setBlendMode(blendMode: import("./raster").BlendMode): void;
+  getBlendMode?(): import("./raster").BlendMode;
   setSmoothingConfig(config: StrokeSmoothingConfig): void;
   getSmoothingConfig?(): StrokeSmoothingConfig;
+  setPullStringConfig?(config: PullStringConfig): void;
+  getPullStringConfig?(): PullStringConfig;
+  setMovingAverageConfig?(config: MovingAverageConfig): void;
+  getMovingAverageConfig?(): MovingAverageConfig;
 
   // --- Spline & Curve Settings ---
   setSplineInterpolationMode?(mode: "catmullRom" | "midpoint"): void;

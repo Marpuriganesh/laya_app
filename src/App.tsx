@@ -43,6 +43,7 @@ function MainWindow() {
     brushOpacity,
     transform,
     activePopover,
+    isBrushStudioOpen,
     softProofMode,
     detachedPanels,
     detachPanel,
@@ -53,6 +54,7 @@ function MainWindow() {
     setBrushOpacity,
     setTransform,
     setActivePopover,
+    setBrushStudioOpen,
     togglePopover,
     setSoftProofMode,
   } = useDocumentStore();
@@ -160,14 +162,13 @@ function MainWindow() {
       <BrushLibraryPopover
         isOpen={activePopover === "brushLibrary" && !detachedPanels.brushLibrary}
         onClose={handleClosePopover}
-        onOpenSettings={() => setActivePopover("brushSettings")}
+        onOpenSettings={() => setBrushStudioOpen(true)}
         onDetach={() => handleDetachPanel("brushLibrary")}
       />
 
       <BrushSettingsPopover
-        isOpen={activePopover === "brushSettings" && !detachedPanels.brushSettings}
-        onClose={handleClosePopover}
-        activeColor={activeColor}
+        isOpen={isBrushStudioOpen && !detachedPanels.brushSettings}
+        onClose={() => setBrushStudioOpen(false)}
         onDetach={() => handleDetachPanel("brushSettings")}
       />
 

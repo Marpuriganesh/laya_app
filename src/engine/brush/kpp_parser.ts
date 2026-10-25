@@ -705,6 +705,14 @@ export function parseDynamicsCurve(curveRawText: string): readonly DynamicsCurve
  */
 function determineSensorInput(parameterKey: string): SensorInputName {
   const normalizedKey = parameterKey.toLowerCase();
+  if (normalizedKey.includes("initialdirection") || normalizedKey.includes("initial_direction")) return "initial_stroke_direction";
+  if (
+    normalizedKey.includes("drawingangle") ||
+    normalizedKey.includes("drawing_angle") ||
+    normalizedKey.includes("strokedirection") ||
+    normalizedKey.includes("stroke_direction") ||
+    normalizedKey.includes("direction")
+  ) return "stroke_direction";
   if (normalizedKey.includes("tilt")) return "tiltX";
   if (normalizedKey.includes("speed") || normalizedKey.includes("velocity")) return "speed";
   if (normalizedKey.includes("rotation") || normalizedKey.includes("twist")) return "rotation";

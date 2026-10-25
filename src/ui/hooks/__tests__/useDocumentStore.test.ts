@@ -69,6 +69,25 @@ describe("useDocumentStore (Zustand)", () => {
     expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
   });
 
+  it("manages isBrushStudioOpen independently from activePopover", () => {
+    const { togglePopover, setBrushStudioOpen } = useDocumentStore.getState();
+
+    // Open brushLibrary
+    togglePopover("brushLibrary");
+    expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
+
+    // Open brush studio alongside brushLibrary
+    setBrushStudioOpen(true);
+    expect(useDocumentStore.getState().isBrushStudioOpen).toBe(true);
+    // brushLibrary popover must remain active and open!
+    expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
+
+    // Close brush studio
+    setBrushStudioOpen(false);
+    expect(useDocumentStore.getState().isBrushStudioOpen).toBe(false);
+    expect(useDocumentStore.getState().activePopover).toBe("brushLibrary");
+  });
+
   it("updates and resets transform", () => {
     const { setTransform, resetTransform } = useDocumentStore.getState();
 
@@ -212,5 +231,34 @@ describe("useDocumentStore (Zustand)", () => {
 
     const updated = useDocumentStore.getState().globalPressureCurve;
     expect(updated).toEqual(customPoints);
+  });
+
+  it("manages pullStringConfig and allows partial updates", () => {
+    const { setPullStringConfig } = useDocumentStore.getState();
+
+    const initial = useDocumentStore.getState().pullStringConfig;
+    expect(initial.enabled).toBe(false);
+    expect(initial.maxStringLength).toBe(36);
+
+    setPullStringConfig({ enabled: true, maxStringLength: 80, velocityMultiplier: 4.0 });
+    const updated = useDocumentStore.getState().pullStringConfig;
+    expect(updated.maxStringLength).toBe(80);
+    expect(updated.velocityMultiplier).toBe(4.0);
+    expect(updated.enabled).toBe(true);
+  });
+
+  it("manages movingAverageConfig and allows independent toggling and updates", () => {
+    const { setMovingAverageConfig } = useDocumentStore.getState();
+
+    const initial = useDocumentStore.getState().movingAverageConfig;
+    expect(initial.enabled).toBe(false);
+    expect(initial.windowSize).toBe(8);
+    expect(initial.velocityMultiplier).toBe(1.5);
+
+    setMovingAverageConfig({ enabled: true, windowSize: 12 });
+    const updated = useDocumentStore.getState().movingAverageConfig;
+    expect(updated.enabled).toBe(true);
+    expect(updated.windowSize).toBe(12);
+    expect(updated.velocityMultiplier).toBe(1.5);
   });
 });

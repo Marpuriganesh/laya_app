@@ -126,4 +126,44 @@ describe("pointer_event_normalizer", () => {
     expect(points[1].canvasX).toBe(20);
     expect(points[2].canvasX).toBe(30);
   });
+
+  it("smoothly interpolates timestamps for coalesced events with identical browser timestamps", () => {
+    // Browsers often emit identical timestamps across all coalesced items
+    const subEvents: PointerEventLike[] = [
+      { clientX: 10, clientY: 10, pressure: 0.5, pointerType: "pen", timeStamp: 1016 },
+      { clientX: 20, clientY: 20, pressure: 0.5, pointerType: "pen", timeStamp: 1016 },
+      { clientX: 30, clientY: 30, pressure: 0.5, pointerType: "pen", timeStamp: 1016 },
+    ];
+
+    const mainEvent: PointerEventLike = {
+      clientX: 30,
+      clientY: 30,
+      pressure: 0.5,
+      pointerType: "pen",
+      timeStamp: 1016,
+      getCoalescedEvents: () => subEvents,
+    };
+
+    const prevPoint = {
+      canvasX: 0,
+      canvasY: 0,
+      pressure: 0.5,
+      tiltX: 0,
+      tiltY: 0,
+      rotation: 0,
+      speed: 0,
+      timeMs: 1000,
+    };
+
+    const points = normalizeCoalescedPointerEvents(mainEvent, defaultTransform, prevPoint);
+    expect(points.length).toBe(3);
+    // Timestamps must be strictly increasing and not equal to prevent speed explosion
+    expect(points[0].timeMs).toBeGreaterThan(1000);
+    expect(points[1].timeMs).toBeGreaterThan(points[0].timeMs);
+    expect(points[2].timeMs).toBeGreaterThan(points[1].timeMs);
+    // Speeds should remain reasonable, not 5000+ px/sec
+    for (const p of points) {
+      expect(p.speed).toBeLessThan(3000);
+    }
+  });
 });

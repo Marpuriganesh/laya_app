@@ -6,10 +6,12 @@
 
 pub mod stroke;
 pub mod brush;
+pub mod composite;
 pub mod wasm;
 
 pub use stroke::*;
 pub use brush::*;
+pub use composite::*;
 pub use wasm::*;
 
 
@@ -80,6 +82,10 @@ mod tests {
             softness: 0.5,
             color: [255, 0, 0, 255],
             size_by_pressure: false,
+            pull_string: crate::stroke::PullStringConfig {
+                enabled: false,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let mut engine = PixelBrushEngine::new(config);
@@ -105,5 +111,214 @@ mod tests {
         // The pixel at (181, 68) must be painted (showing the smooth curvature pulling inwards from the sharp corner (200, 50))!
         let curve_pixel = canvas.get_pixel(181, 68).expect("Pixel in bounds");
         assert_ne!(curve_pixel, [255, 255, 255, 255], "Curve must be smoothly rounded inwards");
+    }
+
+    #[test]
+    fn test_combined_moving_average_and_pull_string() {
+        let mut canvas = CanvasView::new(400, 400);
+        let config = BrushConfig {
+            diameter: 24.0,
+            spacing: 0.1,
+            softness: 0.5,
+            color: [0, 180, 50, 255],
+            size_by_pressure: true,
+            moving_average: crate::stroke::MovingAverageConfig {
+                enabled: true,
+                window_size: 6,
+                velocity_multiplier: 1.5,
+            },
+            pull_string: crate::stroke::PullStringConfig {
+                enabled: true,
+                max_string_length: 40.0,
+                velocity_multiplier: 2.0,
+                catch_up_speed: 0.25,
+                base_deadzone: 0.0,
+                connect_to_tip_on_release: true,
+                pressure_smoothing: 0.4,
+            },
+            ..Default::default()
+        };
+        let mut engine = PixelBrushEngine::new(config);
+
+        // Begin stroke
+        let p0 = StrokeEvent::new(20.0, 20.0, 0.2, 0.0);
+        let r0 = engine.begin_stroke(p0, &mut canvas);
+        assert!(r0.is_some());
+
+        // Paint series of points
+        for i in 1..=20 {
+            let t = i as f32 * 0.016;
+            let p = StrokeEvent::new(20.0 + i as f32 * 10.0, 20.0 + (i as f32 * 0.5).sin() * 15.0, 0.2 + (i as f32 / 20.0) * 0.8, t);
+            let _ = engine.paint_to(p, &mut canvas);
+        }
+
+        // Finish stroke: must connect to final release point
+        let r_finish = engine.finish_stroke(&mut canvas);
+        assert!(r_finish.is_some());
+        engine.end_stroke();
+
+        // Verify canvas was painted
+        let initial_pixel = canvas.get_pixel(20, 20).expect("Initial pixel in bounds");
+        assert_ne!(initial_pixel, [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn test_textured_brush_with_blend_mode_stroke() {
+        use std::sync::Arc;
+        let mut canvas = CanvasView::new(200, 200);
+
+        // Fill canvas with 50% gray [128, 128, 128, 255]
+        canvas.clear([128, 128, 128, 255]);
+
+        // Create a 4x4 paper grain texture with checkerboard contrast
+        let pattern_bytes = vec![
+            0, 255, 0, 255,
+            255, 0, 255, 0,
+            0, 255, 0, 255,
+            255, 0, 255, 0,
+        ];
+        let pattern = Arc::new(PatternData::from_grayscale(4, 4, pattern_bytes));
+        let texture_config = TextureConfig {
+            pattern,
+            scale: 1.0,
+            mode: TextureBlendMode::Subtract,
+            strength: 1.0,
+            ..Default::default()
+        };
+
+        // Brush with Multiply color blend mode and Subtract paper texture
+        let config = BrushConfig {
+            diameter: 30.0,
+            spacing: 0.1,
+            softness: 0.2,
+            color: [200, 50, 50, 255],
+            blend_mode: ColorBlendMode::Multiply,
+            tip_type: BrushTipType::Auto {
+                aspect_ratio: 0.7,
+                angle_radians: 0.785, // 45 deg
+            },
+            texture: Some(texture_config),
+            texture_by_pressure: false,
+            ..Default::default()
+        };
+
+        let mut engine = PixelBrushEngine::new(config);
+
+        // Draw a short stroke across the canvas
+        engine.begin_stroke(StrokeEvent::new(50.0, 50.0, 1.0, 0.0), &mut canvas);
+        for i in 1..=10 {
+            engine.paint_to(StrokeEvent::new(50.0 + i as f32 * 5.0, 50.0, 1.0, i as f32 * 0.016), &mut canvas);
+        }
+        engine.finish_stroke(&mut canvas);
+        engine.end_stroke();
+
+        // Under Subtract texture mode, the grain carved holes into the stroke!
+        // At pattern hole locations (where pattern byte was 0), texture carved out ink, leaving base gray [128, 128, 128, 255].
+        // At pattern peak locations (where pattern byte was 255), ink remains and Multiplies with gray:
+        // (128 * 200) / 255 = ~100
+        let p_peak = canvas.get_pixel(51, 50).expect("Pixel in bounds");
+        let p_hole = canvas.get_pixel(50, 50).expect("Pixel in bounds");
+
+        // The textured stroke has genuine paper tooth contrast!
+        assert_ne!(p_peak, p_hole, "Texture must produce grain variation across the stroke");
+    }
+
+    #[test]
+    fn test_engine_painting_on_composite_stack() {
+        let mut stack = crate::composite::CompositeStack::new(200, 200);
+
+        // Configure brush with black color
+        let config = BrushConfig {
+            diameter: 20.0,
+            spacing: 0.1,
+            softness: 0.1,
+            color: [0, 0, 0, 255],
+            ..Default::default()
+        };
+        let mut engine = PixelBrushEngine::new(config);
+
+        // Draw a stroke on stack
+        let r1 = engine.begin_stroke_on_stack(StrokeEvent::new(50.0, 50.0, 1.0, 0.0), &mut stack);
+        assert!(r1.is_some());
+        let r2 = engine.paint_to_stack(StrokeEvent::new(80.0, 50.0, 1.0, 0.1), &mut stack);
+        assert!(r2.is_some());
+        engine.finish_stroke_on_stack(&mut stack);
+        engine.end_stroke();
+
+        // Active layer buffer has ink
+        let active_layer = stack.active_layer().unwrap();
+        let layer_pixel = active_layer.buffer.get_pixel(50, 50).unwrap();
+        assert_eq!(layer_pixel[3], 255); // Opaque ink
+
+        // Display framebuffer also has the ink composited over white paper!
+        let display_pixel = stack.display_framebuffer.get_pixel(50, 50).unwrap();
+        assert_eq!(display_pixel, [0, 0, 0, 255]);
+
+        // Untouched area remains white paper
+        let untouched = stack.display_framebuffer.get_pixel(10, 10).unwrap();
+        assert_eq!(untouched, [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn test_benchmark_a4_sweep_predefined_tip_and_texture() {
+        use std::time::Instant;
+        use std::sync::Arc;
+        use crate::brush::tip::{BrushTipType, PredefinedTipData};
+        use crate::brush::texture::{TextureConfig, PatternData};
+
+        let mut stack = crate::composite::CompositeStack::new(2480, 3508);
+        let tip = Arc::new(PredefinedTipData::from_gbr_grayscale(128, 128, &vec![200; 128*128], false));
+        let pat = Arc::new(PatternData::from_grayscale(64, 64, vec![180; 64*64]));
+
+        let config = BrushConfig {
+            diameter: 200.0,
+            spacing: 0.08,
+            softness: 0.5,
+            color: [30, 30, 30, 255],
+            tip_type: BrushTipType::Predefined {
+                tip_data: tip,
+                scale: 1.0,
+                angle_radians: 0.0,
+            },
+            texture: Some(TextureConfig {
+                pattern: pat,
+                scale: 1.0,
+                mode: crate::brush::TextureBlendMode::Multiply,
+                strength: 0.8,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mut engine = PixelBrushEngine::new(config);
+
+        let t0 = Instant::now();
+        engine.begin_stroke_on_stack(StrokeEvent::new(100.0, 500.0, 1.0, 0.0), &mut stack);
+
+        let mut time_paint_to = std::time::Duration::ZERO;
+        let mut time_composite = std::time::Duration::ZERO;
+
+        for i in 1..=50 {
+            let x = 100.0 + i as f32 * 40.0;
+            let y = 500.0 + (i as f32 * 0.1).sin() * 50.0;
+            let tp0 = Instant::now();
+            let dirty = if let Some(active_layer) = stack.active_layer_mut() {
+                engine.paint_to(StrokeEvent::new(x, y, 1.0, i as f32 * 0.016), &mut active_layer.buffer)
+            } else { None };
+            time_paint_to += tp0.elapsed();
+
+            let tc0 = Instant::now();
+            if let Some(ref r) = dirty {
+                stack.composite_rect(r);
+            }
+            time_composite += tc0.elapsed();
+        }
+        engine.finish_stroke_on_stack(&mut stack);
+        engine.end_stroke();
+        let elapsed = t0.elapsed();
+
+        println!("\n>>> BENCHMARK: 50 events across 2480x3508 canvas with 200px brush: {:?}", elapsed);
+        println!(">>> Total in paint_to (dab stamping + texture): {:?}", time_paint_to);
+        println!(">>> Total in composite_rect (multi-layer compositing): {:?}", time_composite);
     }
 }

@@ -74,6 +74,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     setHoldThresholdMs,
     globalPressureCurve,
     setGlobalPressureCurve,
+    brushBlendMode,
   } = useDocumentStore();
   const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -432,13 +433,11 @@ export const TopNavBar: FC<TopNavBarProps> = ({
               {isCurveModalOpen && (
                 <div
                   data-native-ui="pressure-curve-editor"
-                  className="p-2 bg-zinc-50/90 dark:bg-zinc-800/40 rounded-xl mt-1 border border-zinc-200/80 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100"
+                  className="p-2 bg-zinc-50/90 dark:bg-zinc-800/40 rounded-xl mt-1 border border-zinc-200/80 dark:border-white/5 animate-in fade-in zoom-in-95 duration-100 w-full max-w-full overflow-hidden"
                 >
                   <CurveEditor
                     value={globalPressureCurve}
                     onChange={setGlobalPressureCurve}
-                    width={236}
-                    height={150}
                     inputLabel="Pressure"
                     outputLabel="Response"
                     showLiveTelemetry={true}
@@ -452,11 +451,11 @@ export const TopNavBar: FC<TopNavBarProps> = ({
 
         <button
           type="button"
-          onClick={() => onTogglePopover("brushSettings")}
-          aria-label="Brush Settings & Studio"
-          title="Brush Settings & Studio"
+          onClick={() => onTogglePopover("adjustments")}
+          aria-label="Adjustments & Filters"
+          title="Adjustments & Filters"
           className={`p-2 rounded-lg transition-colors ${
-            activePopover === "brushSettings"
+            activePopover === "adjustments"
               ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/40"
               : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
           }`}
@@ -515,7 +514,9 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           type="button"
           onClick={handleBrushClick}
           aria-label="Paint Tool (B)"
-          title="Paint Brush (B) • Tap to switch, hold for quick switch"
+          title={`Paint Brush (B) • Tap to switch, hold for quick switch${
+            brushBlendMode && brushBlendMode !== "normal" ? ` • Blend Mode: ${brushBlendMode.toUpperCase()}` : ""
+          }`}
           className={`p-2 rounded-lg transition-colors relative ${
             activeTool === "brush"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
@@ -523,6 +524,14 @@ export const TopNavBar: FC<TopNavBarProps> = ({
           }`}
         >
           <Paintbrush className="w-4 h-4" />
+          {brushBlendMode && brushBlendMode !== "normal" && (
+            <span
+              title={`Active Brush Blend Mode: ${brushBlendMode}`}
+              className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-extrabold uppercase bg-amber-500 text-zinc-950 rounded shadow-xs tracking-tighter"
+            >
+              {brushBlendMode.slice(0, 3)}
+            </span>
+          )}
         </button>
 
         {/* Smudge (S) */}

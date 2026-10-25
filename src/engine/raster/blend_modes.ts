@@ -5,7 +5,7 @@
  * Compliant with W3C Compositing and Blending Level 1 specifications.
  */
 
-import type { BlendMode } from "../../types/raster";
+import type { BlendMode, TextureBlendMode } from "../../types/raster";
 
 /**
  * Clamps a numerical value to an integer within the byte range [0, 255].
@@ -14,6 +14,193 @@ export function clampByte(value: number): number {
   if (value < 0) return 0;
   if (value > 255) return 255;
   return Math.round(value);
+}
+
+// ============================================================================
+// 1. Single-Channel Blending Functions (Pure Math)
+// ============================================================================
+
+export function blendChannelNormal(_dst: number, src: number): number {
+  return src;
+}
+
+export function blendChannelMultiply(dst: number, src: number): number {
+  return (dst * src) / 255;
+}
+
+export function blendChannelScreen(dst: number, src: number): number {
+  return 255 - ((255 - dst) * (255 - src)) / 255;
+}
+
+export function blendChannelOverlay(dst: number, src: number): number {
+  return dst < 128
+    ? (2 * dst * src) / 255
+    : 255 - (2 * (255 - dst) * (255 - src)) / 255;
+}
+
+export function blendChannelHardLight(dst: number, src: number): number {
+  return src < 128
+    ? (2 * dst * src) / 255
+    : 255 - (2 * (255 - dst) * (255 - src)) / 255;
+}
+
+export function blendChannelSoftLight(dst: number, src: number): number {
+  const normDest = dst / 255;
+  const normSource = src / 255;
+  let blendedNormalized: number;
+  if (normSource <= 0.5) {
+    blendedNormalized = normDest - (1 - 2 * normSource) * normDest * (1 - normDest);
+  } else {
+    const factorD =
+      normDest <= 0.25
+        ? ((16 * normDest - 12) * normDest + 4) * normDest
+        : Math.sqrt(normDest);
+    blendedNormalized = normDest + (2 * normSource - 1) * (factorD - normDest);
+  }
+  return blendedNormalized * 255;
+}
+
+export function blendChannelDarken(dst: number, src: number): number {
+  return Math.min(dst, src);
+}
+
+export function blendChannelLighten(dst: number, src: number): number {
+  return Math.max(dst, src);
+}
+
+export function blendChannelColorDodge(dst: number, src: number): number {
+  return src >= 255 ? 255 : Math.min(255, (dst * 255) / (255 - src));
+}
+
+export function blendChannelColorBurn(dst: number, src: number): number {
+  return src <= 0 ? 0 : Math.max(0, 255 - ((255 - dst) * 255) / src);
+}
+
+export function blendChannelAdd(dst: number, src: number): number {
+  return Math.min(255, dst + src);
+}
+
+export function blendChannelLinearBurn(dst: number, src: number): number {
+  return Math.max(0, dst + src - 255);
+}
+
+export function blendChannelSubtract(dst: number, src: number): number {
+  return Math.max(0, dst - src);
+}
+
+export function blendChannelDivide(dst: number, src: number): number {
+  return src <= 0 ? 255 : Math.min(255, (dst * 255) / src);
+}
+
+export function blendChannelVividLight(dst: number, src: number): number {
+  return src < 128
+    ? blendChannelColorBurn(dst, 2 * src)
+    : blendChannelColorDodge(dst, 2 * (src - 128));
+}
+
+export function blendChannelLinearLight(dst: number, src: number): number {
+  return Math.max(0, Math.min(255, dst + 2 * src - 255));
+}
+
+export function blendChannelPinLight(dst: number, src: number): number {
+  return src < 128 ? Math.min(dst, 2 * src) : Math.max(dst, 2 * (src - 128));
+}
+
+export function blendChannelHardMix(dst: number, src: number): number {
+  return dst + src >= 255 ? 255 : 0;
+}
+
+export function blendChannelDifference(dst: number, src: number): number {
+  return Math.abs(dst - src);
+}
+
+export function blendChannelExclusion(dst: number, src: number): number {
+  return dst + src - (2 * dst * src) / 255;
+}
+
+/**
+ * Parallel: Krita parallel / harmonic blend mode.
+ * Calculates the harmonic mean of destination and source channels:
+ * f(d, s) = 2.0 / (1/d + 1/s) = (2.0 * d * s) / (d + s)
+ *
+ * Blends colors in a natural, organic way akin to physical parallel circuits,
+ * producing smooth, physical-like tonal transitions.
+ * If dst + src <= 0, returns 0 to prevent division by zero.
+ */
+export function blendChannelParallel(dst: number, src: number): number {
+  const sum = dst + src;
+  if (sum <= 0) return 0;
+  return Math.min(255, (2 * dst * src) / sum);
+}
+
+// ============================================================================
+// 2. Modular Texture Modes (Krita KisTextureOption Modulation)
+// ============================================================================
+
+export function modulateTextureAlpha(
+  dabAlpha: number,
+  patternSample: number,
+  strength: number,
+  mode: TextureBlendMode = "multiply"
+): number {
+  if (dabAlpha === 0 || strength <= 0.001) {
+    return dabAlpha;
+  }
+
+  const s = Math.max(0, Math.min(1, strength));
+
+  let res: number;
+  switch (mode) {
+    case "multiply": {
+      const multFactor = 1.0 - s * (1.0 - patternSample / 255);
+      res = dabAlpha * multFactor;
+      break;
+    }
+    case "subtract": {
+      const cut = (255 - patternSample) * s;
+      res = Math.max(0, dabAlpha - cut);
+      break;
+    }
+    case "add": {
+      res = Math.min(255, dabAlpha + patternSample * s);
+      break;
+    }
+    case "screen": {
+      const invA = 255 - dabAlpha;
+      const screenFactor = 1.0 - s * (patternSample / 255);
+      res = 255 - invA * screenFactor;
+      break;
+    }
+    case "overlay": {
+      const blended = blendChannelOverlay(dabAlpha, patternSample);
+      res = dabAlpha + (blended - dabAlpha) * s;
+      break;
+    }
+    case "divide": {
+      const blended = blendChannelDivide(dabAlpha, patternSample);
+      res = dabAlpha + (blended - dabAlpha) * s;
+      break;
+    }
+    case "darken": {
+      const blended = Math.min(dabAlpha, patternSample);
+      res = dabAlpha + (blended - dabAlpha) * s;
+      break;
+    }
+    case "lighten": {
+      const blended = Math.max(dabAlpha, patternSample);
+      res = dabAlpha + (blended - dabAlpha) * s;
+      break;
+    }
+    case "parallel": {
+      const blended = blendChannelParallel(dabAlpha, patternSample);
+      res = dabAlpha + (blended - dabAlpha) * s;
+      break;
+    }
+    default:
+      res = dabAlpha;
+  }
+
+  return clampByte(res);
 }
 
 /**
@@ -237,6 +424,65 @@ export function blendPixelColor(
         destinationBlue + sourceBlue - (2 * destinationBlue * sourceBlue) / 255,
       ];
 
+    case "add":
+      return [
+        blendChannelAdd(destinationRed, sourceRed),
+        blendChannelAdd(destinationGreen, sourceGreen),
+        blendChannelAdd(destinationBlue, sourceBlue),
+      ];
+
+    case "subtract":
+      return [
+        blendChannelSubtract(destinationRed, sourceRed),
+        blendChannelSubtract(destinationGreen, sourceGreen),
+        blendChannelSubtract(destinationBlue, sourceBlue),
+      ];
+
+    case "divide":
+      return [
+        blendChannelDivide(destinationRed, sourceRed),
+        blendChannelDivide(destinationGreen, sourceGreen),
+        blendChannelDivide(destinationBlue, sourceBlue),
+      ];
+
+    case "linearBurn":
+      return [
+        blendChannelLinearBurn(destinationRed, sourceRed),
+        blendChannelLinearBurn(destinationGreen, sourceGreen),
+        blendChannelLinearBurn(destinationBlue, sourceBlue),
+      ];
+
+    case "linearLight":
+      return [
+        blendChannelLinearLight(destinationRed, sourceRed),
+        blendChannelLinearLight(destinationGreen, sourceGreen),
+        blendChannelLinearLight(destinationBlue, sourceBlue),
+      ];
+
+    case "vividLight":
+      return [
+        blendChannelVividLight(destinationRed, sourceRed),
+        blendChannelVividLight(destinationGreen, sourceGreen),
+        blendChannelVividLight(destinationBlue, sourceBlue),
+      ];
+
+    case "pinLight":
+      return [
+        blendChannelPinLight(destinationRed, sourceRed),
+        blendChannelPinLight(destinationGreen, sourceGreen),
+        blendChannelPinLight(destinationBlue, sourceBlue),
+      ];
+
+    case "hardMix":
+      return [
+        blendChannelHardMix(destinationRed, sourceRed),
+        blendChannelHardMix(destinationGreen, sourceGreen),
+        blendChannelHardMix(destinationBlue, sourceBlue),
+      ];
+
+    case "behind":
+      return [sourceRed, sourceGreen, sourceBlue];
+
     case "hue": {
       const destSat = calculateSaturation(destinationRed, destinationGreen, destinationBlue);
       const destLum = calculateLuminosity(destinationRed, destinationGreen, destinationBlue);
@@ -260,6 +506,13 @@ export function blendPixelColor(
       const srcLum = calculateLuminosity(sourceRed, sourceGreen, sourceBlue);
       return setLuminosity(destinationRed, destinationGreen, destinationBlue, srcLum);
     }
+
+    case "parallel":
+      return [
+        blendChannelParallel(destinationRed, sourceRed),
+        blendChannelParallel(destinationGreen, sourceGreen),
+        blendChannelParallel(destinationBlue, sourceBlue),
+      ];
 
     default:
       return [sourceRed, sourceGreen, sourceBlue];
@@ -314,6 +567,24 @@ export function compositePixelOver(
       return [0, 0, 0, 0];
     }
     return [destinationRed, destinationGreen, destinationBlue, resultingAlphaByte];
+  }
+
+  // Behind blend mode: source is placed behind destination (destination-under)
+  if (blendMode === "behind") {
+    const resultingAlphaNormalized =
+      normalizedDestAlpha + normalizedSourceAlpha * (1.0 - normalizedDestAlpha);
+    if (resultingAlphaNormalized <= 1e-6) return [0, 0, 0, 0];
+    const sourceWeight = normalizedSourceAlpha * (1.0 - normalizedDestAlpha);
+    const destWeight = normalizedDestAlpha;
+    const outputRed = (destWeight * destinationRed + sourceWeight * sourceRed) / resultingAlphaNormalized;
+    const outputGreen = (destWeight * destinationGreen + sourceWeight * sourceGreen) / resultingAlphaNormalized;
+    const outputBlue = (destWeight * destinationBlue + sourceWeight * sourceBlue) / resultingAlphaNormalized;
+    return [
+      clampByte(outputRed),
+      clampByte(outputGreen),
+      clampByte(outputBlue),
+      clampByte(resultingAlphaNormalized * 255),
+    ];
   }
 
   // If destination is completely transparent, result is simply the source pixel

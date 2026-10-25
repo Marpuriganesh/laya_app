@@ -1,13 +1,14 @@
 /**
  * Wasm Brush Bridge
- * Loads and orchestrates the compiled Rust `sketch_core` brush engine in WebAssembly.
+ * Loads and orchestrates the compiled Rust `sketch_core` brush engine and multi-layer compositor in WebAssembly.
  * Powers the web browser canvas with identical midpoint quadratic Bézier splines,
- * subpixel dab stepping, and analytical softness masks.
+ * multi-layer compositing, real brush tip raster masks, and seamless paper textures.
  */
 
 import initWasm, { WasmBrushEngine } from "./pkg/sketch_core.js";
 import wasmUrl from "./pkg/sketch_core_bg.wasm?url";
 import type { StrokePoint } from "@/types/stroke";
+import type { PullStringConfig, MovingAverageConfig } from "@/types/brush";
 
 export interface WasmBrushConfig {
   diameter: number;
@@ -74,13 +75,13 @@ export class WasmBrushBridge {
   /**
    * Resizes or re-initializes the internal Wasm canvas buffer.
    */
-  public resizeCanvas(width: number, height: number, r = 0, g = 0, b = 0, a = 0): void {
+  public resizeCanvas(width: number, height: number, r = 255, g = 255, b = 255, a = 255): void {
     if (!this.engine) return;
     this.engine.init_canvas(width, height, r, g, b, a);
   }
 
   /**
-   * Clears the internal Wasm canvas buffer with an RGBA color.
+   * Clears the internal active layer with an RGBA color.
    */
   public clear(r = 0, g = 0, b = 0, a = 0): void {
     if (!this.engine) return;
@@ -96,11 +97,80 @@ export class WasmBrushBridge {
   }
 
   /**
+   * Sets the color blend mode (e.g. "normal", "multiply", "screen", "parallel", etc.).
+   */
+  public setBrushBlendMode(modeName: string): void {
+    if (!this.engine) return;
+    this.engine.set_brush_blend_mode(modeName);
+  }
+
+  /**
    * Sets a 256-sample lookup table for pressure response curve dynamics.
    */
-  public setPressureLut(lut: Float32Array): void {
+  public setPressureLut(lut: Float32Array | number[]): void {
     if (!this.engine) return;
-    this.engine.set_pressure_lut(lut);
+    const slice = lut instanceof Float32Array ? lut : new Float32Array(lut);
+    this.engine.set_pressure_lut(slice);
+  }
+
+  /**
+   * Sets or clears a dynamic sensor mapping and transfer curve for a brush property.
+   */
+  public setDynamicsMapping(
+    param: string,
+    enabled: boolean,
+    sensor: string,
+    minOutput: number,
+    maxOutput: number,
+    lut: Float32Array | number[]
+  ): void {
+    if (!this.engine) return;
+    const slice = lut instanceof Float32Array ? lut : new Float32Array(lut);
+    this.engine.set_dynamics_mapping(param, enabled, sensor, minOutput, maxOutput, slice);
+  }
+
+  /**
+   * Sets calculation mode for combining multiple sensor curves (multiply, add, max, min).
+   */
+  public setDynamicsCalculationMode(param: string, mode: string): void {
+    if (!this.engine) return;
+    this.engine.set_dynamics_calculation_mode(param, mode);
+  }
+
+  /**
+   * Clears all dynamic sensor modulations back to static defaults.
+   */
+  public clearDynamics(): void {
+    if (!this.engine) return;
+    this.engine.clear_dynamics();
+  }
+
+  /**
+   * Configures the dynamic moving average stroke stabilizer.
+   */
+  public setMovingAverageConfig(config: MovingAverageConfig): void {
+    if (!this.engine) return;
+    this.engine.set_moving_average_config(
+      config.enabled,
+      config.windowSize,
+      config.velocityMultiplier
+    );
+  }
+
+  /**
+   * Configures the dynamic pulled string (leash) stroke stabilizer.
+   */
+  public setPullStringConfig(config: PullStringConfig): void {
+    if (!this.engine) return;
+    this.engine.set_pull_string_config(
+      config.enabled,
+      config.maxStringLength,
+      config.velocityMultiplier,
+      config.catchUpSpeed,
+      config.baseDeadzone,
+      config.connectToTipOnRelease,
+      config.pressureSmoothing ?? 0.35
+    );
   }
 
   private applyConfig(): void {
@@ -123,13 +193,175 @@ export class WasmBrushBridge {
     );
   }
 
+  // ========================================================================
+  // Multi-Layer Compositor Bridge
+  // ========================================================================
+
+  public addLayer(id: string, name: string): void {
+    if (!this.engine) return;
+    this.engine.add_layer(id, name);
+  }
+
+  public removeLayer(id: string): void {
+    if (!this.engine) return;
+    this.engine.remove_layer(id);
+  }
+
+  public duplicateLayer(sourceId: string, newId: string, newName: string): void {
+    if (!this.engine) return;
+    this.engine.duplicate_layer(sourceId, newId, newName);
+  }
+
+  public setActiveLayer(id: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_active_layer(id);
+  }
+
+  public setLayerOpacity(id: string, opacity: number): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_opacity(id, opacity);
+  }
+
+  public setLayerBlendMode(id: string, modeName: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_blend_mode(id, modeName);
+  }
+
+  public setLayerVisibility(id: string, visible: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_visibility(id, visible);
+  }
+
+  public setBackgroundColor(r: number, g: number, b: number, a: number): void {
+    if (!this.engine) return;
+    this.engine.set_background_color(r, g, b, a);
+  }
+
+  public setBackgroundVisible(visible: boolean): void {
+    if (!this.engine) return;
+    this.engine.set_background_visible(visible);
+  }
+
+  // ========================================================================
+  // Resource Management (Brush Tips & Patterns)
+  // ========================================================================
+
+  public registerTipGbr(id: string, bytes: Uint8Array): string {
+    if (!this.engine) return "";
+    try {
+      return this.engine.register_tip_gbr(id, bytes);
+    } catch {
+      return "";
+    }
+  }
+
+  public registerTipMask(
+    id: string,
+    name: string,
+    width: number,
+    height: number,
+    mask: Uint8Array,
+    invert = false
+  ): void {
+    if (!this.engine) return;
+    this.engine.register_tip_mask(id, name, width, height, mask, invert);
+  }
+
+  public setBrushPredefinedTip(tipId: string | null, scale = 1.0, angleRadians = 0.0): boolean {
+    if (!this.engine) return false;
+    if (tipId) {
+      return this.engine.set_brush_predefined_tip(tipId, scale, angleRadians);
+    } else {
+      this.engine.clear_brush_predefined_tip();
+      return true;
+    }
+  }
+
+  public clearBrushPredefinedTip(): void {
+    if (this.engine) {
+      this.engine.clear_brush_predefined_tip();
+    }
+  }
+
+  public registerPatternPat(id: string, bytes: Uint8Array): string {
+    if (!this.engine) return "";
+    try {
+      return this.engine.register_pattern_pat(id, bytes);
+    } catch {
+      return "";
+    }
+  }
+
+  public registerPatternGrayscale(
+    id: string,
+    name: string,
+    width: number,
+    height: number,
+    bytes: Uint8Array
+  ): void {
+    if (!this.engine) return;
+    this.engine.register_pattern_grayscale(id, name, width, height, bytes);
+  }
+
+  public registerPatternRgba(
+    id: string,
+    name: string,
+    width: number,
+    height: number,
+    rgbaBytes: Uint8Array
+  ): void {
+    if (!this.engine) return;
+    this.engine.register_pattern_rgba(id, name, width, height, rgbaBytes);
+  }
+
+  public setBrushTextureResource(
+    patternId: string | null,
+    scale = 1.0,
+    modeStr = "multiply",
+    strength = 1.0,
+    invert = false,
+    brightness = 0.0,
+    contrast = 1.0,
+    byPressure = false
+  ): boolean {
+    if (!this.engine) return false;
+    if (patternId) {
+      return this.engine.set_brush_texture_resource(
+        patternId,
+        scale,
+        modeStr,
+        strength,
+        invert,
+        brightness,
+        contrast,
+        byPressure
+      );
+    } else {
+      this.engine.clear_brush_texture();
+      return true;
+    }
+  }
+
+  public clearBrushTexture(): void {
+    if (this.engine) {
+      this.engine.clear_brush_texture();
+    }
+  }
+
+  // ========================================================================
+  // Stroke Execution
+  // ========================================================================
+
   /**
    * Begins a new stroke at the given starting point.
    */
   public beginStroke(point: StrokePoint, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
-    const pressure = typeof point.pressure === "number" ? Math.max(0.05, Math.min(1.0, point.pressure)) : 1.0;
-    const dirty = this.engine.begin_stroke(point.canvasX, point.canvasY, pressure);
+    const pressure = typeof point.pressure === "number" ? Math.max(0.01, Math.min(1.0, point.pressure)) : 1.0;
+    const timeSec = point.timeMs ? point.timeMs * 0.001 : 0.0;
+    const tiltX = typeof point.tiltX === "number" ? point.tiltX : 0.0;
+    const tiltY = typeof point.tiltY === "number" ? point.tiltY : 0.0;
+    const dirty = this.engine.begin_stroke_with_tilt(point.canvasX, point.canvasY, pressure, timeSec, tiltX, tiltY);
     if (dirty) {
       this.blitDirtyRect(dirty, ctx);
     }
@@ -140,8 +372,11 @@ export class WasmBrushBridge {
    */
   public extendStroke(point: StrokePoint, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
-    const pressure = typeof point.pressure === "number" ? Math.max(0.05, Math.min(1.0, point.pressure)) : 1.0;
-    const dirty = this.engine.paint_to(point.canvasX, point.canvasY, pressure);
+    const pressure = typeof point.pressure === "number" ? Math.max(0.01, Math.min(1.0, point.pressure)) : 1.0;
+    const timeSec = point.timeMs ? point.timeMs * 0.001 : 0.0;
+    const tiltX = typeof point.tiltX === "number" ? point.tiltX : 0.0;
+    const tiltY = typeof point.tiltY === "number" ? point.tiltY : 0.0;
+    const dirty = this.engine.paint_to_with_tilt(point.canvasX, point.canvasY, pressure, timeSec, tiltX, tiltY);
     if (dirty) {
       this.blitDirtyRect(dirty, ctx);
     }
@@ -153,18 +388,21 @@ export class WasmBrushBridge {
   public extendStrokeBatch(points: readonly StrokePoint[], ctx: CanvasRenderingContext2D): void {
     if (!this.engine || points.length === 0) return;
 
-    const requiredLen = points.length * 3;
+    const requiredLen = points.length * 6;
     if (this.flatEventsScratch.length < requiredLen) {
       this.flatEventsScratch = new Float32Array(Math.max(requiredLen, this.flatEventsScratch.length * 2));
     }
 
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
-      const offset = i * 3;
+      const offset = i * 6;
       this.flatEventsScratch[offset] = p.canvasX;
       this.flatEventsScratch[offset + 1] = p.canvasY;
       this.flatEventsScratch[offset + 2] =
-        typeof p.pressure === "number" ? Math.max(0.05, Math.min(1.0, p.pressure)) : 1.0;
+        typeof p.pressure === "number" ? Math.max(0.01, Math.min(1.0, p.pressure)) : 1.0;
+      this.flatEventsScratch[offset + 3] = p.timeMs ? p.timeMs * 0.001 : 0.0;
+      this.flatEventsScratch[offset + 4] = typeof p.tiltX === "number" ? p.tiltX : 0.0;
+      this.flatEventsScratch[offset + 5] = typeof p.tiltY === "number" ? p.tiltY : 0.0;
     }
 
     const slice = this.flatEventsScratch.subarray(0, requiredLen);
@@ -194,9 +432,20 @@ export class WasmBrushBridge {
   }
 
   /**
+   * Returns the current leading tip of the painted stroke [x, y] in canvas coordinates,
+   * or null if no stroke is currently active.
+   */
+  public getSmoothedTip(): [number, number] | null {
+    if (!this.engine) return null;
+    const tip = this.engine.get_smoothed_tip();
+    if (!tip || tip.length < 2) return null;
+    return [tip[0], tip[1]];
+  }
+
+  /**
    * Blits only the modified sub-rectangle from Wasm memory into the Canvas2D context.
    */
-  private blitDirtyRect(rect: Int32Array, ctx: CanvasRenderingContext2D): void {
+  public blitDirtyRect(rect: Int32Array, ctx: CanvasRenderingContext2D): void {
     if (!this.engine) return;
     const [x, y, w, h] = rect;
     if (w <= 0 || h <= 0) return;
@@ -214,6 +463,16 @@ export class WasmBrushBridge {
       const imgData = new ImageData(subView, w, h);
       ctx.putImageData(imgData, x, y);
     }
+  }
+
+  /**
+   * Blits the entire composited canvas from Wasm into the 2D context.
+   */
+  public blitFullCanvas(ctx: CanvasRenderingContext2D): void {
+    if (!this.engine) return;
+    const w = this.engine.width();
+    const h = this.engine.height();
+    this.blitDirtyRect(new Int32Array([0, 0, w, h]), ctx);
   }
 }
 

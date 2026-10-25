@@ -65,22 +65,22 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
   brushLibrary: {
     panelId: "brushLibrary",
     title: "Brush Library",
-    defaultWidth: 320,
-    defaultHeight: 440,
-    minWidth: 260,
-    minHeight: 300,
-    maxWidth: 540,
-    maxHeight: 800,
+    defaultWidth: 480,
+    defaultHeight: 620,
+    minWidth: 380,
+    minHeight: 460,
+    maxWidth: 720,
+    maxHeight: 900,
   },
   brushSettings: {
     panelId: "brushSettings",
-    title: "Brush Settings",
-    defaultWidth: 320,
-    defaultHeight: 440,
-    minWidth: 260,
-    minHeight: 300,
-    maxWidth: 540,
-    maxHeight: 800,
+    title: "Brush Studio",
+    defaultWidth: 720,
+    defaultHeight: 540,
+    minWidth: 580,
+    minHeight: 420,
+    maxWidth: 1080,
+    maxHeight: 860,
   },
   colorGamut: {
     panelId: "colorGamut",
@@ -115,6 +115,12 @@ export interface WindowSyncPayload {
   readonly layerStack: LayerStack;
   readonly gamutMask?: GamutMaskConfiguration;
   readonly wheelConfig?: DiscreteWheelConfig;
+  readonly activePresetId?: string;
+  readonly brushSoftness?: number;
+  readonly brushSpacing?: number;
+  readonly brushFlow?: number;
+  readonly sizeDynamics?: boolean;
+  readonly opacityDynamics?: boolean;
 }
 
 /**
@@ -130,6 +136,8 @@ export type WindowSyncMessage =
   | { readonly type: "SET_ACTIVE_TOOL"; readonly tool: ActiveTool }
   | { readonly type: "SET_BRUSH_SIZE"; readonly size: number }
   | { readonly type: "SET_BRUSH_OPACITY"; readonly opacity: number }
+  | { readonly type: "SET_ACTIVE_PRESET"; readonly presetId: string }
+  | { readonly type: "SET_BRUSH_SETTINGS"; readonly softness: number; readonly spacing: number; readonly flow: number; readonly sizeDynamics: boolean; readonly opacityDynamics: boolean }
   | { readonly type: "SET_LAYER_STACK"; readonly layerStack: LayerStack }
   | { readonly type: "SET_GAMUT_MASK"; readonly gamutMask: GamutMaskConfiguration }
   | { readonly type: "SET_WHEEL_CONFIG"; readonly wheelConfig: DiscreteWheelConfig };

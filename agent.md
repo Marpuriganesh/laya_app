@@ -4,6 +4,24 @@
 
 ---
 
+> [!CAUTION]
+> # CRITICAL ARCHITECTURAL MANDATE: THE DUAL RUNTIME & RUST CORE RULE
+> **NEVER IMPLEMENT DRAWING, RASTER, BLENDING, BRUSH DYNAMICS, OR TEXTURE FEATURES SOLELY IN FRONTEND TYPESCRIPT.**
+>
+> 1. **Why It Breaks Standalone Desktop**:
+>    - The standalone desktop app (macOS AppKit via Tauri) stamps strokes and draws dabs directly into the `crates/sketch_core` Rust framebuffer via a high-frequency native local `NSEvent` monitor and AppKit view (`drawRect:`).
+>    - **Any JavaScript/TypeScript drawing or raster code in `/src` is completely bypassed during native desktop drawing!** If you only add a blend mode, dynamic curve, texture modulation, or brush feature in TypeScript, it **will not work in the standalone app**.
+> 2. **Single Canonical Drawing Engine (`crates/sketch_core`)**:
+>    - All dab stamping, blend modes, texture modulations, brush dynamics, and stroke trajectory math live in **`crates/sketch_core` (Rust)**.
+>    - In Web mode, `crates/sketch_core` is compiled to WebAssembly via `wasm-pack`.
+>    - In Native Desktop mode, `crates/sketch_core` is compiled directly into the Tauri native app.
+> 3. **Mandatory 3-Step Implementation Workflow for Any Drawing/Raster/Brush Feature**:
+>    - **Step 1 (Rust Core Engine)**: Implement pure algorithms & data structures in `crates/sketch_core` (Rust) and verify with `cargo test --manifest-path crates/sketch_core/Cargo.toml`.
+>    - **Step 2 (Bridges)**: Wire parameters into the Tauri Desktop bridge (`src-tauri/src/brush_commands.rs`) and Wasm bridge (`crates/sketch_core/src/wasm.rs`), verifying with `cargo check --manifest-path src-tauri/Cargo.toml`.
+>    - **Step 3 (TypeScript Shell)**: Mirror contracts in `/src/types/` and `/src/engine/` solely for UI state orchestration, thumbnail stroke previews, and headless Node/Vitest test fixtures. Never create an independent TypeScript drawing implementation that diverges from Rust.
+
+---
+
 ## 1. Project Vision & Architecture Overview
 
 This project is a **production-ready, high-performance digital painting and drawing suite** that combines:
@@ -94,36 +112,36 @@ This project is a **production-ready, high-performance digital painting and draw
 
 ---
 
-## 3. Performance & Evolution Roadmap
+## 3. Canonical Architecture: Single Source of Truth (`crates/sketch_core`)
 
-The codebase follows a three-phase performance trajectory:
+The application uses **one single canonical core engine** written in Rust: **`crates/sketch_core`**.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 1: Pure TypeScript Engine                             │
-│ - Clean, 1:1 translatable algorithms                        │
-│ - HTML5 Canvas 2D / WebGL2 / WebGPU pipelines               │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 2: Targeted WebAssembly (Wasm) & WebGPU Acceleration   │
-│ - Performance hotspots (dab stamping, dual brush textures,  │
-│   blend modes, Gaussian blur filters) written in C++/Rust   │
-│ - Compiled to Wasm + WebGPU Compute Shaders                  │
-│ - TypeScript remains the high-level orchestrator            │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Phase 3: Complete Native Core Rewrite (Optional Target)     │
-│ - Complete engine rewritten in C++ or Rust                  │
-│ - Compiled to native desktop/mobile binaries or full Wasm   │
-│ - 1:1 function parity ensures painless translation          │
-└─────────────────────────────────────────────────────────────┘
+                           ┌───────────────────────────┐
+                           │   crates/sketch_core      │
+                           │   (Single Rust Core)      │
+                           └─────────────┬─────────────┘
+                                         │
+                    ┌────────────────────┴────────────────────┐
+                    ▼                                         ▼
+    ┌───────────────────────────────┐         ┌───────────────────────────────┐
+    │  WebAssembly Target (Browser) │         │  Native C/Rust Target (Tauri) │
+    │  - wasm-pack build --target web│         │  - High-frequency AppKit view │
+    │  - Direct WASM pixel buffer   │         │  - 120Hz-240Hz NSEvent monitor│
+    │  - Zero JS drawing duplicate  │         │  - Sub-millisecond latency    │
+    └───────────────────────────────┘         └───────────────────────────────┘
 ```
 
-Because the TypeScript engine is written with strict SRP and 1:1 translatability from Day 1, moving code from Phase 1 to Phase 2 or Phase 3 requires **no architectural refactoring**—only syntax translation.
+### Key Architectural Tenets:
+1. **Single Source for Drawing**:
+   - There are **never two parallel drawing engines**. All dab stamping, trajectory calculation, and brush rasterization live solely in `crates/sketch_core`.
+   - The TypeScript layer (`src/engine/wasm`, `src/ui`) is strictly an orchestration, input normalization, and UI presentation shell.
+2. **Strict Stroke / Engine Decoupling**:
+   - Stroke stabilization and trajectory algorithms in `crates/sketch_core/src/stroke` (such as `PullStringStabilizer`, `StrokeTrajectory`, and `StrokeStepper`) are **completely decoupled** from `PixelBrushEngine`.
+   - Smoothing operates on pure `StrokeEvent` streams. Any existing or future brush engine (pixel brush, smudge/wet mixer, vector inking, airbrush) consumes smoothed events without duplicating stabilization logic.
+3. **Platform Differences (Native Tauri Desktop vs Web/Wasm)**:
+   - **Native Desktop (macOS AppKit via Tauri)**: Input is handled by a high-frequency AppKit local `NSEvent` monitor and rendered in an `NSView` overlay using native CoreGraphics directly over the Rust framebuffer. The live stroke connection to the pen nib is drawn instantaneously in `drawRect:`.
+   - **Web Target (Wasm & Canvas2D)**: Drawing runs purely through the compiled WebAssembly module (`wasm-bindgen`) and is blitted into a Canvas2D rendering context without the native Cocoa AppKit view overlay. Any live preview overlays on the web operate within the React/Canvas presentation shell.
 
 ---
 
@@ -212,6 +230,16 @@ To guarantee that multiple agents can work in parallel without integration failu
   - Always use `lucide-react` for all UI icons (toolbars, brush palettes, layer controls, color pickers, modal triggers, and buttons).
   - Do not introduce alternative icon packages (e.g. Heroicons, FontAwesome, Material Icons) or inline raw SVG paths.
   - Consistent icon sizing and accessible labels: Always provide accessible `aria-label` or tooltip text for icon-only buttons.
+
+- **Concise Iconography Over Verbose Labels**:
+  - Labels for inputs or visual clues are **not always required** if an icon conveys the meaning cleanly; an icon is enough.
+  - Avoid redundant, wordy text labels (e.g. "Response (100%)", "Start (0.0):", long descriptive headers) that waste precious horizontal space, cause awkward word-wrapping, and break responsive bounds.
+  - Provide rich explanatory information via accessible `title` and `aria-label` tooltips (structured to transition smoothly to a dedicated custom tooltip component).
+
+- **Zero Horizontal Overflow & Strict Container Responsiveness**:
+  - Every UI component (curve editors, dynamics controls, toolbars, color pickers) **must be 100% fluid and responsive** to its parent container (`w-full`, `max-w-full`, `overflow-hidden`).
+  - **Never hardcode rigid pixel widths** that exceed narrow popovers (e.g. 236px action popovers or sub-panels).
+  - **Critical Canvas Overlap & Blocking Rect Hijack Prevention**: When interactive elements overflow their popup/window boundaries into the canvas area, `useNativeUiRectsSync` extracts their bounding rects and registers them with Tauri AppKit's `g_ui_blocking_rects`. Any overflowing rects will intercept stylus/mouse events over the canvas and **completely break native painting**! All floating components must strictly contain their bounds (`overflow-hidden`).
 
 - **FigCraft Canvas Vector Icons (`lucide-figcraft` skill)**:
   - When designing or creating mockups/components in FigCraft, use the **`lucide-figcraft`** skill (`.agents/skills/lucide-figcraft/SKILL.md`).
@@ -356,6 +384,9 @@ describe('interpolateCatmullRom', () => {
 
 When generating or modifying code in this repository, all AI agents must follow this checklist:
 
+- [ ] **Dual Runtime Verification**: If this feature touches drawing, rasterization, blending, or brush dynamics, is it implemented in `crates/sketch_core` (Rust) and wired into `src-tauri` so it works in the standalone desktop app, NOT just frontend TypeScript?
+- [ ] **Rust Core Tests Passing**: Do all Rust tests pass via `cargo test --manifest-path crates/sketch_core/Cargo.toml`?
+- [ ] **Tauri Desktop Compiling**: Does the native desktop app compile cleanly via `cargo check --manifest-path src-tauri/Cargo.toml`?
 - [ ] **Automated Tests Included**: Did you write or update unit test files for all new or modified functions?
 - [ ] **Tests Passing**: Do all tests pass cleanly via `npm test` without failures or flaky timeouts?
 - [ ] **Single Responsibility**: Does each created function perform exactly one task?

@@ -50,15 +50,21 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
   onTransformChange,
   stylusOnlyMode: initialStylusOnlyMode,
 }) => {
-  const isTauriApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  // Only macOS Tauri runs the AppKit NSView drawing overlay.
+  // Windows, Linux, and Web use the universal high-performance Wasm canvas pipeline.
+  const isMacNativeOverlay =
+    typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in window &&
+    /macintosh|mac os x/i.test(navigator.userAgent);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const liveOverlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
 
   const syncNativeArtboard = useCallback(() => {
-    if (!isTauriApp || !artboardRef.current) return;
+    if (!isMacNativeOverlay || !artboardRef.current) return;
     const rect = artboardRef.current.getBoundingClientRect();
     globalRustBrushBridge.updateArtboardRect(
       rect.left,
@@ -66,7 +72,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       rect.width,
       rect.height
     );
-  }, [isTauriApp]);
+  }, [isMacNativeOverlay]);
 
   const { palmRejection } = useDocumentStore();
   const stylusOnlyMode = initialStylusOnlyMode ?? palmRejection;
@@ -222,6 +228,11 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     canvas.width = doc.width;
     canvas.height = doc.height;
 
+    if (liveOverlayCanvasRef.current) {
+      liveOverlayCanvasRef.current.width = doc.width;
+      liveOverlayCanvasRef.current.height = doc.height;
+    }
+
     globalDrawingEngine.mountToCanvas(canvas);
 
     const ctx = canvas.getContext("2d");
@@ -239,14 +250,95 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     };
   }, [doc.id, doc.width, doc.height, doc.backgroundColor]);
 
-  // Synchronize brush parameters & active tool mode to drawing engine
+  const clearLiveOverlay = useCallback(() => {
+    const canvas = liveOverlayCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, []);
+
+  const updateLiveOverlay = useCallback(
+    (currentPoint: StrokePoint) => {
+      if (isMacNativeOverlay) return;
+      const overlayCanvas = liveOverlayCanvasRef.current;
+      if (!overlayCanvas) return;
+      const ctx = overlayCanvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      if (!isDrawingRef.current) return;
+
+      const smoothedTip = globalDrawingEngine.getSmoothedTip?.();
+      if (!smoothedTip) return;
+
+      const [tipX, tipY] = smoothedTip;
+      const curX = currentPoint.canvasX;
+      const curY = currentPoint.canvasY;
+
+      const dx = curX - tipX;
+      const dy = curY - tipY;
+      if (dx * dx + dy * dy < 0.25) return;
+
+      if (activeTool === "eraser") return;
+
+      // 1. Draw live connecting ink segment from last committed tip directly to current pen nib
+      ctx.save();
+      const baseDiameter = globalDrawingEngine.getBrushSize ? globalDrawingEngine.getBrushSize() : 24;
+      const sizeDyn = globalDrawingEngine.getSizeDynamicsEnabled ? globalDrawingEngine.getSizeDynamicsEnabled() : true;
+      const pressure = typeof currentPoint.pressure === "number" ? Math.max(0.05, currentPoint.pressure) : 1.0;
+      const effectiveWidth = sizeDyn ? Math.max(1, baseDiameter * pressure) : baseDiameter;
+
+      const rgb = hexToRgb(activeColor) ?? [24, 24, 27];
+
+      ctx.strokeStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${brushOpacity})`;
+      ctx.lineWidth = effectiveWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(curX, curY);
+      ctx.stroke();
+      ctx.restore();
+
+      // 2. If Pull String is enabled, render a subtle indicator dot at the smoothed anchor tip
+      const pullConfig = globalDrawingEngine.getPullStringConfig?.();
+      const isPullEnabled = pullConfig?.enabled && pullConfig.maxStringLength > 0;
+      if (isPullEnabled) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, 3, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(59, 130, 246, 0.85)";
+        ctx.fill();
+        ctx.restore();
+      }
+    },
+    [isMacNativeOverlay, activeColor, brushOpacity, activeTool]
+  );
+
+  // Synchronize foreground color strictly on activeColor change
   useEffect(() => {
     const rgb = hexToRgb(activeColor) ?? [0, 0, 0];
     globalDrawingEngine.setForegroundColor(rgb[0], rgb[1], rgb[2], 1.0);
+  }, [activeColor]);
+
+  // Synchronize brush size strictly on brushSize change
+  useEffect(() => {
     globalDrawingEngine.setBrushSize(brushSize);
+  }, [brushSize]);
+
+  // Synchronize brush opacity strictly on brushOpacity change
+  useEffect(() => {
     globalDrawingEngine.setBrushOpacity(brushOpacity);
+  }, [brushOpacity]);
+
+  // Synchronize eraser / normal blend mode strictly on activeTool change
+  useEffect(() => {
     globalDrawingEngine.setBlendMode(activeTool === "eraser" ? "erase" : "normal");
-  }, [activeColor, brushSize, brushOpacity, activeTool]);
+  }, [activeTool]);
 
   // Center canvas on initial mount or when document dimension changes
   useEffect(() => {
@@ -256,14 +348,14 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
 
   // Synchronize document dimensions to native Rust canvas engine
   useEffect(() => {
-    if (isTauriApp) {
+    if (isMacNativeOverlay) {
       globalRustBrushBridge.setDocumentSize(doc.width, doc.height);
     }
-  }, [doc.width, doc.height, isTauriApp]);
+  }, [doc.width, doc.height, isMacNativeOverlay]);
 
   // Synchronize pan and tool navigation state to native AppKit overlay
   useEffect(() => {
-    if (isTauriApp) {
+    if (isMacNativeOverlay) {
       const isNavigating =
         isSpaceDown ||
         isPanning ||
@@ -272,7 +364,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         activeTool === "hand";
       globalRustBrushBridge.setPanActive(isNavigating);
     }
-  }, [isSpaceDown, isPanning, isScrubbingZoom, activeTool, isTauriApp]);
+  }, [isSpaceDown, isPanning, isScrubbingZoom, activeTool, isMacNativeOverlay]);
 
   // Listen for window resize
   useEffect(() => {
@@ -504,6 +596,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         drawingPointerTypeRef.current = null;
         lastStrokePointRef.current = null;
         globalDrawingEngine.endStroke();
+        clearLiveOverlay();
       }
       if (isPanningRef.current) {
         isPanningRef.current = false;
@@ -578,6 +671,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     const effectiveTransform = getEffectiveTransform();
     const strokePoint = normalizePointerEvent(e.nativeEvent, effectiveTransform);
     lastStrokePointRef.current = strokePoint;
+    clearLiveOverlay();
     globalDrawingEngine.beginStroke(strokePoint);
   };
 
@@ -663,6 +757,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       globalDrawingEngine.extendStrokeBatch(points);
       if (points.length > 0) {
         lastStrokePointRef.current = points[points.length - 1];
+        updateLiveOverlay(lastStrokePointRef.current);
       }
     } else {
       for (const point of points) {
@@ -675,6 +770,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         }
         globalDrawingEngine.extendStroke(point);
         lastStrokePointRef.current = point;
+      }
+      if (lastStrokePointRef.current) {
+        updateLiveOverlay(lastStrokePointRef.current);
       }
     }
   };
@@ -741,6 +839,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       drawingPointerTypeRef.current = null;
       lastStrokePointRef.current = null;
       globalDrawingEngine.endStroke();
+      clearLiveOverlay();
       try {
         if (canvasRef.current?.hasPointerCapture(e.pointerId)) {
           canvasRef.current.releasePointerCapture(e.pointerId);
@@ -834,7 +933,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`flex-1 w-full h-full relative overflow-hidden ${
-        isTauriApp ? "bg-transparent" : "bg-zinc-200 dark:bg-[#1e1e22]"
+        isMacNativeOverlay ? "bg-transparent" : "bg-zinc-200 dark:bg-[#1e1e22]"
       } select-none touch-none ${getContainerCursorClass()}`}
     >
       {/* Hidden SVG Filter definition for 100% mathematically exact sRGB isoluminant soft proofing */}
@@ -872,20 +971,20 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
         <div
           ref={artboardRef}
           className={`relative rounded-sm border ${
-            isTauriApp ? "border-transparent" : "border-zinc-700/80 shadow-md"
+            isMacNativeOverlay ? "border-transparent" : "border-zinc-700/80 shadow-md"
           } overflow-hidden`}
           style={{
             width: doc.width,
             height: doc.height,
             backgroundColor:
-              isTauriApp || doc.backgroundColor === "transparent"
+              isMacNativeOverlay || doc.backgroundColor === "transparent"
                 ? "transparent"
                 : doc.backgroundColor,
             filter: getCssFilterForSoftProof(softProofMode),
           }}
         >
           {/* Transparency checkerboard when transparent background in browser */}
-          {!isTauriApp && doc.backgroundColor === "transparent" && (
+          {!isMacNativeOverlay && doc.backgroundColor === "transparent" && (
             <div
               className="absolute inset-0 pointer-events-none opacity-20"
               style={{
@@ -919,15 +1018,29 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
               handlePointerUp(e);
             }}
             className={`block touch-none ${getCanvasCursorClass()} ${
-              isTauriApp ? "pointer-events-none" : ""
+              isMacNativeOverlay ? "pointer-events-none" : ""
             }`}
             style={{
               width: doc.width,
               height: doc.height,
               imageRendering: "auto",
-              display: isTauriApp ? "none" : "block",
+              display: isMacNativeOverlay ? "none" : "block",
             }}
           />
+
+          {/* Live Tip Connection & Stabilizer Reticle Overlay (Web / Non-macOS) */}
+          {!isMacNativeOverlay && (
+            <canvas
+              ref={liveOverlayCanvasRef}
+              width={doc.width}
+              height={doc.height}
+              className="absolute inset-0 pointer-events-none select-none z-10"
+              style={{
+                width: doc.width,
+                height: doc.height,
+              }}
+            />
+          )}
         </div>
       </div>
 

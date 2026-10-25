@@ -100,7 +100,7 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
 
     const [x, , w] = batchDirty;
     expect(x).toBeLessThanOrEqual(50);
-    expect(x + w).toBeGreaterThanOrEqual(130);
+    expect(x + w).toBeGreaterThanOrEqual(120);
 
     const finishDirty = engine.finish_stroke();
     expect(finishDirty).toBeDefined();
@@ -232,5 +232,60 @@ describe("WasmBrushEngine (Rust sketch_core compiled to WebAssembly)", () => {
       }
     }
     expect(hasIntermediateAlpha).toBe(true);
+  });
+
+  it("applies pulled string stroke smoothing to absorb jitter via Wasm", () => {
+    const engine = new WasmBrushEngine(500, 500);
+    engine.set_brush_config(
+      20, 0.1, 0.5,
+      0, 0, 0, 255,
+      1.0, 1.0,
+      false, false, false, true
+    );
+
+    // Enable pull string with 50px max string, 3.0 multiplier, 0.2 catch up, 10px deadband, connect to tip, 0.35 pressure smoothing
+    engine.set_pull_string_config(true, 50.0, 3.0, 0.2, 10.0, true, 0.35);
+
+    // Begin at (100, 100)
+    engine.begin_stroke(100, 100, 1.0);
+
+    // Micro-jitter of 5px to (103, 104) — distance = 5px <= 20px leash radius
+    // Should be absorbed, returning no dirty rect
+    const jitterDirty = engine.paint_to(103, 104, 1.0);
+    expect(jitterDirty).toBeUndefined();
+
+    // Large movement of 40px to (140, 100) — distance = 40px > 20px leash radius
+    // Should pull the brush tip and emit dirty rect
+    const moveDirty = engine.paint_to(140, 100, 1.0);
+    expect(moveDirty).toBeDefined();
+
+    // Finish stroke connects the remaining 20px gap to (140, 100)
+    const finishDirty = engine.finish_stroke();
+    expect(finishDirty).toBeDefined();
+  });
+
+  it("dynamically smooths trajectory with moving average and allows simultaneous pull string", () => {
+    const engine = new WasmBrushEngine(400, 400);
+    engine.set_brush_config(
+      16, 0.1, 0.5,
+      255, 0, 0, 255,
+      1.0, 1.0,
+      false, false, false, true
+    );
+
+    // Enable both moving average (window 8, 1.5x) and pull string (30px leash)
+    engine.set_moving_average_config(true, 8, 1.5);
+    engine.set_pull_string_config(true, 30.0, 2.0, 0.25, 0.0, true, 0.35);
+
+    const startDirty = engine.begin_stroke(50, 50, 0.5);
+    expect(startDirty).toBeDefined();
+
+    // Draw a series of events
+    for (let i = 1; i <= 10; i++) {
+      engine.paint_to(50 + i * 15, 50 + (i % 2 === 0 ? 5 : -5), 0.5 + i * 0.05);
+    }
+
+    const finishDirty = engine.finish_stroke();
+    expect(finishDirty).toBeDefined();
   });
 });

@@ -42,11 +42,36 @@ export type BlendMode =
   | "softLight"
   | "difference"
   | "exclusion"
+  | "add"
+  | "subtract"
+  | "divide"
+  | "linearBurn"
+  | "linearLight"
+  | "vividLight"
+  | "pinLight"
+  | "hardMix"
+  | "behind"
   | "hue"
   | "saturation"
   | "color"
   | "luminosity"
-  | "erase";
+  | "erase"
+  | "parallel";
+
+/**
+ * Texture modulation modes supported for brush grain texturing.
+ * Matches Krita's KisTextureOption modes.
+ */
+export type TextureBlendMode =
+  | "multiply"
+  | "subtract"
+  | "add"
+  | "screen"
+  | "overlay"
+  | "divide"
+  | "darken"
+  | "lighten"
+  | "parallel";
 
 /**
  * The raster target contract: the abstract 2D surface into which the brush engine stamps dabs.

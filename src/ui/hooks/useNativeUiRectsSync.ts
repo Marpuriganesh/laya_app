@@ -105,17 +105,61 @@ export function useNativeUiRectsSync(activePopover: PopoverType): void {
       syncUiRects();
       // Sync again after panel drag release finishes settling
       setTimeout(syncUiRects, 35);
+      setTimeout(syncUiRects, 120);
+    };
+
+    // Continuous rAF synchronization while dragging or resizing a window/slider (buttons pressed)
+    const handlePointerMove = (e: globalThis.PointerEvent) => {
+      if (e.buttons !== 0) {
+        // Ignore pointer moves that originate on the canvas or artboard (avoids IPC spam during drawing)
+        const target = e.target as HTMLElement | null;
+        if (target && !target.closest(NATIVE_UI_SELECTOR)) {
+          return;
+        }
+        if (rafId === null) {
+          rafId = requestAnimationFrame(() => {
+            syncUiRects();
+            rafId = null;
+          });
+        }
+      }
     };
 
     window.addEventListener("resize", immediateAndDebouncedSync);
     window.addEventListener("native-ui-sync", syncUiRects);
+    window.addEventListener("pointermove", handlePointerMove, { capture: true, passive: true });
     window.addEventListener("pointerup", handlePointerRelease, { capture: true });
     window.addEventListener("pointercancel", handlePointerRelease, { capture: true });
 
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && document?.body) {
+      resizeObserver = new ResizeObserver(() => {
+        immediateAndDebouncedSync();
+      });
+      resizeObserver.observe(document.body);
+      const elements = document.querySelectorAll(NATIVE_UI_SELECTOR);
+      elements.forEach((el) => resizeObserver?.observe(el));
+    }
+
     let observer: MutationObserver | null = null;
     if (typeof MutationObserver !== "undefined" && document?.body) {
-      observer = new MutationObserver(() => {
+      observer = new MutationObserver((mutations) => {
         immediateAndDebouncedSync();
+        // If new UI panels are mounted, attach ResizeObserver to them
+        if (resizeObserver) {
+          for (const m of mutations) {
+            for (let i = 0; i < m.addedNodes.length; i++) {
+              const node = m.addedNodes[i];
+              if (node instanceof Element) {
+                if (node.matches?.(NATIVE_UI_SELECTOR)) {
+                  resizeObserver.observe(node);
+                }
+                const subElements = node.querySelectorAll?.(NATIVE_UI_SELECTOR);
+                subElements?.forEach((sub) => resizeObserver?.observe(sub));
+              }
+            }
+          }
+        }
       });
       observer.observe(document.body, {
         childList: true,
@@ -132,8 +176,12 @@ export function useNativeUiRectsSync(activePopover: PopoverType): void {
       if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener("resize", immediateAndDebouncedSync);
       window.removeEventListener("native-ui-sync", syncUiRects);
+      window.removeEventListener("pointermove", handlePointerMove, { capture: true });
       window.removeEventListener("pointerup", handlePointerRelease, { capture: true });
       window.removeEventListener("pointercancel", handlePointerRelease, { capture: true });
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
       if (observer) {
         observer.disconnect();
       }

@@ -9,17 +9,48 @@ pub struct StrokeEvent {
     pub pressure: f32,
     /// Timestamp in seconds.
     pub time: f32,
+    /// Normalized stylus tilt along X axis (-1.0 to 1.0).
+    pub tilt_x: f32,
+    /// Normalized stylus tilt along Y axis (-1.0 to 1.0).
+    pub tilt_y: f32,
 }
 
 impl StrokeEvent {
-    /// Creates a new `StrokeEvent`.
+    /// Creates a new `StrokeEvent` with default zero tilt.
     pub fn new(x: f32, y: f32, pressure: f32, time: f32) -> Self {
         Self {
             x,
             y,
             pressure,
             time,
+            tilt_x: 0.0,
+            tilt_y: 0.0,
         }
+    }
+
+    /// Creates a new `StrokeEvent` with explicit stylus tilt values.
+    pub fn with_tilt(x: f32, y: f32, pressure: f32, time: f32, tilt_x: f32, tilt_y: f32) -> Self {
+        Self {
+            x,
+            y,
+            pressure,
+            time,
+            tilt_x,
+            tilt_y,
+        }
+    }
+
+    /// Returns the stylus tilt elevation angle in radians (0.0 = flat against surface, pi/2 = vertical).
+    #[inline]
+    pub fn tilt_elevation(&self) -> f32 {
+        let mag = (self.tilt_x * self.tilt_x + self.tilt_y * self.tilt_y).sqrt().min(1.0);
+        mag.acos().max(0.0)
+    }
+
+    /// Returns the stylus tilt azimuth / compass direction in radians (-pi to pi).
+    #[inline]
+    pub fn tilt_azimuth(&self) -> f32 {
+        self.tilt_y.atan2(self.tilt_x)
     }
 
     /// Linearly interpolate all properties between event A and event B by factor `t`.
@@ -29,6 +60,8 @@ impl StrokeEvent {
             y: a.y + t * (b.y - a.y),
             pressure: a.pressure + t * (b.pressure - a.pressure),
             time: a.time + t * (b.time - a.time),
+            tilt_x: a.tilt_x + t * (b.tilt_x - a.tilt_x),
+            tilt_y: a.tilt_y + t * (b.tilt_y - a.tilt_y),
         }
     }
 
@@ -39,6 +72,8 @@ impl StrokeEvent {
             y: 0.5 * (a.y + b.y),
             pressure: 0.5 * (a.pressure + b.pressure),
             time: 0.5 * (a.time + b.time),
+            tilt_x: 0.5 * (a.tilt_x + b.tilt_x),
+            tilt_y: 0.5 * (a.tilt_y + b.tilt_y),
         }
     }
 
@@ -56,6 +91,8 @@ impl StrokeEvent {
             y: w0 * m0.y + w1 * p1.y + w2 * m1.y,
             pressure: w0 * m0.pressure + w1 * p1.pressure + w2 * m1.pressure,
             time: w0 * m0.time + w1 * p1.time + w2 * m1.time,
+            tilt_x: w0 * m0.tilt_x + w1 * p1.tilt_x + w2 * m1.tilt_x,
+            tilt_y: w0 * m0.tilt_y + w1 * p1.tilt_y + w2 * m1.tilt_y,
         }
     }
 }
@@ -67,6 +104,8 @@ impl Default for StrokeEvent {
             y: 0.0,
             pressure: 1.0,
             time: 0.0,
+            tilt_x: 0.0,
+            tilt_y: 0.0,
         }
     }
 }

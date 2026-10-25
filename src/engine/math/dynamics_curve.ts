@@ -137,6 +137,82 @@ export function evaluateMonotonicCurve(points: readonly CurvePoint[], input: num
 }
 
 /**
+ * Evaluates a smooth natural cubic spline through control points.
+ * Natural boundary conditions: second derivative M[0] = 0 and M[n-1] = 0.
+ * Guarantees C^2 continuity (continuous position, first derivative, and curvature)
+ * giving Krita's signature fluid, responsive spline curve feel without stiff corners.
+ */
+export function evaluateNaturalSplineCurve(points: readonly CurvePoint[], input: number): number {
+  const sanitized = sanitizeCurvePoints(points);
+  const clampedX = clampScalar(input, 0.0, 1.0);
+  const n = sanitized.length;
+
+  if (n <= 1) return sanitized[0]?.y ?? clampedX;
+  if (n === 2) {
+    const h = sanitized[1].x - sanitized[0].x;
+    if (h < 1e-6) return sanitized[0].y;
+    const t = (clampedX - sanitized[0].x) / h;
+    return clampScalar(sanitized[0].y + t * (sanitized[1].y - sanitized[0].y), 0.0, 1.0);
+  }
+
+  // Find second derivatives M_i via tridiagonal Thomas algorithm
+  const cPrime = new Float32Array(n);
+  const dPrime = new Float32Array(n);
+
+  cPrime[0] = 0.0;
+  dPrime[0] = 0.0;
+
+  for (let i = 1; i < n - 1; i++) {
+    const hPrev = sanitized[i].x - sanitized[i - 1].x;
+    const hCurr = sanitized[i + 1].x - sanitized[i].x;
+    if (hPrev < 1e-6 || hCurr < 1e-6) continue;
+
+    const deltaPrev = (sanitized[i].y - sanitized[i - 1].y) / hPrev;
+    const deltaCurr = (sanitized[i + 1].y - sanitized[i].y) / hCurr;
+
+    const b = 2.0 * (hPrev + hCurr);
+    const a = hPrev;
+    const c = hCurr;
+    const rhs = 6.0 * (deltaCurr - deltaPrev);
+
+    const denom = b - a * cPrime[i - 1];
+    if (Math.abs(denom) > 1e-6) {
+      cPrime[i] = c / denom;
+      dPrime[i] = (rhs - a * dPrime[i - 1]) / denom;
+    }
+  }
+
+  const M = new Float32Array(n);
+  M[n - 1] = 0.0;
+  for (let i = n - 2; i >= 1; i--) {
+    M[i] = dPrime[i] - cPrime[i] * M[i + 1];
+  }
+
+  // Locate the interval [k, k+1] for clampedX
+  let k = 0;
+  for (let i = 0; i < n - 1; i++) {
+    if (clampedX >= sanitized[i].x && clampedX <= sanitized[i + 1].x) {
+      k = i;
+      break;
+    }
+  }
+
+  const intervalH = sanitized[k + 1].x - sanitized[k].x;
+  if (intervalH < 1e-6) return sanitized[k].y;
+
+  const t = (clampedX - sanitized[k].x) / intervalH;
+  const u = 1.0 - t;
+
+  const splineY =
+    u * sanitized[k].y +
+    t * sanitized[k + 1].y +
+    ((intervalH * intervalH) / 6.0) *
+      ((u * u * u - u) * M[k] + (t * t * t - t) * M[k + 1]);
+
+  return clampScalar(splineY, 0.0, 1.0);
+}
+
+/**
  * Precomputes an ultra-fast 256-sample lookup table (LUT) from curve points.
  * Hot rendering loops (Rust dab stamping, Wasm, shaders) query this in O(1) time:
  *   output = lut[(pressure * 255.0).round()]
@@ -145,7 +221,7 @@ export function generateCurveLookupTable256(points: readonly CurvePoint[]): Floa
   const lut = new Float32Array(256);
   for (let i = 0; i < 256; i++) {
     const inputRatio = i / 255.0;
-    lut[i] = evaluateMonotonicCurve(points, inputRatio);
+    lut[i] = evaluateNaturalSplineCurve(points, inputRatio);
   }
   return lut;
 }
@@ -181,7 +257,7 @@ export function generateSvgPathFromCurve(
 }
 
 // ============================================================================
-// Standard Response Curve Presets
+// Standard Response Curve Presets (Krita & Procreate)
 // ============================================================================
 
 /**
@@ -193,6 +269,103 @@ export function createLinearCurve(): CurvePoint[] {
     { x: 1.0, y: 1.0 },
   ];
 }
+
+/**
+ * Linear Down: inverted linear response.
+ */
+export function createLinearDownCurve(): CurvePoint[] {
+  return [
+    { x: 0.0, y: 1.0 },
+    { x: 1.0, y: 0.0 },
+  ];
+}
+
+/**
+ * S-Curve: subtle low end with rapid high-contrast midtones (Procreate standard).
+ */
+export function createSCurve(): CurvePoint[] {
+  return [
+    { x: 0.0, y: 0.0 },
+    { x: 0.35, y: 0.12 },
+    { x: 0.65, y: 0.88 },
+    { x: 1.0, y: 1.0 },
+  ];
+}
+
+/**
+ * Inverted S-Curve: inverted ease-in and ease-out.
+ */
+export function createInvertedSCurve(): CurvePoint[] {
+  return [
+    { x: 0.0, y: 1.0 },
+    { x: 0.35, y: 0.88 },
+    { x: 0.65, y: 0.12 },
+    { x: 1.0, y: 0.0 },
+  ];
+}
+
+/**
+ * U-Cup: concave response dipping to minimum in the center.
+ */
+export function createCupCurve(): CurvePoint[] {
+  return [
+    { x: 0.0, y: 1.0 },
+    { x: 0.5, y: 0.0 },
+    { x: 1.0, y: 1.0 },
+  ];
+}
+
+/**
+ * Arch / Inverted U: convex response peaking to maximum in the center (bell-curve).
+ */
+export function createArchCurve(): CurvePoint[] {
+  return [
+    { x: 0.0, y: 0.0 },
+    { x: 0.5, y: 1.0 },
+    { x: 1.0, y: 0.0 },
+  ];
+}
+
+/**
+ * Exponential (J-Curve): slow initial response, accelerating sharply at high pressure.
+ */
+export function createExponentialCurve(): CurvePoint[] {
+  return [
+    { x: 0.0, y: 0.0 },
+    { x: 0.70, y: 0.20 },
+    { x: 1.0, y: 1.0 },
+  ];
+}
+
+/**
+ * Fast Rise (L-Curve / Logarithmic): rapid initial onset, flattening near the top.
+ */
+export function createLogarithmicCurve(): CurvePoint[] {
+  return [
+    { x: 0.0, y: 0.0 },
+    { x: 0.30, y: 0.80 },
+    { x: 1.0, y: 1.0 },
+  ];
+}
+
+export interface CurvePresetDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly symbol: string;
+  readonly points: readonly CurvePoint[];
+  readonly description: string;
+}
+
+export const KRITA_CURVE_PRESETS: readonly CurvePresetDefinition[] = [
+  { id: "linear_up", name: "Linear Up", symbol: "/", points: createLinearCurve(), description: "Direct linear response" },
+  { id: "linear_down", name: "Linear Down", symbol: "\\", points: createLinearDownCurve(), description: "Inverted linear response" },
+  { id: "s_curve", name: "S-Curve", symbol: "S", points: createSCurve(), description: "Smooth ease in and out" },
+  { id: "inverted_s", name: "Inverted S", symbol: "Z", points: createInvertedSCurve(), description: "Inverted ease in and out" },
+  { id: "cup", name: "Cup", symbol: "U", points: createCupCurve(), description: "Concave response dipping in the middle" },
+  { id: "arch", name: "Arch", symbol: "∩", points: createArchCurve(), description: "Convex dome peaking in the middle" },
+  { id: "exponential", name: "Exponential", symbol: "J", points: createExponentialCurve(), description: "Slow start, rapid rise at end" },
+  { id: "logarithmic", name: "Fast Rise", symbol: "L", points: createLogarithmicCurve(), description: "Fast initial rise, flattening at end" },
+];
 
 /**
  * Soft Response Curve: high initial sensitivity (gentle touch yields broad dabs).
@@ -214,18 +387,6 @@ export function createFirmCurve(): CurvePoint[] {
     { x: 0.0, y: 0.0 },
     { x: 0.35, y: 0.12 },
     { x: 0.75, y: 0.50 },
-    { x: 1.0, y: 1.0 },
-  ];
-}
-
-/**
- * S-Curve: subtle low end with rapid high-contrast midtones (Procreate standard).
- */
-export function createSCurve(): CurvePoint[] {
-  return [
-    { x: 0.0, y: 0.0 },
-    { x: 0.30, y: 0.15 },
-    { x: 0.70, y: 0.85 },
     { x: 1.0, y: 1.0 },
   ];
 }

@@ -4,6 +4,35 @@
  * Aligned with Krita's .kpp XML schema and Photoshop ABR brush definitions.
  */
 
+import type { TextureBlendMode } from "./raster";
+export type { TextureBlendMode };
+
+/**
+ * Configuration for paper texture / canvas grain modulation (Krita KisTextureOption).
+ */
+export interface BrushTextureConfig {
+  readonly patternId: string;
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+  /** 8-bit grayscale luminance bytes [0..255] */
+  readonly bytes: Uint8Array | Uint8ClampedArray;
+  /** Texture scale multiplier (default: 1.0) */
+  readonly scale: number;
+  /** Texture blend mode (Multiply, Subtract, Add, Screen, etc.) */
+  readonly mode: TextureBlendMode;
+  /** Modulation strength [0.0..1.0] (default: 1.0) */
+  readonly strength: number;
+  /** Whether texture strength scales with stylus pressure */
+  readonly byPressure: boolean;
+  /** Whether texture luminance is inverted */
+  readonly invert?: boolean;
+  /** Brightness adjustment [-1.0..1.0] */
+  readonly brightness?: number;
+  /** Contrast adjustment [0.0..2.0] */
+  readonly contrast?: number;
+}
+
 /**
  * Sensor inputs that can drive brush dynamics parameters.
  * Directly mirrors Krita's <param name="..."> dynamics bindings.
@@ -12,11 +41,16 @@ export type SensorInputName =
   | "pressure"
   | "tiltX"
   | "tiltY"
+  | "tilt_elevation"
+  | "tilt_azimuth"
   | "speed"
+  | "velocity"
   | "rotation"
   | "random"
   | "distance"
-  | "fade";
+  | "fade"
+  | "stroke_direction"
+  | "initial_stroke_direction";
 
 /**
  * A single control point on a dynamics response curve.
@@ -65,6 +99,44 @@ export interface PredefinedBrushTip {
 export type BrushTip = GeneratedBrushTip | PredefinedBrushTip;
 
 /**
+ * Dynamic Pulled String (Leash / Lazy Mouse) configuration.
+ */
+export interface PullStringConfig {
+  readonly enabled: boolean;
+  readonly maxStringLength: number;        // Maximum leash length in pixels [10..250] (default: 60)
+  readonly velocityMultiplier: number;     // Velocity scaling multiplier [0..10] (default: 3.0)
+  readonly catchUpSpeed: number;           // Leash catch-up rate [0.05..1.0] (default: 0.20)
+  readonly baseDeadzone: number;           // Base deadzone radius in pixels (default: 0)
+  readonly connectToTipOnRelease: boolean; // Connect brush tip on release (default: true)
+  readonly pressureSmoothing: number;      // Pressure response smoothing [0..1] (default: 0.35)
+}
+
+export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
+  enabled: false,
+  maxStringLength: 36,
+  velocityMultiplier: 1.5,
+  catchUpSpeed: 0.35,
+  baseDeadzone: 0.0,
+  connectToTipOnRelease: true,
+  pressureSmoothing: 0.35,
+};
+
+/**
+ * Dynamic Moving Average stroke configuration for line art.
+ */
+export interface MovingAverageConfig {
+  readonly enabled: boolean;
+  readonly windowSize: number;           // Sample window count [2..24] (default: 8)
+  readonly velocityMultiplier: number;    // Velocity scaling multiplier [0..5.0] (default: 1.5)
+}
+
+export const DEFAULT_MOVING_AVERAGE_CONFIG: MovingAverageConfig = {
+  enabled: false,
+  windowSize: 8,
+  velocityMultiplier: 1.5,
+};
+
+/**
  * Selectable stroke smoothing algorithm.
  */
 export type SmoothingMode = "streamline" | "movingAverage" | "predictiveBezier" | "none";
@@ -74,6 +146,10 @@ export type SmoothingMode = "streamline" | "movingAverage" | "predictiveBezier" 
  */
 export interface StrokeSmoothingConfig {
   readonly mode: SmoothingMode;
+  /** Pulled String configuration */
+  readonly pullString?: PullStringConfig;
+  /** Dynamic Moving Average configuration */
+  readonly movingAverage?: MovingAverageConfig;
   /** Streamline: catch-up pull string radius in pixels (1 to 150, default 20) */
   readonly streamlineStringRadiusPx: number;
   /** Streamline: base smoothing factor at zero velocity (0.0 to 1.0, default 0.1) */
@@ -90,6 +166,8 @@ export interface StrokeSmoothingConfig {
 
 export const DEFAULT_STROKE_SMOOTHING_CONFIG: StrokeSmoothingConfig = {
   mode: "movingAverage",
+  movingAverage: DEFAULT_MOVING_AVERAGE_CONFIG,
+  pullString: DEFAULT_PULL_STRING_CONFIG,
   streamlineStringRadiusPx: 4.0,
   streamlineBaseSmoothing: 0.15,
   streamlineMaxSmoothing: 0.5,
@@ -97,6 +175,20 @@ export const DEFAULT_STROKE_SMOOTHING_CONFIG: StrokeSmoothingConfig = {
   movingAverageWindowSize: 3,
   predictiveLookAheadFrames: 2,
 };
+
+export type DynamicsCalculationMode = "multiply" | "add" | "max" | "min";
+
+export interface SensorDynamicsConfig {
+  readonly isEnabled: boolean;
+  readonly curvePoints: readonly DynamicsCurvePoint[];
+  readonly minOutput?: number;
+  readonly maxOutput?: number;
+}
+
+export interface MultiDynamicsConfig {
+  readonly calculationMode?: DynamicsCalculationMode;
+  readonly sensors: Partial<Record<SensorInputName, SensorDynamicsConfig>>;
+}
 
 /**
  * Parameter block for Krita's Pixel Brush engine (paintopid="pixelbrush").
@@ -116,6 +208,10 @@ export interface PixelBrushParameters {
   readonly flowDynamics: DynamicsMapping | null;
   readonly angleDynamics: DynamicsMapping | null;
   readonly scatterDynamics: DynamicsMapping | null;
+  /** Multi-sensor dynamics configurations per parameter */
+  readonly multiDynamics?: Partial<Record<string, MultiDynamicsConfig>>;
+  /** Optional paper grain texture modulation (Krita KisTextureOption) */
+  readonly grainTexture?: BrushTextureConfig | null;
 }
 
 /**

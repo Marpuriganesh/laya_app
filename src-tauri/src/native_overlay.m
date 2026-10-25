@@ -15,6 +15,9 @@ static NSRect g_ui_blocking_rects[MAX_UI_BLOCKING_RECTS];
 static uint32_t g_ui_blocking_count = 0;
 static BOOL g_is_dark_theme = YES;
 
+static CGImageRef g_cached_canvas_image = NULL;
+static BOOL g_canvas_image_needs_update = YES;
+
 static float g_pressure_lut[256];
 static BOOL g_has_pressure_lut = NO;
 
@@ -113,13 +116,42 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     return NSMakePoint(x, y);
 }
 
+- (NSPoint)windowPointFromCanvasPoint:(NSPoint)canvasPoint {
+    int32_t bufW = 0;
+    int32_t bufH = 0;
+    rust_overlay_get_pixels(&bufW, &bufH);
+
+    float scaleX = (g_artboard_rect.size.width > 0 && bufW > 0) ? ((float)bufW / g_artboard_rect.size.width) : 1.0f;
+    float scaleY = (g_artboard_rect.size.height > 0 && bufH > 0) ? ((float)bufH / g_artboard_rect.size.height) : 1.0f;
+
+    float localX = canvasPoint.x / scaleX;
+    float invY = canvasPoint.y / scaleY;
+    float localY = g_artboard_rect.size.height - invY;
+
+    float winX = g_artboard_rect.origin.x + localX;
+    float winY = g_artboard_rect.origin.y + localY;
+
+    return NSMakePoint(winX, winY);
+}
+
+- (NSRect)windowRectFromCanvasRectX:(int32_t)cx y:(int32_t)cy w:(int32_t)cw h:(int32_t)ch {
+    NSPoint p0 = [self windowPointFromCanvasPoint:NSMakePoint(cx, cy)];
+    NSPoint p1 = [self windowPointFromCanvasPoint:NSMakePoint(cx + cw, cy + ch)];
+    float minX = fminf(p0.x, p1.x);
+    float maxX = fmaxf(p0.x, p1.x);
+    float minY = fminf(p0.y, p1.y);
+    float maxY = fmaxf(p0.y, p1.y);
+    float pad = fmaxf(rust_overlay_get_diameter() * 2.5f, 48.0f);
+    return NSMakeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2.0f, (maxY - minY) + pad * 2.0f);
+}
+
 - (void)handleMouseDown:(NSEvent *)event {
     NSPoint loc = [event locationInWindow];
     g_cursor_x = (float)loc.x;
     g_cursor_y = (float)loc.y;
 
     NSPoint cp = [self canvasPointFromWindowPoint:loc];
-    BOOL isTablet = ([event subtype] == NSEventSubtypeTabletPoint);
+    BOOL isTablet = ([event type] == NSEventTypeTabletPoint) || ([event subtype] == NSEventSubtypeTabletPoint);
 
     float pressure = (float)[event pressure];
     if (!isTablet && pressure <= 0.001f) {
@@ -132,9 +164,19 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
 
     g_last_pressure = pressure;
     g_is_drawing = YES;
+    g_canvas_image_needs_update = YES;
 
-    rust_overlay_begin_stroke((float)cp.x, (float)cp.y, pressure);
-    [self setNeedsDisplay:YES];
+    NSPoint tilt = isTablet ? [event tilt] : NSMakePoint(0.0f, 0.0f);
+    float tiltX = (float)tilt.x;
+    float tiltY = (float)tilt.y;
+
+    int32_t dx = 0, dy = 0, dw = 0, dh = 0;
+    bool hasDirty = rust_overlay_begin_stroke_tilt_dirty((float)cp.x, (float)cp.y, pressure, tiltX, tiltY, &dx, &dy, &dw, &dh);
+    if (hasDirty && dw > 0 && dh > 0) {
+        [self setNeedsDisplayInRect:[self windowRectFromCanvasRectX:dx y:dy w:dw h:dh]];
+    } else {
+        [self setNeedsDisplay:YES];
+    }
 }
 
 - (void)handleMouseDragged:(NSEvent *)event {
@@ -143,7 +185,7 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     g_cursor_y = (float)loc.y;
 
     NSPoint cp = [self canvasPointFromWindowPoint:loc];
-    BOOL isTablet = ([event subtype] == NSEventSubtypeTabletPoint);
+    BOOL isTablet = ([event type] == NSEventTypeTabletPoint) || ([event subtype] == NSEventSubtypeTabletPoint);
 
     float pressure = (float)[event pressure];
     if (!isTablet && pressure <= 0.001f) {
@@ -155,34 +197,80 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     }
 
     g_last_pressure = pressure;
+    g_canvas_image_needs_update = YES;
 
-    rust_overlay_paint_event((float)cp.x, (float)cp.y, pressure);
-    [self setNeedsDisplay:YES];
+    NSPoint tilt = isTablet ? [event tilt] : NSMakePoint(0.0f, 0.0f);
+    float tiltX = (float)tilt.x;
+    float tiltY = (float)tilt.y;
+
+    int32_t dx = 0, dy = 0, dw = 0, dh = 0;
+    bool hasDirty = rust_overlay_paint_event_tilt_dirty((float)cp.x, (float)cp.y, pressure, tiltX, tiltY, &dx, &dy, &dw, &dh);
+    if (hasDirty && dw > 0 && dh > 0) {
+        [self setNeedsDisplayInRect:[self windowRectFromCanvasRectX:dx y:dy w:dw h:dh]];
+    } else {
+        [self setNeedsDisplay:YES];
+    }
 }
 
 - (void)handleMouseUp:(NSEvent *)event {
+    NSPoint loc = [event locationInWindow];
+    g_cursor_x = (float)loc.x;
+    g_cursor_y = (float)loc.y;
+
+    NSPoint cp = [self canvasPointFromWindowPoint:loc];
+    BOOL isTablet = ([event type] == NSEventTypeTabletPoint) || ([event subtype] == NSEventSubtypeTabletPoint);
+
+    float pressure = (float)[event pressure];
+    if (!isTablet && pressure <= 0.001f) {
+        pressure = (g_last_pressure > 0.001f) ? g_last_pressure : 1.0f;
+    }
+    if (g_has_pressure_lut) {
+        int idx = (int)fminf(255.0f, fmaxf(0.0f, roundf(pressure * 255.0f)));
+        pressure = g_pressure_lut[idx];
+    }
+    g_last_pressure = pressure;
+
+    NSPoint tilt = isTablet ? [event tilt] : NSMakePoint(0.0f, 0.0f);
+    float tiltX = (float)tilt.x;
+    float tiltY = (float)tilt.y;
+
+    int32_t dx = 0, dy = 0, dw = 0, dh = 0;
+    rust_overlay_paint_event_tilt_dirty((float)cp.x, (float)cp.y, pressure, tiltX, tiltY, &dx, &dy, &dw, &dh);
     g_is_drawing = NO;
-    rust_overlay_end_stroke();
+    int32_t ex = 0, ey = 0, ew = 0, eh = 0;
+    rust_overlay_end_stroke_dirty(&ex, &ey, &ew, &eh);
+    g_canvas_image_needs_update = YES;
     [self setNeedsDisplay:YES];
 }
 
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint loc = [event locationInWindow];
     if (NSPointInRect(loc, g_artboard_rect)) {
+        float oldX = g_cursor_x;
+        float oldY = g_cursor_y;
         g_cursor_x = (float)loc.x;
         g_cursor_y = (float)loc.y;
+
+        float r = rust_overlay_get_diameter() * 0.5f + 4.0f;
+        NSRect oldRect = NSMakeRect(oldX - r, oldY - r, r * 2.0f, r * 2.0f);
+        NSRect newRect = NSMakeRect(g_cursor_x - r, g_cursor_y - r, r * 2.0f, r * 2.0f);
+        [self setNeedsDisplayInRect:NSUnionRect(oldRect, newRect)];
     } else {
-        g_cursor_x = -100.0f;
-        g_cursor_y = -100.0f;
+        if (g_cursor_x >= 0 || g_cursor_y >= 0) {
+            float r = rust_overlay_get_diameter() * 0.5f + 4.0f;
+            NSRect oldRect = NSMakeRect(g_cursor_x - r, g_cursor_y - r, r * 2.0f, r * 2.0f);
+            g_cursor_x = -100.0f;
+            g_cursor_y = -100.0f;
+            [self setNeedsDisplayInRect:oldRect];
+        }
     }
-    [self setNeedsDisplay:YES];
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     if (!ctx) return;
 
-    // 1. Draw Native Workspace Backdrop with theme awareness
+    // 1. Draw Native Workspace Backdrop with theme awareness (clipped to dirty rect)
     if (g_is_dark_theme) {
         // Dark theme workbench (#18181b / zinc-900)
         [[NSColor colorWithCalibratedRed:24.0f/255.0f green:24.0f/255.0f blue:27.0f/255.0f alpha:1.0f] setFill];
@@ -190,68 +278,123 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
         // Light theme workbench (#e4e4e7 / zinc-200 for clean contrast against white paper)
         [[NSColor colorWithCalibratedRed:228.0f/255.0f green:228.0f/255.0f blue:231.0f/255.0f alpha:1.0f] setFill];
     }
-    NSRectFill(self.bounds);
+    NSRectFill(dirtyRect);
 
     if (g_artboard_rect.size.width <= 0 || g_artboard_rect.size.height <= 0) {
         return;
     }
 
-    // 2. Draw Artboard Paper Drop Shadow & Surface
-    CGContextSaveGState(ctx);
-    CGColorRef shadowColor = g_is_dark_theme
-        ? CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.40)
-        : CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.18);
-    CGContextSetShadowWithColor(ctx, CGSizeMake(0, -4), 14.0f, shadowColor);
-    CGColorRelease(shadowColor);
-
-    // Clean white paper background
-    [[NSColor whiteColor] setFill];
     NSBezierPath *paperPath = [NSBezierPath bezierPathWithRoundedRect:g_artboard_rect xRadius:2.0f yRadius:2.0f];
-    [paperPath fill];
-    CGContextRestoreGState(ctx); // Clear shadow state
-
-    // Artboard subtle border
-    if (g_is_dark_theme) {
-        [[NSColor colorWithCalibratedWhite:0.3f alpha:0.4f] setStroke];
-    } else {
-        [[NSColor colorWithCalibratedWhite:0.75f alpha:0.8f] setStroke];
-    }
-    [paperPath setLineWidth:1.0f];
-    [paperPath stroke];
-
-    // 3. Draw Rust Canvas Framebuffer onto Artboard Paper
     int32_t bufferWidth = 0;
     int32_t bufferHeight = 0;
-    const uint8_t *pixelBuffer = rust_overlay_get_pixels(&bufferWidth, &bufferHeight);
 
-    if (pixelBuffer && bufferWidth > 0 && bufferHeight > 0) {
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-        CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixelBuffer, bufferWidth * bufferHeight * 4, NULL);
-        if (provider) {
-            CGImageRef image = CGImageCreate(
-                bufferWidth,
-                bufferHeight,
-                8,
-                32,
-                bufferWidth * 4,
-                colorSpace,
-                kCGImageAlphaLast | kCGBitmapByteOrder32Big,
-                provider,
-                NULL,
-                NO,
-                kCGRenderingIntentDefault
-            );
+    // Only draw artboard and canvas if dirtyRect intersects the artboard
+    if (NSIntersectsRect(dirtyRect, g_artboard_rect)) {
+        // 2. Draw Artboard Paper Drop Shadow & Surface
+        CGContextSaveGState(ctx);
+        CGColorRef shadowColor = g_is_dark_theme
+            ? CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.40)
+            : CGColorCreateGenericRGB(0.0, 0.0, 0.0, 0.18);
+        CGContextSetShadowWithColor(ctx, CGSizeMake(0, -4), 14.0f, shadowColor);
+        CGColorRelease(shadowColor);
 
-            if (image) {
+        // Clean white paper background
+        [[NSColor whiteColor] setFill];
+        [paperPath fill];
+        CGContextRestoreGState(ctx); // Clear shadow state
+
+        // Artboard subtle border
+        if (g_is_dark_theme) {
+            [[NSColor colorWithCalibratedWhite:0.3f alpha:0.4f] setStroke];
+        } else {
+            [[NSColor colorWithCalibratedWhite:0.75f alpha:0.8f] setStroke];
+        }
+        [paperPath setLineWidth:1.0f];
+        [paperPath stroke];
+
+        // 3. Draw Rust Canvas Framebuffer onto Artboard Paper (cached CGImage)
+        if (g_canvas_image_needs_update || g_cached_canvas_image == NULL) {
+            if (g_cached_canvas_image) {
+                CGImageRelease(g_cached_canvas_image);
+                g_cached_canvas_image = NULL;
+            }
+
+            const uint8_t *pixelBuffer = rust_overlay_get_pixels(&bufferWidth, &bufferHeight);
+
+            if (pixelBuffer && bufferWidth > 0 && bufferHeight > 0) {
+                CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+                CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixelBuffer, bufferWidth * bufferHeight * 4, NULL);
+                if (provider) {
+                    g_cached_canvas_image = CGImageCreate(
+                        bufferWidth,
+                        bufferHeight,
+                        8,
+                        32,
+                        bufferWidth * 4,
+                        colorSpace,
+                        kCGImageAlphaLast | kCGBitmapByteOrder32Big,
+                        provider,
+                        NULL,
+                        NO,
+                        kCGRenderingIntentDefault
+                    );
+                    CGDataProviderRelease(provider);
+                }
+                CGColorSpaceRelease(colorSpace);
+            }
+            g_canvas_image_needs_update = NO;
+        }
+
+        if (g_cached_canvas_image) {
+            CGContextSaveGState(ctx);
+            [paperPath addClip]; // Clip strokes to artboard paper boundary
+            CGContextDrawImage(ctx, g_artboard_rect, g_cached_canvas_image);
+            CGContextRestoreGState(ctx);
+        }
+    }
+
+    // 3.5. Attach the last point to the brush tip with same pressure and size
+    if (g_is_drawing && g_cursor_x >= 0 && g_cursor_y >= 0) {
+        float tipX = 0, tipY = 0;
+        if (rust_overlay_get_smoothed_tip(&tipX, &tipY)) {
+            NSPoint tipWin = [self windowPointFromCanvasPoint:NSMakePoint(tipX, tipY)];
+            NSPoint curWin = NSMakePoint(g_cursor_x, g_cursor_y);
+
+            float dx = curWin.x - tipWin.x;
+            float dy = curWin.y - tipWin.y;
+            if (dx * dx + dy * dy > 0.25f) {
                 CGContextSaveGState(ctx);
                 [paperPath addClip]; // Clip strokes to artboard paper boundary
-                CGContextDrawImage(ctx, g_artboard_rect, image);
+
+                float diameter = rust_overlay_get_diameter();
+                bool sizeDyn = rust_overlay_get_size_dynamics();
+                float scaleX = (bufferWidth > 0 && g_artboard_rect.size.width > 0) ? (g_artboard_rect.size.width / (float)bufferWidth) : 1.0f;
+                float effectiveWidth = diameter * scaleX;
+                if (sizeDyn && g_last_pressure > 0.001f) {
+                    effectiveWidth *= fmaxf(0.08f, g_last_pressure);
+                }
+                effectiveWidth = fmaxf(effectiveWidth, 1.0f);
+
+                uint8_t rgba[4] = {24, 24, 27, 255};
+                rust_overlay_get_brush_color(rgba);
+                float r = rgba[0] / 255.0f;
+                float g = rgba[1] / 255.0f;
+                float b = rgba[2] / 255.0f;
+                float a = rgba[3] / 255.0f;
+
+                CGContextSetRGBStrokeColor(ctx, r, g, b, a);
+                CGContextSetLineWidth(ctx, effectiveWidth);
+                CGContextSetLineCap(ctx, kCGLineCapRound);
+                CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+                CGContextBeginPath(ctx);
+                CGContextMoveToPoint(ctx, tipWin.x, tipWin.y);
+                CGContextAddLineToPoint(ctx, curWin.x, curWin.y);
+                CGContextStrokePath(ctx);
+
                 CGContextRestoreGState(ctx);
-                CGImageRelease(image);
             }
-            CGDataProviderRelease(provider);
         }
-        CGColorSpaceRelease(colorSpace);
     }
 
     // 4. Draw Live Brush Reticle under the pen nib
@@ -291,6 +434,7 @@ void set_native_overlay_pan_active(bool is_panning) {
 }
 
 void trigger_native_overlay_repaint(void) {
+    g_canvas_image_needs_update = YES;
     if (g_active_workspace_view) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [g_active_workspace_view setNeedsDisplay:YES];
@@ -306,6 +450,7 @@ void update_canvas_artboard_rect(float x, float y, float width, float height) {
         float winH = (float)window.contentView.bounds.size.height;
         // Invert Y for Cocoa window coordinates (0 is bottom-left):
         g_artboard_rect = NSMakeRect(x, winH - y - height, width, height);
+        g_canvas_image_needs_update = YES;
         [g_active_workspace_view setNeedsDisplay:YES];
     };
 
@@ -360,6 +505,7 @@ void set_ui_blocking_rects(const float *rects, uint32_t count) {
 
 void set_workspace_theme(bool is_dark) {
     g_is_dark_theme = is_dark;
+    g_canvas_image_needs_update = YES;
     if (g_active_workspace_view) {
         void (^applyBlock)(void) = ^{
             [g_active_workspace_view setNeedsDisplay:YES];
@@ -438,12 +584,18 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                             return event;
                         }
 
+                        NSWindow *mainCanvasWin = [g_active_workspace_view window];
+                        // If event occurred in another window (e.g. detached secondary panel window),
+                        // never intercept as canvas drawing: always pass through to WebKit!
+                        if (!mainCanvasWin || [event window] != mainCanvasWin) {
+                            return event;
+                        }
+
                         NSPoint loc = [event locationInWindow];
-                        NSWindow *win = [g_active_workspace_view window];
-                        float winH = win ? (float)win.contentView.bounds.size.height : 900.0f;
+                        float winH = (float)mainCanvasWin.contentView.bounds.size.height;
 
                         // Hover tracking for brush reticle
-                        if ([event type] == NSEventTypeMouseMoved) {
+                        if ([event type] == NSEventTypeMouseMoved || (!g_is_drawing && [event type] == NSEventTypeTabletPoint)) {
                             if (NSPointInRect(loc, g_artboard_rect)) {
                                 g_cursor_x = (float)loc.x;
                                 g_cursor_y = (float)loc.y;
@@ -456,9 +608,9 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
                             return event; // Always pass hover to React UI
                         }
 
-                        // Active Drawing: If already drawing a stroke, drag and up must always continue/end the stroke
+                        // Active Drawing: If already drawing a stroke, drag/tablet movement and up must continue/end the stroke
                         if (g_is_drawing) {
-                            if ([event type] == NSEventTypeLeftMouseDragged) {
+                            if ([event type] == NSEventTypeLeftMouseDragged || [event type] == NSEventTypeTabletPoint) {
                                 [g_active_workspace_view handleMouseDragged:event];
                                 return nil;
                             } else if ([event type] == NSEventTypeLeftMouseUp) {

@@ -15,8 +15,14 @@ import {
   type DiscreteWheelConfig,
   DEFAULT_DISCRETE_WHEEL_CONFIG,
 } from "@/engine/color/discrete_wheel";
-import { createLinearCurve, type CurvePoint } from "@/engine/math/dynamics_curve";
-import { globalDrawingEngine } from "@/engine/drawing_engine_instance";
+import { type CurvePoint } from "@/engine/math/dynamics_curve";
+import {
+  type PullStringConfig,
+  type MovingAverageConfig,
+} from "@/types/brush";
+import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
+import { globalWasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
+import { useBrushStore } from "@/ui/stores/brush_store";
 
 export interface DocumentState {
   document: DocumentConfiguration;
@@ -26,6 +32,8 @@ export interface DocumentState {
   brushOpacity: number;
   transform: CanvasTransform;
   activePopover: PopoverType;
+  isBrushStudioOpen: boolean;
+  activePresetId: string;
   softProofMode: SoftProofMode;
   palmRejection: boolean;
   layerStack: LayerStack;
@@ -34,20 +42,30 @@ export interface DocumentState {
   wheelConfig: DiscreteWheelConfig;
   holdThresholdMs: number;
   globalPressureCurve: CurvePoint[];
+  movingAverageConfig: MovingAverageConfig;
+  pullStringConfig: PullStringConfig;
+  brushSettingsRevision: number;
+  bumpBrushSettingsRevision: () => void;
 
   setDocument: (document: DocumentConfiguration) => void;
   setActiveTool: (tool: ActiveTool) => void;
   setActiveColor: (color: string) => void;
+  brushBlendMode: string;
+  setBrushBlendMode: (mode: string) => void;
   setBrushSize: (size: number) => void;
   setBrushOpacity: (opacity: number) => void;
   setTransform: (transform: CanvasTransform) => void;
   setActivePopover: (popover: PopoverType) => void;
+  setBrushStudioOpen: (open: boolean) => void;
+  setActivePresetId: (id: string) => void;
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
   setPalmRejection: (enabled: boolean) => void;
   togglePalmRejection: () => void;
   setHoldThresholdMs: (ms: number) => void;
   setGlobalPressureCurve: (points: CurvePoint[]) => void;
+  setMovingAverageConfig: (config: Partial<MovingAverageConfig>) => void;
+  setPullStringConfig: (config: Partial<PullStringConfig>) => void;
   resetTransform: () => void;
   setLayerStack: (layerStack: LayerStack) => void;
   setGamutMask: (mask: Partial<GamutMaskConfiguration>) => void;
@@ -76,18 +94,33 @@ export function generateUniqueLayerId(): string {
   return `layer-${Date.now()}-${layerSequence++}`;
 }
 
+let pendingLayerOpacityRaf: number | null = null;
+const pendingLayerOpacities: Map<string, number> = new Map();
+
+function flushLayerOpacities() {
+  pendingLayerOpacityRaf = null;
+  pendingLayerOpacities.forEach((opacity, id) => {
+    globalRustBrushBridge.setLayerOpacity(id, opacity);
+    globalWasmBrushBridge.setLayerOpacity(id, opacity);
+  });
+  pendingLayerOpacities.clear();
+}
+
 export const useDocumentStore = create<DocumentState>((set) => ({
   document: createDefaultDocumentConfiguration(),
   activeTool: "brush",
   activeColor: "#1e1e1e",
-  brushSize: 32,
-  brushOpacity: 1.0,
+  brushBlendMode: useBrushStore.getState().brushBlendMode,
+  brushSize: useBrushStore.getState().brushSize,
+  brushOpacity: useBrushStore.getState().brushOpacity,
   transform: {
     scale: 0.8,
     panX: 0,
     panY: 0,
   },
   activePopover: "none",
+  isBrushStudioOpen: useBrushStore.getState().isBrushStudioOpen,
+  activePresetId: useBrushStore.getState().activePresetId,
   softProofMode: "none",
   palmRejection: true,
   layerStack: createDefaultLayerStack(),
@@ -118,33 +151,59 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }
     return 250;
   })(),
-  globalPressureCurve: (() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("sketch-global-pressure-curve");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length >= 2) {
-            setTimeout(() => globalDrawingEngine.setPressureCurve?.(parsed), 0);
-            return parsed;
-          }
-        }
-      } catch {}
-    }
-    return createLinearCurve();
-  })(),
+  globalPressureCurve: useBrushStore.getState().globalPressureCurve,
+  movingAverageConfig: useBrushStore.getState().movingAverageConfig,
+  pullStringConfig: useBrushStore.getState().pullStringConfig,
+  brushSettingsRevision: useBrushStore.getState().brushSettingsRevision,
+  bumpBrushSettingsRevision: () => {
+    useBrushStore.getState().bumpBrushSettingsRevision();
+    set((state) => ({ brushSettingsRevision: state.brushSettingsRevision + 1 }));
+  },
 
   setDocument: (document) => set({ document }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setActiveColor: (activeColor) => set({ activeColor }),
-  setBrushSize: (brushSize) => set({ brushSize }),
-  setBrushOpacity: (brushOpacity) => set({ brushOpacity }),
+  setBrushBlendMode: (mode: string) => {
+    useBrushStore.getState().setBrushBlendMode(mode);
+    set({ brushBlendMode: mode });
+  },
+  setBrushSize: (brushSize) => {
+    useBrushStore.getState().setBrushSize(brushSize);
+    set((state) => ({ brushSize, brushSettingsRevision: state.brushSettingsRevision + 1 }));
+  },
+  setBrushOpacity: (brushOpacity) => {
+    useBrushStore.getState().setBrushOpacity(brushOpacity);
+    set((state) => ({ brushOpacity, brushSettingsRevision: state.brushSettingsRevision + 1 }));
+  },
   setTransform: (transform) => set({ transform }),
-  setActivePopover: (activePopover) => set({ activePopover }),
+  setActivePopover: (activePopover) => {
+    if (activePopover === "brushSettings") {
+      useBrushStore.getState().setBrushStudioOpen(true);
+    }
+    set({
+      activePopover,
+      ...(activePopover === "brushSettings" ? { isBrushStudioOpen: true } : {}),
+    });
+  },
+  setBrushStudioOpen: (open) => {
+    useBrushStore.getState().setBrushStudioOpen(open);
+    set({ isBrushStudioOpen: open });
+  },
+  setActivePresetId: (activePresetId) => {
+    useBrushStore.getState().setActivePresetId(activePresetId);
+    set({ activePresetId });
+  },
   togglePopover: (popover) =>
-    set((state) => ({
-      activePopover: state.activePopover === popover ? "none" : popover,
-    })),
+    set((state) => {
+      const willOpenStudio = popover === "brushSettings" && state.activePopover !== "brushSettings";
+      if (popover === "brushSettings") {
+        useBrushStore.getState().setBrushStudioOpen(willOpenStudio);
+      }
+      return {
+        activePopover: state.activePopover === popover ? "none" : popover,
+        ...(popover === "brushSettings" ? { isBrushStudioOpen: willOpenStudio } : {}),
+      };
+    }),
   setSoftProofMode: (softProofMode) => set({ softProofMode }),
   setPalmRejection: (palmRejection) => set({ palmRejection }),
   togglePalmRejection: () => set((state) => ({ palmRejection: !state.palmRejection })),
@@ -158,13 +217,20 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     set({ holdThresholdMs: clamped });
   },
   setGlobalPressureCurve: (points: CurvePoint[]) => {
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("sketch-global-pressure-curve", JSON.stringify(points));
-      } catch {}
-    }
-    globalDrawingEngine.setPressureCurve?.(points);
+    useBrushStore.getState().setGlobalPressureCurve(points);
     set({ globalPressureCurve: points });
+  },
+  setMovingAverageConfig: (config: Partial<MovingAverageConfig>) => {
+    useBrushStore.getState().setMovingAverageConfig(config);
+    set((state) => ({
+      movingAverageConfig: { ...state.movingAverageConfig, ...config },
+    }));
+  },
+  setPullStringConfig: (config: Partial<PullStringConfig>) => {
+    useBrushStore.getState().setPullStringConfig(config);
+    set((state) => ({
+      pullStringConfig: { ...state.pullStringConfig, ...config },
+    }));
   },
   resetTransform: () =>
     set({
@@ -230,6 +296,10 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         locked: false,
       };
 
+      // Sync layer creation to Rust core
+      globalRustBrushBridge.addLayer(newLayer.id, newLayer.name);
+      globalWasmBrushBridge.addLayer(newLayer.id, newLayer.name);
+
       // Insert above current active layer or at the very top (index 0)
       const activeIndex = existingLayers.findIndex((l) => l.id === state.layerStack.activeLayerId);
       const insertIndex = activeIndex >= 0 ? activeIndex : 0;
@@ -255,6 +325,10 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       if (!target || target.isBackground || existingLayers.filter((l) => !l.isBackground).length <= 1) {
         return state;
       }
+
+      // Sync layer deletion to Rust core
+      globalRustBrushBridge.deleteLayer(id);
+      globalWasmBrushBridge.removeLayer(id);
 
       const nextLayers = existingLayers.filter((l) => l.id !== id);
       const nextActiveId =
@@ -285,6 +359,10 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         isBackground: false,
       };
 
+      // Sync layer duplication to Rust core
+      globalRustBrushBridge.duplicateLayer(target.id, clonedLayer.id, clonedLayer.name);
+      globalWasmBrushBridge.duplicateLayer(target.id, clonedLayer.id, clonedLayer.name);
+
       const nextLayers = [
         ...existingLayers.slice(0, targetIndex),
         clonedLayer,
@@ -299,23 +377,34 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       };
     }),
 
-  setActiveLayerId: (activeLayerId: string) =>
+  setActiveLayerId: (activeLayerId: string) => {
+    globalRustBrushBridge.setActiveLayer(activeLayerId);
+    globalWasmBrushBridge.setActiveLayer(activeLayerId);
     set((state) => ({
       layerStack: {
         ...state.layerStack,
         activeLayerId,
       },
-    })),
+    }));
+  },
 
   toggleLayerVisibility: (id: string) =>
-    set((state) => ({
-      layerStack: {
-        ...state.layerStack,
-        layers: state.layerStack.layers.map((l) =>
-          l.id === id ? { ...l, visible: !l.visible } : l
-        ),
-      },
-    })),
+    set((state) => {
+      const target = state.layerStack.layers.find((l) => l.id === id);
+      if (target) {
+        const nextVisible = !target.visible;
+        globalRustBrushBridge.setLayerVisibility(id, nextVisible);
+        globalWasmBrushBridge.setLayerVisibility(id, nextVisible);
+      }
+      return {
+        layerStack: {
+          ...state.layerStack,
+          layers: state.layerStack.layers.map((l) =>
+            l.id === id ? { ...l, visible: !l.visible } : l
+          ),
+        },
+      };
+    }),
 
   toggleLayerLock: (id: string) =>
     set((state) => ({
@@ -327,17 +416,31 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       },
     })),
 
-  setLayerOpacity: (id: string, opacity: number) =>
+  setLayerOpacity: (id: string, opacity: number) => {
+    const clamped = Math.max(0, Math.min(1, opacity));
     set((state) => ({
       layerStack: {
         ...state.layerStack,
         layers: state.layerStack.layers.map((l) =>
-          l.id === id ? { ...l, opacity: Math.max(0, Math.min(1, opacity)) } : l
+          l.id === id ? { ...l, opacity: clamped } : l
         ),
       },
-    })),
+    }));
 
-  setLayerBlendMode: (id: string, blendMode: LayerBlendMode) =>
+    // Debounce expensive multi-layer composite IPC across the Rust/Wasm bridge to animation frame cadence
+    pendingLayerOpacities.set(id, clamped);
+    if (typeof requestAnimationFrame !== "undefined") {
+      if (pendingLayerOpacityRaf === null) {
+        pendingLayerOpacityRaf = requestAnimationFrame(flushLayerOpacities);
+      }
+    } else {
+      flushLayerOpacities();
+    }
+  },
+
+  setLayerBlendMode: (id: string, blendMode: LayerBlendMode) => {
+    globalRustBrushBridge.setLayerBlendMode(id, blendMode);
+    globalWasmBrushBridge.setLayerBlendMode(id, blendMode);
     set((state) => ({
       layerStack: {
         ...state.layerStack,
@@ -345,7 +448,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
           l.id === id ? { ...l, blendMode } : l
         ),
       },
-    })),
+    }));
+  },
 
   renameLayer: (id: string, name: string) =>
     set((state) => ({
@@ -357,3 +461,18 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       },
     })),
 }));
+
+// Subscribe to dedicated brush store so useDocumentStore stays synchronized
+useBrushStore.subscribe((brushState) => {
+  useDocumentStore.setState({
+    brushSize: brushState.brushSize,
+    brushOpacity: brushState.brushOpacity,
+    brushBlendMode: brushState.brushBlendMode,
+    activePresetId: brushState.activePresetId,
+    brushSettingsRevision: brushState.brushSettingsRevision,
+    isBrushStudioOpen: brushState.isBrushStudioOpen,
+    movingAverageConfig: brushState.movingAverageConfig,
+    pullStringConfig: brushState.pullStringConfig,
+    globalPressureCurve: brushState.globalPressureCurve,
+  });
+});

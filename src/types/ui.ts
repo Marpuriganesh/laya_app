@@ -8,7 +8,7 @@ export interface ShortcutConfig {
   readonly holdThresholdMs: number;
 }
 
-export type PopoverType = "none" | "color" | "brushLibrary" | "newCanvas" | "actions" | "layers" | "brushSettings";
+export type PopoverType = "none" | "color" | "brushLibrary" | "newCanvas" | "actions" | "layers" | "brushSettings" | "adjustments";
 
 export type SoftProofMode = "none" | "grayscale-values" | "cmyk-print" | "gamut-warning";
 

@@ -1,4 +1,4 @@
-use sketch_core::{BrushConfig, CanvasView, PixelBrushEngine, StrokeEvent};
+use sketch_core::{BrushConfig, CanvasView, MovingAverageConfig, PixelBrushEngine, PullStringConfig, StrokeEvent};
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::sync::Mutex;
@@ -132,6 +132,9 @@ pub extern "C" fn rust_native_init(width: u32, height: u32) {
         is_erase: false,
         antialias: true,
         pressure_lut: None,
+        pull_string: PullStringConfig::default(),
+        moving_average: MovingAverageConfig::default(),
+        ..Default::default()
     };
     *guard = Some(NativeBrushSession {
         canvas: CanvasView::new(width, height),
