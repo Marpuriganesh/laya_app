@@ -89,8 +89,7 @@ pub fn run() {
         .setup(|app| {
             #[cfg(desktop)]
             {
-                let menu = tauri::menu::Menu::default(app.handle())?;
-                app.set_menu(menu)?;
+                let _ = app.remove_menu();
             }
 
             // Ensure OS application resource directories exist and default assets are seeded
