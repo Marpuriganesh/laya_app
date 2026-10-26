@@ -33,6 +33,8 @@ void trigger_native_overlay_repaint(void);
 void set_ui_blocking_rects(const float *rects, uint32_t count);
 void set_workspace_theme(bool is_dark);
 void set_native_pressure_lut(const float *lut, int count);
+void set_native_app_dock_icon(const uint8_t *bytes, uint32_t length);
+void set_native_app_dock_icons(const uint8_t *light_bytes, uint32_t light_len, const uint8_t *dark_bytes, uint32_t dark_len);
 
 #ifdef __cplusplus
 }

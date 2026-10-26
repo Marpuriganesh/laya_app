@@ -98,6 +98,18 @@ pub fn run() {
             // Attach High-Performance Native Canvas Overlay on macOS
             #[cfg(target_os = "macos")]
             {
+                // Programmatically set macOS Dock icon from embedded PNGs with dynamic Light/Dark mode switching
+                const ICON_BYTES: &[u8] = include_bytes!("../icons/icon.png");
+                const ICON_DARK_BYTES: &[u8] = include_bytes!("../icons/icon-dark.png");
+                unsafe {
+                    brush_commands::set_native_app_dock_icons(
+                        ICON_BYTES.as_ptr(),
+                        ICON_BYTES.len() as u32,
+                        ICON_DARK_BYTES.as_ptr(),
+                        ICON_DARK_BYTES.len() as u32,
+                    );
+                }
+
                 if let Some(main_window) = app.get_webview_window("main") {
                     if let (Ok(ns_win), Ok(ns_view)) = (main_window.ns_window(), main_window.ns_view()) {
                         unsafe {
