@@ -657,57 +657,27 @@ void setup_native_canvas_overlay(void *ns_window_ptr, void *ns_view_ptr) {
     }
 }
 
-static NSImage *g_light_dock_icon = nil;
-static NSImage *g_dark_dock_icon = nil;
-static id g_appearance_observer = nil;
-
-static void update_dock_icon_for_current_appearance(void) {
-    if (g_light_dock_icon == nil && g_dark_dock_icon == nil) return;
-
-    // Detect system appearance
-    NSAppearance *appearance = [NSApp effectiveAppearance];
-    BOOL isDark = NO;
-    if (appearance != nil) {
-        isDark = [appearance.name containsString:NSAppearanceNameDarkAqua] ||
-                 [appearance.name containsString:@"Dark"];
-    }
-
-    NSImage *targetImage = (isDark && g_dark_dock_icon != nil) ? g_dark_dock_icon : g_light_dock_icon;
-    if (targetImage != nil) {
-        [NSApp setApplicationIconImage:targetImage];
-    }
-}
-
-void set_native_app_dock_icons(const uint8_t *light_bytes, uint32_t light_len, const uint8_t *dark_bytes, uint32_t dark_len) {
-    @try {
-        if (light_bytes != NULL && light_len > 0) {
-            NSData *lightData = [NSData dataWithBytes:light_bytes length:light_len];
-            g_light_dock_icon = [[NSImage alloc] initWithData:lightData];
-        }
-        if (dark_bytes != NULL && dark_len > 0) {
-            NSData *darkData = [NSData dataWithBytes:dark_bytes length:dark_len];
-            g_dark_dock_icon = [[NSImage alloc] initWithData:darkData];
-        }
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            update_dock_icon_for_current_appearance();
-
-            // Observe system theme change notifications
-            if (g_appearance_observer == nil) {
-                g_appearance_observer = [[NSDistributedNotificationCenter defaultCenter]
-                    addObserverForName:@"AppleInterfaceThemeChangedNotification"
-                                object:nil
-                                 queue:[NSOperationQueue mainQueue]
-                            usingBlock:^(NSNotification * _Nonnull __unused note) {
-                                update_dock_icon_for_current_appearance();
-                            }];
-            }
-        });
-    } @catch (NSException *ex) {
-        NSLog(@"[NativeOverlay] set_native_app_dock_icons Exception: %@", ex);
-    }
-}
-
 void set_native_app_dock_icon(const uint8_t *bytes, uint32_t length) {
-    set_native_app_dock_icons(bytes, length, NULL, 0);
+    // If running as a bundled macOS application (.app), do NOT override the dock icon!
+    // macOS LaunchServices natively renders icon.icns, which enables macOS 15 Sequoia
+    // system icon styles (Clear / Liquid Glass, Tinted, and Default).
+    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+    if ([bundlePath hasSuffix:@".app"]) {
+        return;
+    }
+
+    // Only apply programmatic icon when running as an unbundled binary (e.g. `tauri dev`)
+    if (bytes != NULL && length > 0) {
+        @try {
+            NSData *data = [NSData dataWithBytes:bytes length:length];
+            NSImage *image = [[NSImage alloc] initWithData:data];
+            if (image != nil) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [NSApp setApplicationIconImage:image];
+                });
+            }
+        } @catch (NSException *ex) {
+            NSLog(@"[NativeOverlay] set_native_app_dock_icon Exception: %@", ex);
+        }
+    }
 }
