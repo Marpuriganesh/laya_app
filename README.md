@@ -2,7 +2,7 @@
 
 <img src="./src-tauri/icons/icon.png" alt="Laya App Icon" width="128" height="128" style="border-radius: 28px;" />
 
-# Laya <img src="./public/favicon.svg" alt="Laya" width="34" height="34" valign="middle" />  
+# Laya (लय) <img src="./public/favicon.svg" alt="Laya" width="34" height="34" valign="middle" /> 
 
 **A high-performance, local-first digital painting engine built in Rust, WebAssembly, and modern web technologies.**
 
