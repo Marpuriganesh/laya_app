@@ -315,7 +315,6 @@ unsafe extern "C" {
     pub fn set_workspace_theme(is_dark: bool);
     pub fn set_native_pressure_lut(lut: *const f32, count: i32);
     pub fn set_native_app_dock_icon(bytes: *const u8, length: u32);
-    pub fn set_native_app_dock_icons(light_bytes: *const u8, light_len: u32, dark_bytes: *const u8, dark_len: u32);
 }
 
 #[tauri::command]

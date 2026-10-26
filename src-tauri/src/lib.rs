@@ -87,7 +87,13 @@ pub fn run() {
     tauri::Builder::default()
         .manage(BrushEngineState::default())
         .setup(|app| {
-            #[cfg(desktop)]
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(menu) = tauri::menu::Menu::default(app.handle()) {
+                    let _ = app.set_menu(menu);
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
             {
                 let _ = app.remove_menu();
             }
@@ -98,16 +104,12 @@ pub fn run() {
             // Attach High-Performance Native Canvas Overlay on macOS
             #[cfg(target_os = "macos")]
             {
-                // Programmatically set macOS Dock icon from embedded PNGs with dynamic Light/Dark mode switching
+                // In dev mode (unbundled binary), ensure dock icon displays official icon.png
+                // In a bundled .app, set_native_app_dock_icon allows macOS LaunchServices
+                // to natively manage icon.icns and apply macOS 15 styles (Clear/Glass, Tinted, Default).
                 const ICON_BYTES: &[u8] = include_bytes!("../icons/icon.png");
-                const ICON_DARK_BYTES: &[u8] = include_bytes!("../icons/icon-dark.png");
                 unsafe {
-                    brush_commands::set_native_app_dock_icons(
-                        ICON_BYTES.as_ptr(),
-                        ICON_BYTES.len() as u32,
-                        ICON_DARK_BYTES.as_ptr(),
-                        ICON_DARK_BYTES.len() as u32,
-                    );
+                    brush_commands::set_native_app_dock_icon(ICON_BYTES.as_ptr(), ICON_BYTES.len() as u32);
                 }
 
                 if let Some(main_window) = app.get_webview_window("main") {
