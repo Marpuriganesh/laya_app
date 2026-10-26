@@ -8,6 +8,13 @@
                 "--attach",
                 "47800"
             ]
+        },
+        "vectorcraft": {
+            "type": "stdio",
+            "command": "/Users/ganeshmarpuri/bin/vectorcraft-cli",
+            "args": [
+                "mcp"
+            ]
         }
     }
 }
