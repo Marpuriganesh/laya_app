@@ -6,7 +6,7 @@
 
 **A high-performance, local-first digital painting engine built in Rust, WebAssembly, and modern web technologies.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Rust](https://img.shields.io/badge/Rust-2024%20Edition-orange?logo=rust)](https://www.rust-lang.org/)
 [![WebAssembly](https://img.shields.io/badge/WebAssembly-Wasm--Pack-654ff0?logo=webassembly)](https://webassembly.org/)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24c8db?logo=tauri)](https://tauri.app/)
@@ -204,4 +204,7 @@ We welcome early contributors, artists, and testers! Whether you want to improve
 
 ## 📄 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](./LICENSE) file for complete details.
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](./LICENSE) file for complete details.
+
+- **For Artists & Creators**: You are 100% free to use Laya for personal and commercial artwork, client projects, and published media with zero royalties or restrictions.
+- **For Developers & Companies**: You are free to study, modify, and build upon Laya. Under GPLv3, if you distribute modified versions or derivative applications, you must contribute those modifications back to the community under the same open-source GPLv3 license.

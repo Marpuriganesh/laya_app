@@ -3,7 +3,7 @@
   "description": "Laya — Open-source digital painting engine",
   "private": true,
   "version": "0.0.0",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
