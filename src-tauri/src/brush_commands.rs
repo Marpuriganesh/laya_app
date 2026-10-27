@@ -1149,6 +1149,9 @@ pub async fn rust_brush_clear(
 
 #[tauri::command]
 pub fn rust_brush_get_telemetry() -> Option<StrokeTelemetryDto> {
-    let guard = LAST_TELEMETRY.lock().unwrap();
-    guard.clone()
+    if let Ok(guard) = LAST_TELEMETRY.lock() {
+        guard.clone()
+    } else {
+        None
+    }
 }

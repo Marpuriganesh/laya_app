@@ -7,7 +7,6 @@
 import type {
   PointerTelemetry,
   TelemetryWaveformSample,
-  BrushTelemetrySource,
   StrokeTelemetryDto,
 } from "@/types/telemetry";
 import type { StrokePoint } from "@/types/stroke";
@@ -305,7 +304,18 @@ export class BrushTelemetryStore {
     this.lastEventTime = now;
     const estimatedHz = Math.min(1000, Math.round(1000 / dt));
 
-    const derived = calculateSphericalTilt(dto.tilt_x, dto.tilt_y);
+    const tiltXDeg = dto.tilt_x * 90.0;
+    const tiltYDeg = dto.tilt_y * 90.0;
+    const derived = calculateSphericalTilt(tiltXDeg, tiltYDeg);
+
+    let azDeg = (dto.tilt_azimuth * 180) / Math.PI;
+    if (azDeg < 0) azDeg += 360;
+    const altitude = typeof dto.tilt_elevation === "number" && !isNaN(dto.tilt_elevation)
+      ? Math.round(((dto.tilt_elevation * 180) / Math.PI) * 10) / 10
+      : derived.altitudeAngle;
+    const azimuth = typeof dto.tilt_azimuth === "number" && !isNaN(dto.tilt_azimuth)
+      ? Math.round(azDeg * 10) / 10
+      : derived.azimuthAngle;
 
     const telemetry: PointerTelemetry = {
       pointerId: 0,
@@ -320,10 +330,10 @@ export class BrushTelemetryStore {
       rawPressure: Math.round(dto.pressure * 1000) / 1000,
       normalizedPressure: Math.round(dto.pressure * 1000) / 1000,
       curvePressure: Math.round(dto.pressure * 1000) / 1000,
-      tiltX: Math.round(dto.tilt_x),
-      tiltY: Math.round(dto.tilt_y),
-      altitudeAngle: Math.round((dto.tilt_elevation * 180) / Math.PI * 10) / 10 || derived.altitudeAngle,
-      azimuthAngle: Math.round((dto.tilt_azimuth * 180) / Math.PI * 10) / 10 || derived.azimuthAngle,
+      tiltX: Math.round(tiltXDeg * 10) / 10,
+      tiltY: Math.round(tiltYDeg * 10) / 10,
+      altitudeAngle: altitude,
+      azimuthAngle: azimuth,
       twist: 0,
       speed: Math.round(dto.velocity),
       distance: Math.round(dto.total_distance * 10) / 10,

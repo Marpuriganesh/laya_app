@@ -15,6 +15,7 @@ import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
 import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
 import { BrushDebugPanel } from "@/ui/components/BrushDebugPanel";
+import { ErrorBoundary } from "@/ui/components/ErrorBoundary";
 import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
 import { ThemeProvider, useTheme } from "@/ui/theme/ThemeProvider";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
@@ -185,10 +186,12 @@ function MainWindow() {
         onCreateDocument={setDocument}
       />
 
-      <BrushDebugPanel
-        isOpen={isDebugPanelOpen}
-        onClose={() => setDebugPanelOpen(false)}
-      />
+      <ErrorBoundary fallbackTitle="Brush Debug Panel Error" onReset={() => setDebugPanelOpen(false)}>
+        <BrushDebugPanel
+          isOpen={isDebugPanelOpen}
+          onClose={() => setDebugPanelOpen(false)}
+        />
+      </ErrorBoundary>
     </div>
   );
 }

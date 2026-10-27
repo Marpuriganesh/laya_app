@@ -320,7 +320,8 @@ export const BrushDebugPanel: FC<BrushDebugPanelProps> = ({ isOpen, onClose }) =
   const tiltMagnitude = Math.max(0, Math.min(1.0, (90 - telemetry.altitudeAngle) / 90));
   const needleRadius = 24 * tiltMagnitude;
   const needleX = 28 + Math.cos(compassAngleRad) * needleRadius;
-  const needleY = 28 + Math.sin(compassAngleRad) * needleRadius;
+  // In SVG coordinates, Y=0 is top, so tilt towards top/north (-Y) subtracts sin
+  const needleY = 28 - Math.sin(compassAngleRad) * needleRadius;
 
   const headerActions = (
     <div className="flex items-center gap-1 mr-1">

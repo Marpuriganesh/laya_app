@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   BrushTelemetryStore,
   calculateSphericalTilt,
-  createDefaultPointerTelemetry,
 } from "../brush_telemetry_store";
 import type { StrokePoint } from "@/types/stroke";
 import type { PointerEventLike } from "@/input/pointer/pointer_event_normalizer";
