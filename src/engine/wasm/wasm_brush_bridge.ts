@@ -153,7 +153,8 @@ export class WasmBrushBridge {
     this.engine.set_moving_average_config(
       config.enabled,
       config.windowSize,
-      config.velocityMultiplier
+      config.velocityMultiplier,
+      config.weight ?? 0.0
     );
   }
 
@@ -169,7 +170,8 @@ export class WasmBrushBridge {
       config.catchUpSpeed,
       config.baseDeadzone,
       config.connectToTipOnRelease,
-      config.pressureSmoothing ?? 0.35
+      config.pressureSmoothing ?? 0.35,
+      config.weight ?? 0.0
     );
   }
 

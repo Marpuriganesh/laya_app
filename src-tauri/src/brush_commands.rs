@@ -55,6 +55,26 @@ impl Default for BrushEngineState {
 // Global reference for native Cocoa C FFI callbacks
 static GLOBAL_SESSION: Mutex<Option<BrushSession>> = Mutex::new(None);
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct StrokeTelemetryDto {
+    pub is_drawing: bool,
+    pub x: f32,
+    pub y: f32,
+    pub pressure: f32,
+    pub tilt_x: f32,
+    pub tilt_y: f32,
+    pub tilt_elevation: f32,
+    pub tilt_azimuth: f32,
+    pub velocity: f32,
+    pub total_distance: f32,
+    pub stroke_direction: f32,
+    pub initial_direction: f32,
+    pub event_count: u64,
+}
+
+static LAST_TELEMETRY: Mutex<Option<StrokeTelemetryDto>> = Mutex::new(None);
+static NATIVE_EVENT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 #[unsafe(no_mangle)]
 pub extern "C" fn rust_overlay_init(width: u32, height: u32) {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
@@ -128,6 +148,24 @@ pub extern "C" fn rust_overlay_begin_stroke_tilt_dirty(
     if let Some(session) = guard.as_mut() {
         session.stroke_start_time = std::time::Instant::now();
         let event = StrokeEvent::with_tilt(x, y, pressure, 0.0, tilt_x, tilt_y);
+        let count = NATIVE_EVENT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if let Ok(mut telem_guard) = LAST_TELEMETRY.lock() {
+            *telem_guard = Some(StrokeTelemetryDto {
+                is_drawing: true,
+                x,
+                y,
+                pressure,
+                tilt_x,
+                tilt_y,
+                tilt_elevation: event.tilt_elevation(),
+                tilt_azimuth: event.tilt_azimuth(),
+                velocity: 0.0,
+                total_distance: 0.0,
+                stroke_direction: 0.0,
+                initial_direction: 0.0,
+                event_count: count,
+            });
+        }
         if let Some(r) = session.engine.begin_stroke_on_stack(event, &mut session.stack) {
             if !out_x.is_null() && !out_y.is_null() && !out_w.is_null() && !out_h.is_null() {
                 unsafe {
@@ -177,6 +215,28 @@ pub extern "C" fn rust_overlay_paint_event_tilt_dirty(
     if let Some(session) = guard.as_mut() {
         let time_sec = session.stroke_start_time.elapsed().as_secs_f32();
         let event = StrokeEvent::with_tilt(x, y, pressure, time_sec, tilt_x, tilt_y);
+        let count = NATIVE_EVENT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let vel = session.engine.current_velocity;
+        let dist = session.engine.total_distance;
+        let dir = session.engine.current_stroke_direction;
+        let init_dir = session.engine.initial_stroke_direction;
+        if let Ok(mut telem_guard) = LAST_TELEMETRY.lock() {
+            *telem_guard = Some(StrokeTelemetryDto {
+                is_drawing: true,
+                x,
+                y,
+                pressure,
+                tilt_x,
+                tilt_y,
+                tilt_elevation: event.tilt_elevation(),
+                tilt_azimuth: event.tilt_azimuth(),
+                velocity: vel,
+                total_distance: dist,
+                stroke_direction: dir,
+                initial_direction: init_dir,
+                event_count: count,
+            });
+        }
         if let Some(r) = session.engine.paint_to_stack(event, &mut session.stack) {
             if !out_x.is_null() && !out_y.is_null() && !out_w.is_null() && !out_h.is_null() {
                 unsafe {
@@ -204,6 +264,11 @@ pub extern "C" fn rust_overlay_end_stroke_dirty(
     out_w: *mut i32,
     out_h: *mut i32,
 ) -> bool {
+    if let Ok(mut telem_guard) = LAST_TELEMETRY.lock() {
+        if let Some(t) = telem_guard.as_mut() {
+            t.is_drawing = false;
+        }
+    }
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
         let dirty = session.engine.finish_stroke_on_stack(&mut session.stack);
@@ -930,6 +995,7 @@ pub async fn rust_brush_set_moving_average_config(
     enabled: bool,
     window_size: u32,
     velocity_multiplier: f32,
+    weight: Option<f32>,
 ) -> Result<(), String> {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
@@ -937,6 +1003,7 @@ pub async fn rust_brush_set_moving_average_config(
             enabled,
             window_size: window_size as usize,
             velocity_multiplier,
+            weight: weight.unwrap_or(0.0),
         };
     }
     Ok(())
@@ -951,6 +1018,7 @@ pub async fn rust_brush_set_pull_string_config(
     base_deadzone: f32,
     connect_to_tip_on_release: bool,
     pressure_smoothing: Option<f32>,
+    weight: Option<f32>,
 ) -> Result<(), String> {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {
@@ -962,6 +1030,7 @@ pub async fn rust_brush_set_pull_string_config(
             base_deadzone,
             connect_to_tip_on_release,
             pressure_smoothing: pressure_smoothing.unwrap_or(0.35),
+            weight: weight.unwrap_or(0.0),
         };
     }
     Ok(())
@@ -1076,4 +1145,10 @@ pub async fn rust_brush_clear(
         trigger_native_overlay_repaint();
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn rust_brush_get_telemetry() -> Option<StrokeTelemetryDto> {
+    let guard = LAST_TELEMETRY.lock().unwrap();
+    guard.clone()
 }

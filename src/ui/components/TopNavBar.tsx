@@ -19,6 +19,7 @@ import {
   Moon,
   Keyboard,
   Spline,
+  Activity,
 } from "lucide-react";
 import { useTheme } from "@/ui/theme/ThemeProvider";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
@@ -75,6 +76,8 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     globalPressureCurve,
     setGlobalPressureCurve,
     brushBlendMode,
+    isDebugPanelOpen,
+    toggleDebugPanel,
   } = useDocumentStore();
   const navSwatchCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -106,7 +109,7 @@ export const TopNavBar: FC<TopNavBarProps> = ({
     triggerNativeUiRectsSync();
     const t = setTimeout(triggerNativeUiRectsSync, 50);
     return () => clearTimeout(t);
-  }, [isActionsMenuOpen, isCurveModalOpen, isProofSubmenuOpen]);
+  }, [isActionsMenuOpen, isCurveModalOpen, isProofSubmenuOpen, isDebugPanelOpen]);
 
   const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -280,6 +283,31 @@ export const TopNavBar: FC<TopNavBarProps> = ({
               >
                 <FilePlus2 className="w-3.5 h-3.5 text-zinc-400" />
                 <span>New Canvas...</span>
+              </button>
+
+              {/* Brush Input Debugger */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionsMenuOpen(false);
+                  toggleDebugPanel();
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/70 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left cursor-pointer"
+                title="Open real-time brush and stylus input debug HUD (Cmd/Ctrl+Shift+D)"
+              >
+                <div className="flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Brush Input Debugger</span>
+                </div>
+                <div
+                  className={`px-1.5 py-0.5 text-[9px] font-semibold rounded transition-colors ${
+                    isDebugPanelOpen
+                      ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border border-transparent"
+                  }`}
+                >
+                  {isDebugPanelOpen ? "ON" : "OFF"}
+                </div>
               </button>
 
               <div className="h-px bg-zinc-100 dark:bg-zinc-800/80 my-0.5" />

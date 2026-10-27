@@ -4,6 +4,8 @@
  * Controls real-time brush parameters, color palettes, layers, resources, and persistent settings.
  */
 
+import type { StrokeTelemetryDto } from "@/types/telemetry";
+
 export interface BrushConfigDto {
   diameter: number;
   spacing: number;
@@ -129,10 +131,21 @@ export class RustBrushBridge {
     }
   }
 
+  public async getTelemetry(): Promise<StrokeTelemetryDto | null> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
+    try {
+      const result = await this.invokeFn("rust_brush_get_telemetry");
+      return (result as StrokeTelemetryDto) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   public async setMovingAverageConfig(config: {
     enabled: boolean;
     windowSize: number;
     velocityMultiplier: number;
+    weight?: number;
   }): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
@@ -140,6 +153,7 @@ export class RustBrushBridge {
         enabled: config.enabled,
         windowSize: config.windowSize,
         velocityMultiplier: config.velocityMultiplier,
+        weight: config.weight ?? 0.0,
       });
     } catch (err) {
       console.warn("Failed to sync moving average config to Rust:", err);
@@ -154,6 +168,7 @@ export class RustBrushBridge {
     baseDeadzone: number;
     connectToTipOnRelease: boolean;
     pressureSmoothing?: number;
+    weight?: number;
   }): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
@@ -165,6 +180,7 @@ export class RustBrushBridge {
         baseDeadzone: config.baseDeadzone,
         connectToTipOnRelease: config.connectToTipOnRelease,
         pressureSmoothing: config.pressureSmoothing ?? 0.35,
+        weight: config.weight ?? 0.0,
       });
     } catch (err) {
       console.warn("Failed to sync pull string config to Rust:", err);

@@ -19,6 +19,9 @@ pub struct MovingAverageConfig {
     /// Velocity dynamic scaling multiplier [0.0..5.0] (default: 1.5).
     /// At higher speeds, increases the window up to `window_size`.
     pub velocity_multiplier: f32,
+    /// Inertial weight factor [0.0..1.0] (default: 0.0).
+    /// Preserves smoothing authority at low speeds so slow strokes maintain steady jitter filtering.
+    pub weight: f32,
 }
 
 impl Default for MovingAverageConfig {
@@ -27,6 +30,7 @@ impl Default for MovingAverageConfig {
             enabled: false,
             window_size: 8,
             velocity_multiplier: 1.5,
+            weight: 0.0,
         }
     }
 }
@@ -158,9 +162,12 @@ impl MovingAverageStabilizer {
         // 4. Smooth corner response:
         //    At very low velocity (stopping / sharp corners), blend smoothly towards raw point
         //    to maintain crisp apexes without changing discrete window length.
+        //    When weight > 0, preserves moving-average authority even at slow speeds to filter hand tremors.
+        let weight = config.weight.clamp(0.0, 1.0);
+        let min_responsiveness = (0.2 + 0.8 * weight).clamp(0.2, 1.0);
         let responsiveness = if config.velocity_multiplier > 0.0 {
             let speed_ratio = (velocity / 250.0) * config.velocity_multiplier;
-            speed_ratio.clamp(0.2, 1.0)
+            speed_ratio.clamp(min_responsiveness, 1.0)
         } else {
             1.0
         };
@@ -210,6 +217,7 @@ mod tests {
             enabled: true,
             window_size: 8,
             velocity_multiplier: 2.0,
+            ..Default::default()
         };
 
         let start = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
@@ -239,6 +247,7 @@ mod tests {
             enabled: true,
             window_size: 8,
             velocity_multiplier: 1.5,
+            ..Default::default()
         };
 
         // Fast sweep
@@ -261,6 +270,7 @@ mod tests {
             enabled: true,
             window_size: 8,
             velocity_multiplier: 1.5,
+            ..Default::default()
         };
 
         // Start stroke at 0.0
@@ -295,6 +305,7 @@ mod tests {
             enabled: true,
             window_size: 10,
             velocity_multiplier: 1.0,
+            ..Default::default()
         };
 
         stabilizer.begin_stroke(StrokeEvent::new(0.0, 0.0, 0.5, 0.0), &config);
@@ -304,5 +315,39 @@ mod tests {
         let finish = stabilizer.finish_stroke(&config);
         assert!(finish.is_none(), "Must not inject an artificial jump point on release");
         assert!(!stabilizer.is_active);
+    }
+
+    #[test]
+    fn test_moving_average_weight_preserves_smoothing_at_slow_speeds() {
+        let mut stabilizer_no_weight = MovingAverageStabilizer::new();
+        let config_no_weight = MovingAverageConfig {
+            enabled: true,
+            window_size: 10,
+            velocity_multiplier: 1.0,
+            weight: 0.0,
+        };
+
+        let mut stabilizer_weighted = MovingAverageStabilizer::new();
+        let config_weighted = MovingAverageConfig {
+            enabled: true,
+            window_size: 10,
+            velocity_multiplier: 1.0,
+            weight: 1.0, // 100% weight: 100% moving average even at zero velocity
+        };
+
+        stabilizer_no_weight.begin_stroke(StrokeEvent::new(0.0, 0.0, 1.0, 0.0), &config_no_weight);
+        stabilizer_weighted.begin_stroke(StrokeEvent::new(0.0, 0.0, 1.0, 0.0), &config_weighted);
+
+        // Slow movement: 0.5px jump with low velocity
+        let event = StrokeEvent::new(10.0, 0.0, 1.0, 0.1);
+        let out_no_weight = stabilizer_no_weight.add_event(event, &config_no_weight).unwrap();
+        let out_weighted = stabilizer_weighted.add_event(event, &config_weighted).unwrap();
+
+        // With no weight, responsiveness collapses to 0.2, leaving output close to raw event (10.0)
+        // With 1.0 weight, responsiveness stays at 1.0 (moving average is fully authoritative)
+        // avg_x will be (0*1 + 10*2.82) / (1 + 2.82) ~ 7.38
+        // out_no_weight = 10 + (7.38 - 10) * 0.2 = 9.47
+        // out_weighted = 10 + (7.38 - 10) * 1.0 = 7.38
+        assert!(out_weighted.x < out_no_weight.x, "Weighted stabilizer must pull more strongly towards moving average: weighted={}, unweighted={}", out_weighted.x, out_no_weight.x);
     }
 }

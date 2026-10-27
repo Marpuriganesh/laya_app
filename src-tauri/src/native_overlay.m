@@ -217,30 +217,13 @@ static BOOL is_point_in_ui(NSPoint loc, float winH) {
     g_cursor_x = (float)loc.x;
     g_cursor_y = (float)loc.y;
 
-    NSPoint cp = [self canvasPointFromWindowPoint:loc];
-    BOOL isTablet = ([event type] == NSEventTypeTabletPoint) || ([event subtype] == NSEventSubtypeTabletPoint);
-
-    float pressure = (float)[event pressure];
-    if (!isTablet && pressure <= 0.001f) {
-        pressure = (g_last_pressure > 0.001f) ? g_last_pressure : 1.0f;
+    if (g_is_drawing) {
+        g_is_drawing = NO;
+        int32_t ex = 0, ey = 0, ew = 0, eh = 0;
+        rust_overlay_end_stroke_dirty(&ex, &ey, &ew, &eh);
+        g_canvas_image_needs_update = YES;
+        [self setNeedsDisplay:YES];
     }
-    if (g_has_pressure_lut) {
-        int idx = (int)fminf(255.0f, fmaxf(0.0f, roundf(pressure * 255.0f)));
-        pressure = g_pressure_lut[idx];
-    }
-    g_last_pressure = pressure;
-
-    NSPoint tilt = isTablet ? [event tilt] : NSMakePoint(0.0f, 0.0f);
-    float tiltX = (float)tilt.x;
-    float tiltY = (float)tilt.y;
-
-    int32_t dx = 0, dy = 0, dw = 0, dh = 0;
-    rust_overlay_paint_event_tilt_dirty((float)cp.x, (float)cp.y, pressure, tiltX, tiltY, &dx, &dy, &dw, &dh);
-    g_is_drawing = NO;
-    int32_t ex = 0, ey = 0, ew = 0, eh = 0;
-    rust_overlay_end_stroke_dirty(&ex, &ey, &ew, &eh);
-    g_canvas_image_needs_update = YES;
-    [self setNeedsDisplay:YES];
 }
 
 - (void)mouseMoved:(NSEvent *)event {

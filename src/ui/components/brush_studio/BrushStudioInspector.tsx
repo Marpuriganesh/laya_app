@@ -550,6 +550,41 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
                   className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
                 />
               </div>
+
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-600 dark:text-zinc-400">Leash Weight (Slow Stroke Inertia)</span>
+                  <span className="font-mono text-zinc-500">{Math.round((pullString.weight ?? 0.0) * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1.0}
+                  step={0.02}
+                  value={pullString.weight ?? 0.0}
+                  onChange={(e) => onUpdateSmoothing({ pullString: { ...pullString, weight: Number(e.target.value) } })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="Maintains leash distance during slow stylus movements to filter hand tremors"
+                />
+                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                  Eliminates micro-wobbles during slow, deliberate stylus strokes.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-zinc-200/60 dark:border-white/5">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Catch-Up on Release</span>
+                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                    Snap leash to pen lift position (disabled to eliminate thin flick tails)
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={pullString.connectToTipOnRelease ?? false}
+                  onChange={(e) => onUpdateSmoothing({ pullString: { ...pullString, connectToTipOnRelease: e.target.checked } })}
+                  className="accent-blue-600 w-4 h-4 rounded cursor-pointer shrink-0"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -581,6 +616,26 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
                   onChange={(e) => onUpdateSmoothing({ movingAverage: { ...movingAverage, windowSize: Number(e.target.value) } })}
                   className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
                 />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-600 dark:text-zinc-400">Smoothing Weight (Low Speed Authority)</span>
+                  <span className="font-mono text-zinc-500">{Math.round((movingAverage.weight ?? 0.0) * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1.0}
+                  step={0.02}
+                  value={movingAverage.weight ?? 0.0}
+                  onChange={(e) => onUpdateSmoothing({ movingAverage: { ...movingAverage, weight: Number(e.target.value) } })}
+                  className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                  title="Preserves moving average filtering when slowing down or in tight corners"
+                />
+                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                  Guarantees continuous tremor reduction even at near-zero stylus speed.
+                </p>
               </div>
             </div>
           )}

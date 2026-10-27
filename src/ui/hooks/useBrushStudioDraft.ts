@@ -157,7 +157,7 @@ export function useBrushStudioDraft(
         velocityMultiplier: 1.5,
         catchUpSpeed: 0.35,
         baseDeadzone: 0.0,
-        connectToTipOnRelease: true,
+        connectToTipOnRelease: false,
         pressureSmoothing: 0.35,
       }),
       ...(activePreset.smoothingConfig.pullString ?? {}),

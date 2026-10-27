@@ -5,7 +5,7 @@ pub mod resources;
 pub mod settings;
 
 use brush_commands::{
-    rust_brush_clear, rust_brush_clear_dynamics, rust_brush_set_blend_mode, rust_brush_set_config,
+    rust_brush_clear, rust_brush_clear_dynamics, rust_brush_get_telemetry, rust_brush_set_blend_mode, rust_brush_set_config,
     rust_brush_set_dynamics_calculation_mode, rust_brush_set_dynamics_mapping, rust_brush_set_modal_open,
     rust_brush_set_moving_average_config, rust_brush_set_pan_active,
     rust_brush_set_pressure_lut, rust_brush_set_pull_string_config,
@@ -141,6 +141,7 @@ pub fn run() {
             rust_brush_set_pull_string_config,
             rust_brush_set_modal_open,
             rust_brush_clear,
+            rust_brush_get_telemetry,
             rust_update_artboard_rect,
             rust_brush_set_pan_active,
             rust_set_document_size,

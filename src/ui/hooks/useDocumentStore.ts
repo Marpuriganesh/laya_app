@@ -33,6 +33,7 @@ export interface DocumentState {
   transform: CanvasTransform;
   activePopover: PopoverType;
   isBrushStudioOpen: boolean;
+  isDebugPanelOpen: boolean;
   activePresetId: string;
   softProofMode: SoftProofMode;
   palmRejection: boolean;
@@ -57,6 +58,8 @@ export interface DocumentState {
   setTransform: (transform: CanvasTransform) => void;
   setActivePopover: (popover: PopoverType) => void;
   setBrushStudioOpen: (open: boolean) => void;
+  setDebugPanelOpen: (open: boolean) => void;
+  toggleDebugPanel: () => void;
   setActivePresetId: (id: string) => void;
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
@@ -128,6 +131,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   },
   activePopover: "none",
   isBrushStudioOpen: useBrushStore.getState().isBrushStudioOpen,
+  isDebugPanelOpen: false,
   activePresetId: useBrushStore.getState().activePresetId,
   softProofMode: "none",
   palmRejection: true,
@@ -197,6 +201,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     useBrushStore.getState().setBrushStudioOpen(open);
     set({ isBrushStudioOpen: open });
   },
+  setDebugPanelOpen: (open) => set({ isDebugPanelOpen: open }),
+  toggleDebugPanel: () => set((state) => ({ isDebugPanelOpen: !state.isDebugPanelOpen })),
   setActivePresetId: (activePresetId) => {
     useBrushStore.getState().setActivePresetId(activePresetId);
     set({ activePresetId });

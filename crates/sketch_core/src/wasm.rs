@@ -391,11 +391,13 @@ impl WasmBrushEngine {
         enabled: bool,
         window_size: u32,
         velocity_multiplier: f32,
+        weight: Option<f32>,
     ) {
         self.engine.config.moving_average = crate::stroke::MovingAverageConfig {
             enabled,
             window_size: window_size as usize,
             velocity_multiplier,
+            weight: weight.unwrap_or(0.0),
         };
     }
 
@@ -409,6 +411,7 @@ impl WasmBrushEngine {
         base_deadzone: f32,
         connect_to_tip_on_release: bool,
         pressure_smoothing: f32,
+        weight: Option<f32>,
     ) {
         self.engine.config.pull_string = crate::stroke::PullStringConfig {
             enabled,
@@ -418,6 +421,7 @@ impl WasmBrushEngine {
             base_deadzone,
             connect_to_tip_on_release,
             pressure_smoothing,
+            weight: weight.unwrap_or(0.0),
         };
     }
 

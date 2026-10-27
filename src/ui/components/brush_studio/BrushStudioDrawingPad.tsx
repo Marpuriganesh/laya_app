@@ -205,6 +205,14 @@ export const BrushStudioDrawingPad: FC<BrushStudioDrawingPadProps> = ({
     } else {
       bridge.clearBrushTexture();
     }
+
+    // 5. Stroke smoothing & weight configs
+    if (draftSmoothing.pullString) {
+      bridge.setPullStringConfig(draftSmoothing.pullString);
+    }
+    if (draftSmoothing.movingAverage) {
+      bridge.setMovingAverageConfig(draftSmoothing.movingAverage);
+    }
   }, [draftPreset, draftSmoothing, draftPressureCurve, resolvedTheme]);
 
   // Initialize and resize isolated Wasm engine

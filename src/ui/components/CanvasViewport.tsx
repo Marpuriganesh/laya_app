@@ -26,6 +26,7 @@ import { hexToRgb } from "@/engine/color/color_conversions";
 import type { StrokePoint } from "@/types/stroke";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
+import { globalBrushTelemetryStore } from "@/engine/telemetry/brush_telemetry_store";
 
 interface CanvasViewportProps {
   document: DocumentConfiguration;
@@ -673,6 +674,7 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     lastStrokePointRef.current = strokePoint;
     clearLiveOverlay();
     globalDrawingEngine.beginStroke(strokePoint);
+    globalBrushTelemetryStore.recordWebEvent(e.nativeEvent, strokePoint, true);
   };
 
   const handlePointerMove = (e: PointerEvent<HTMLDivElement | HTMLCanvasElement>) => {
@@ -741,7 +743,14 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     }
 
     // 4. Drawing via High-Speed Telemetry Pipeline
-    if (!isDrawingRef.current) return;
+    if (!isDrawingRef.current) {
+      if (!isPanningRef.current && !scrubbyZoomStateRef.current && e.target === canvasRef.current) {
+        const effectiveTransform = getEffectiveTransform();
+        const hoverPoint = normalizePointerEvent(e.nativeEvent, effectiveTransform);
+        globalBrushTelemetryStore.recordWebEvent(e.nativeEvent, hoverPoint, false);
+      }
+      return;
+    }
     if (e.pointerId !== drawingPointerIdRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -752,6 +761,10 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
       effectiveTransform,
       lastStrokePointRef.current
     );
+
+    if (points.length > 0) {
+      globalBrushTelemetryStore.recordWebEvent(e.nativeEvent, points[points.length - 1], true);
+    }
 
     if (globalDrawingEngine.extendStrokeBatch) {
       globalDrawingEngine.extendStrokeBatch(points);
@@ -834,6 +847,9 @@ export const CanvasViewport: FC<CanvasViewportProps> = ({
     }
 
     if (isDrawingRef.current && e.pointerId === drawingPointerIdRef.current) {
+      if (lastStrokePointRef.current) {
+        globalBrushTelemetryStore.recordWebEvent(e.nativeEvent, lastStrokePointRef.current, false);
+      }
       isDrawingRef.current = false;
       drawingPointerIdRef.current = null;
       drawingPointerTypeRef.current = null;

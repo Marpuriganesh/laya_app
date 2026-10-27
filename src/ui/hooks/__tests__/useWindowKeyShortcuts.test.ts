@@ -74,6 +74,26 @@ describe("handleWindowKeyEvent", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("triggers onToggleDebug on Cmd+Shift+D", () => {
+    const onToggleDebug = vi.fn();
+    const event = createMockEvent({ key: "d", metaKey: true, shiftKey: true });
+    const handled = handleWindowKeyEvent(event, { onToggleDebug });
+
+    expect(handled).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(onToggleDebug).toHaveBeenCalledTimes(1);
+  });
+
+  it("triggers onToggleDebug on Ctrl+Shift+D (Windows/Linux)", () => {
+    const onToggleDebug = vi.fn();
+    const event = createMockEvent({ key: "D", metaKey: false, ctrlKey: true, shiftKey: true });
+    const handled = handleWindowKeyEvent(event, { onToggleDebug });
+
+    expect(handled).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(onToggleDebug).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores unrelated keys even with Cmd modifier", () => {
     const onMinimize = vi.fn();
     const onClose = vi.fn();

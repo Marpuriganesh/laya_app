@@ -14,6 +14,7 @@ import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
 import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
+import { BrushDebugPanel } from "@/ui/components/BrushDebugPanel";
 import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
 import { ThemeProvider, useTheme } from "@/ui/theme/ThemeProvider";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
@@ -31,8 +32,6 @@ export default function App() {
 
 function MainWindow() {
   useDetachedWindowSync({ role: "main" });
-  useWindowKeyShortcuts({ enableMinimize: true });
-  useSpringLoadedToolShortcuts();
   const { resolvedTheme } = useTheme();
 
   const {
@@ -44,6 +43,7 @@ function MainWindow() {
     transform,
     activePopover,
     isBrushStudioOpen,
+    isDebugPanelOpen,
     softProofMode,
     detachedPanels,
     detachPanel,
@@ -55,9 +55,14 @@ function MainWindow() {
     setTransform,
     setActivePopover,
     setBrushStudioOpen,
+    setDebugPanelOpen,
+    toggleDebugPanel,
     togglePopover,
     setSoftProofMode,
   } = useDocumentStore();
+
+  useWindowKeyShortcuts({ enableMinimize: true, onToggleDebug: toggleDebugPanel });
+  useSpringLoadedToolShortcuts();
 
   useNativeUiRectsSync(activePopover);
 
@@ -178,6 +183,11 @@ function MainWindow() {
         isOpen={activePopover === "newCanvas"}
         onClose={handleClosePopover}
         onCreateDocument={setDocument}
+      />
+
+      <BrushDebugPanel
+        isOpen={isDebugPanelOpen}
+        onClose={() => setDebugPanelOpen(false)}
       />
     </div>
   );
