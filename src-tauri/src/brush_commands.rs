@@ -382,6 +382,58 @@ pub async fn rust_layer_add(id: String, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn rust_layer_add_vector(id: String, name: String) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.add_vector_layer(id, name)?;
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_vector_erase_at(
+    id: String,
+    x: f32,
+    y: f32,
+    radius: f32,
+    erase_to_intersection: bool,
+) -> Result<Option<[i32; 4]>, String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    let dirty = if let Some(session) = guard.as_mut() {
+        session.stack.vector_erase_at(&id, x, y, radius, erase_to_intersection)
+    } else {
+        None
+    };
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(dirty.map(|r| [r.x, r.y, r.w, r.h]))
+}
+
+#[tauri::command]
+pub async fn rust_layer_adjust_vector_line_width(
+    id: String,
+    factor: f32,
+) -> Result<Option<[i32; 4]>, String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    let dirty = if let Some(session) = guard.as_mut() {
+        session.stack.adjust_vector_line_width(&id, factor)
+    } else {
+        None
+    };
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(dirty.map(|r| [r.x, r.y, r.w, r.h]))
+}
+
+#[tauri::command]
 pub async fn rust_layer_delete(id: String) -> Result<(), String> {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {

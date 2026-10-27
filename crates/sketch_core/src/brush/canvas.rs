@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+use crate::brush::rect::Rect;
 
 /// Contiguous 1D RGBA8 pixel buffer with row stride.
 #[derive(Debug, Clone, PartialEq)]
@@ -60,6 +61,22 @@ impl CanvasView {
     pub fn clear(&mut self, color: [u8; 4]) {
         for pixel in self.buffer.chunks_exact_mut(4) {
             pixel.copy_from_slice(&color);
+        }
+    }
+
+    /// Clears a rectangular sub-region to the specified RGBA color.
+    pub fn clear_rect(&mut self, rect: &Rect, color: [u8; 4]) {
+        let x_start = rect.x.max(0) as u32;
+        let y_start = rect.y.max(0) as u32;
+        let x_end = ((rect.x + rect.w).max(0) as u32).min(self.width);
+        let y_end = ((rect.y + rect.h).max(0) as u32).min(self.height);
+
+        for y in y_start..y_end {
+            let row_offset = (y as usize) * self.stride;
+            for x in x_start..x_end {
+                let idx = row_offset + (x as usize * 4);
+                self.buffer[idx..idx + 4].copy_from_slice(&color);
+            }
         }
     }
 

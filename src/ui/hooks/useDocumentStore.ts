@@ -78,6 +78,7 @@ export interface DocumentState {
 
   // Layer Management Actions
   addLayer: () => void;
+  addVectorLayer: () => void;
   deleteLayer: (id: string) => void;
   duplicateLayer: (id: string) => void;
   setActiveLayerId: (id: string) => void;
@@ -92,6 +93,7 @@ export interface DocumentState {
   deleteLayerMask: (id: string) => void;
   toggleLayerMaskEnabled: (id: string) => void;
   setLayerEditTarget: (id: string, target: "pixels" | "mask") => void;
+  adjustVectorLineWidth: (id: string, factor: number) => void;
 }
 
 let layerSequence = 1;
@@ -306,8 +308,63 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       };
 
       // Sync layer creation to Rust core
-      globalRustBrushBridge.addLayer(newLayer.id, newLayer.name);
-      globalWasmBrushBridge.addLayer(newLayer.id, newLayer.name);
+      try {
+        globalRustBrushBridge.addLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Rust addLayer warning:", err);
+      }
+      try {
+        globalWasmBrushBridge.addLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Wasm addLayer warning:", err);
+      }
+
+      // Insert above current active layer or at the very top (index 0)
+      const activeIndex = existingLayers.findIndex((l) => l.id === state.layerStack.activeLayerId);
+      const insertIndex = activeIndex >= 0 ? activeIndex : 0;
+      const nextLayers = [
+        ...existingLayers.slice(0, insertIndex),
+        newLayer,
+        ...existingLayers.slice(insertIndex),
+      ];
+
+      return {
+        layerStack: {
+          layers: nextLayers,
+          activeLayerId: newLayerId,
+        },
+      };
+    }),
+
+  addVectorLayer: () =>
+    set((state) => {
+      const existingLayers = state.layerStack.layers;
+      const vectorCount = existingLayers.filter((l) => l.kind === "vector").length + 1;
+      const newLayerId = generateUniqueLayerId();
+      const newLayer: LayerItem = {
+        id: newLayerId,
+        name: `Vector ${vectorCount}`,
+        visible: true,
+        opacity: 1.0,
+        blendMode: "normal",
+        locked: false,
+        alphaLocked: false,
+        isClipped: false,
+        kind: "vector",
+        activeTarget: "pixels",
+      };
+
+      // Sync vector layer creation to Rust core
+      try {
+        globalRustBrushBridge.addVectorLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Rust addVectorLayer warning:", err);
+      }
+      try {
+        globalWasmBrushBridge.addVectorLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Wasm addVectorLayer warning:", err);
+      }
 
       // Insert above current active layer or at the very top (index 0)
       const activeIndex = existingLayers.findIndex((l) => l.id === state.layerStack.activeLayerId);
@@ -547,6 +604,11 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       });
       return { layerStack: { ...state.layerStack, layers: nextLayers } };
     }),
+
+  adjustVectorLineWidth: (id: string, factor: number) => {
+    void globalRustBrushBridge.adjustVectorLineWidth(id, factor);
+    globalWasmBrushBridge.adjustVectorLineWidth(id, factor);
+  },
 }));
 
 // Subscribe to dedicated brush store so useDocumentStore stays synchronized

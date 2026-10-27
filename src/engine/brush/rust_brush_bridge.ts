@@ -256,6 +256,54 @@ export class RustBrushBridge {
     }
   }
 
+  public async addVectorLayer(id: string, name: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_add_vector", { id, name });
+    } catch (err) {
+      console.warn("Failed to add vector layer in Rust:", err);
+    }
+  }
+
+  public async vectorEraseAt(
+    id: string,
+    x: number,
+    y: number,
+    radius: number,
+    eraseToIntersection: boolean
+  ): Promise<[number, number, number, number] | null> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
+    try {
+      return await this.invokeFn<[number, number, number, number] | null>("rust_layer_vector_erase_at", {
+        id,
+        x,
+        y,
+        radius,
+        eraseToIntersection,
+        erase_to_intersection: eraseToIntersection,
+      });
+    } catch (err) {
+      console.warn("Failed to erase vector at in Rust:", err);
+      return null;
+    }
+  }
+
+  public async adjustVectorLineWidth(
+    id: string,
+    factor: number
+  ): Promise<[number, number, number, number] | null> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
+    try {
+      return await this.invokeFn<[number, number, number, number] | null>("rust_layer_adjust_vector_line_width", {
+        id,
+        factor,
+      });
+    } catch (err) {
+      console.warn("Failed to adjust vector line width in Rust:", err);
+      return null;
+    }
+  }
+
   public async deleteLayer(id: string): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

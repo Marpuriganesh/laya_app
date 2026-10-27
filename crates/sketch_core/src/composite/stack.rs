@@ -298,6 +298,104 @@ impl CompositeStack {
         }
     }
 
+    /// Adds a new transparent Vector Layer to the top of the stack and makes it active.
+    pub fn add_vector_layer(&mut self, id: String, name: String) -> Result<(), String> {
+        if self.layers.iter().any(|l| l.id == id) {
+            return Err(format!("Layer with id '{}' already exists", id));
+        }
+        let layer = Layer::new_vector(id.clone(), name, self.width, self.height);
+        self.layers.push(layer);
+        self.active_layer_id = id;
+        self.composite_all();
+        Ok(())
+    }
+
+    /// Returns true if the specified layer is a Vector Layer.
+    pub fn is_vector_layer(&self, id: &str) -> bool {
+        self.get_layer(id)
+            .map_or(false, |l| l.kind == crate::composite::LayerKind::Vector)
+    }
+
+    /// Returns the number of vector strokes on the specified layer.
+    pub fn get_vector_stroke_count(&self, id: &str) -> usize {
+        self.get_layer(id)
+            .and_then(|l| l.vector_data.as_ref())
+            .map_or(0, |v| v.stroke_count())
+    }
+
+    /// Erases vector strokes touching (x, y) within radius on the specified layer.
+    /// If `erase_to_intersection` is true, trims the stroke up to crossing intersections (CSP style).
+    /// If false, deletes the whole stroke object.
+    pub fn vector_erase_at(
+        &mut self,
+        id: &str,
+        x: f32,
+        y: f32,
+        radius: f32,
+        erase_to_intersection: bool,
+    ) -> Option<Rect> {
+        let dirty = {
+            let layer = self.get_layer_mut(id)?;
+            if layer.locked || !layer.visible {
+                return None;
+            }
+            let vdata = layer.vector_data.as_mut()?;
+            vdata.erase_at(x, y, radius, erase_to_intersection)?
+        };
+
+        // Redraw remaining vector strokes onto layer buffer
+        self.rerender_vector_layer(id);
+
+        // Re-composite dirty rect into display framebuffer
+        self.composite_rect(&dirty);
+        Some(dirty)
+    }
+
+    /// Re-renders all vector strokes on a Vector Layer into its pixel buffer.
+    pub fn rerender_vector_layer(&mut self, id: &str) {
+        if let Some(layer) = self.get_layer_mut(id) {
+            if layer.kind != crate::composite::LayerKind::Vector {
+                return;
+            }
+            layer.clear([0, 0, 0, 0]);
+            if let Some(ref vdata) = layer.vector_data {
+                let strokes = vdata.strokes.clone();
+                for stroke in &strokes {
+                    if stroke.events.is_empty() {
+                        continue;
+                    }
+                    let mut config = crate::brush::BrushConfig::default();
+                    config.color = stroke.color;
+                    config.diameter = stroke.base_diameter;
+                    config.opacity = stroke.opacity;
+                    config.blend_mode = stroke.blend_mode;
+                    let mut engine = crate::brush::engine::PixelBrushEngine::new(config);
+                    engine.begin_stroke(stroke.events[0], &mut layer.buffer);
+                    for &event in &stroke.events[1..] {
+                        engine.paint_to(event, &mut layer.buffer);
+                    }
+                    engine.finish_stroke(&mut layer.buffer);
+                }
+            }
+        }
+    }
+
+    /// Adjusts line width of all strokes on a vector layer by a multiplier factor.
+    pub fn adjust_vector_line_width(&mut self, id: &str, factor: f32) -> Option<Rect> {
+        let dirty = {
+            let layer = self.get_layer_mut(id)?;
+            if layer.locked || !layer.visible {
+                return None;
+            }
+            let vdata = layer.vector_data.as_mut()?;
+            vdata.adjust_line_width(None, factor)?
+        };
+
+        self.rerender_vector_layer(id);
+        self.composite_all();
+        Some(dirty)
+    }
+
     /// Clears the pixels of the active layer to transparent `[0, 0, 0, 0]`.
     pub fn clear_active_layer(&mut self) {
         if let Some(l) = self.active_layer_mut() {
@@ -685,5 +783,34 @@ mod tests {
             stack.display_framebuffer.get_pixel(1, 1),
             Some([255, 255, 255, 255])
         );
+    }
+
+    #[test]
+    fn test_vector_layer_lifecycle_and_erase() {
+        let mut stack = CompositeStack::with_background(50, 50, [255, 255, 255, 255], true);
+        stack.add_vector_layer("vec-1".into(), "Vector Art".into()).unwrap();
+        assert!(stack.is_vector_layer("vec-1"));
+        assert_eq!(stack.get_vector_stroke_count("vec-1"), 0);
+
+        // Add a vector stroke directly
+        let stroke = crate::vector::VectorStroke::new(
+            "s1".into(),
+            vec![
+                crate::stroke::StrokeEvent::new(10.0, 10.0, 1.0, 0.0),
+                crate::stroke::StrokeEvent::new(40.0, 10.0, 1.0, 0.1),
+            ],
+            [0, 0, 0, 255],
+            6.0,
+            1.0,
+            ColorBlendMode::Normal,
+        );
+        let layer = stack.get_layer_mut("vec-1").unwrap();
+        layer.vector_data.as_mut().unwrap().add_stroke(stroke);
+        assert_eq!(stack.get_vector_stroke_count("vec-1"), 1);
+
+        // Erase the stroke touching (25, 10)
+        let dirty = stack.vector_erase_at("vec-1", 25.0, 10.0, 3.0, false);
+        assert!(dirty.is_some());
+        assert_eq!(stack.get_vector_stroke_count("vec-1"), 0);
     }
 }

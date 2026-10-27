@@ -202,6 +202,57 @@ export class WasmBrushBridge {
     this.engine.add_layer(id, name);
   }
 
+  public addVectorLayer(id: string, name: string): void {
+    if (!this.engine || typeof (this.engine as any).add_vector_layer !== "function") return;
+    try {
+      this.engine.add_vector_layer(id, name);
+    } catch (err) {
+      console.warn("Failed to add vector layer in Wasm:", err);
+    }
+  }
+
+  public isVectorLayer(id: string): boolean {
+    if (!this.engine || typeof (this.engine as any).is_vector_layer !== "function") return false;
+    try {
+      return this.engine.is_vector_layer(id);
+    } catch {
+      return false;
+    }
+  }
+
+  public getVectorStrokeCount(id: string): number {
+    if (!this.engine || typeof (this.engine as any).get_vector_stroke_count !== "function") return 0;
+    try {
+      return this.engine.get_vector_stroke_count(id);
+    } catch {
+      return 0;
+    }
+  }
+
+  public vectorEraseAt(
+    id: string,
+    x: number,
+    y: number,
+    radius: number,
+    eraseToIntersection: boolean
+  ): Int32Array | null {
+    if (!this.engine || typeof (this.engine as any).vector_erase_at !== "function") return null;
+    try {
+      return this.engine.vector_erase_at(id, x, y, radius, eraseToIntersection) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  public adjustVectorLineWidth(id: string, factor: number): Int32Array | null {
+    if (!this.engine || typeof (this.engine as any).adjust_vector_line_width !== "function") return null;
+    try {
+      return this.engine.adjust_vector_line_width(id, factor) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   public removeLayer(id: string): void {
     if (!this.engine) return;
     this.engine.remove_layer(id);

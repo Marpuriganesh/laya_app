@@ -21,6 +21,7 @@ pub struct PixelBrushEngine {
     pub tip_rasterizer: crate::brush::tip::BrushTipRasterizer,
     pub blitter: CanvasBlitter,
     pub alpha_locked: bool,
+    pub active_vector_events: Vec<StrokeEvent>,
     pub current_velocity: f32,
     pub total_distance: f32,
     pub current_stroke_direction: f32,
@@ -42,6 +43,7 @@ impl PixelBrushEngine {
             tip_rasterizer: crate::brush::tip::BrushTipRasterizer::new(),
             blitter: CanvasBlitter::new(),
             alpha_locked: false,
+            active_vector_events: Vec::with_capacity(512),
             current_velocity: 0.0,
             total_distance: 0.0,
             current_stroke_direction: 0.0,
@@ -233,9 +235,13 @@ impl PixelBrushEngine {
         start_event: StrokeEvent,
         stack: &mut CompositeStack,
     ) -> Option<Rect> {
+        self.active_vector_events.clear();
         let dirty = if let Some(active_layer) = stack.active_layer_mut() {
             if active_layer.locked || !active_layer.visible {
                 return None;
+            }
+            if active_layer.kind == crate::composite::LayerKind::Vector {
+                self.active_vector_events.push(start_event);
             }
             if active_layer.edit_target == EditTarget::Mask {
                 if let Some(ref mut mask) = active_layer.mask {
@@ -270,6 +276,9 @@ impl PixelBrushEngine {
             if active_layer.locked || !active_layer.visible {
                 return None;
             }
+            if active_layer.kind == crate::composite::LayerKind::Vector {
+                self.active_vector_events.push(next_event);
+            }
             if active_layer.edit_target == EditTarget::Mask {
                 if let Some(ref mut mask) = active_layer.mask {
                     if !mask.enabled {
@@ -297,9 +306,10 @@ impl PixelBrushEngine {
     pub fn finish_stroke_on_stack(&mut self, stack: &mut CompositeStack) -> Option<Rect> {
         let dirty = if let Some(active_layer) = stack.active_layer_mut() {
             if active_layer.locked || !active_layer.visible {
+                self.active_vector_events.clear();
                 return None;
             }
-            if active_layer.edit_target == EditTarget::Mask {
+            let res = if active_layer.edit_target == EditTarget::Mask {
                 if let Some(ref mut mask) = active_layer.mask {
                     self.finish_stroke(&mut mask.buffer)
                 } else {
@@ -307,8 +317,26 @@ impl PixelBrushEngine {
                 }
             } else {
                 self.finish_stroke(&mut active_layer.buffer)
+            };
+
+            // If drawing on a Vector Layer, record the completed stroke
+            if active_layer.kind == crate::composite::LayerKind::Vector && self.active_vector_events.len() >= 2 {
+                let vstroke = crate::vector::VectorStroke::new(
+                    format!("vstroke-{}", self.active_vector_events[0].time.to_bits()),
+                    self.active_vector_events.clone(),
+                    self.config.color,
+                    self.config.diameter,
+                    self.config.opacity,
+                    self.config.blend_mode,
+                );
+                if let Some(ref mut vdata) = active_layer.vector_data {
+                    vdata.add_stroke(vstroke);
+                }
             }
+            self.active_vector_events.clear();
+            res
         } else {
+            self.active_vector_events.clear();
             None
         };
         if let Some(ref r) = dirty {

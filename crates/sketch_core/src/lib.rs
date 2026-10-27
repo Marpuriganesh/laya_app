@@ -7,11 +7,13 @@
 pub mod stroke;
 pub mod brush;
 pub mod composite;
+pub mod vector;
 pub mod wasm;
 
 pub use stroke::*;
 pub use brush::*;
 pub use composite::*;
+pub use vector::{VectorLayerData, VectorStroke};
 pub use wasm::*;
 
 

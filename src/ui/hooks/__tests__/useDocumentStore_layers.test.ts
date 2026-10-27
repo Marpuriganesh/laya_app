@@ -99,4 +99,33 @@ describe("useDocumentStore - Layer Alpha Lock, Clipping & Masks", () => {
     expect(delRustSpy).toHaveBeenCalledWith(activeLayer.id);
     expect(delWasmSpy).toHaveBeenCalledWith(activeLayer.id);
   });
+
+  it("creates a vector layer and synchronizes with bridges", () => {
+    const addRustSpy = vi.spyOn(globalRustBrushBridge, "addVectorLayer").mockResolvedValue();
+    const addWasmSpy = vi.spyOn(globalWasmBrushBridge, "addVectorLayer").mockReturnValue();
+
+    const { addVectorLayer } = useDocumentStore.getState();
+    addVectorLayer();
+
+    const state = useDocumentStore.getState();
+    const activeLayerId = state.layerStack.activeLayerId;
+    const activeLayer = state.layerStack.layers.find((l) => l.id === activeLayerId);
+
+    expect(activeLayer).toBeDefined();
+    expect(activeLayer?.kind).toBe("vector");
+    expect(activeLayer?.name).toMatch(/^Vector \d+$/);
+    expect(addRustSpy).toHaveBeenCalledWith(activeLayerId, activeLayer?.name);
+    expect(addWasmSpy).toHaveBeenCalledWith(activeLayerId, activeLayer?.name);
+  });
+
+  it("adjusts vector line width and synchronizes with bridges", () => {
+    const rustSpy = vi.spyOn(globalRustBrushBridge, "adjustVectorLineWidth").mockResolvedValue(null);
+    const wasmSpy = vi.spyOn(globalWasmBrushBridge, "adjustVectorLineWidth").mockReturnValue(null);
+
+    const { adjustVectorLineWidth } = useDocumentStore.getState();
+    adjustVectorLineWidth("layer-1", 1.25);
+
+    expect(rustSpy).toHaveBeenCalledWith("layer-1", 1.25);
+    expect(wasmSpy).toHaveBeenCalledWith("layer-1", 1.25);
+  });
 });

@@ -64,6 +64,44 @@ impl WasmBrushEngine {
             .map_err(|e| JsValue::from_str(&e))
     }
 
+    /// Adds a new Vector Layer and makes it active.
+    pub fn add_vector_layer(&mut self, id: String, name: String) -> Result<(), JsValue> {
+        self.stack
+            .add_vector_layer(id, name)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Checks if a layer is a Vector Layer.
+    pub fn is_vector_layer(&self, id: &str) -> bool {
+        self.stack.is_vector_layer(id)
+    }
+
+    /// Gets the number of vector strokes on a Vector Layer.
+    pub fn get_vector_stroke_count(&self, id: &str) -> usize {
+        self.stack.get_vector_stroke_count(id)
+    }
+
+    /// Erases vector strokes touching (x, y) within radius on the specified layer.
+    pub fn vector_erase_at(
+        &mut self,
+        id: &str,
+        x: f32,
+        y: f32,
+        radius: f32,
+        erase_to_intersection: bool,
+    ) -> Option<Box<[i32]>> {
+        self.stack
+            .vector_erase_at(id, x, y, radius, erase_to_intersection)
+            .map(rect_to_boxed_slice)
+    }
+
+    /// Scales the line width of all strokes on a vector layer.
+    pub fn adjust_vector_line_width(&mut self, id: &str, factor: f32) -> Option<Box<[i32]>> {
+        self.stack
+            .adjust_vector_line_width(id, factor)
+            .map(rect_to_boxed_slice)
+    }
+
     /// Removes a layer by ID.
     pub fn remove_layer(&mut self, id: &str) -> Result<(), JsValue> {
         self.stack

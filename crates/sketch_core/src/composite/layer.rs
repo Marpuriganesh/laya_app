@@ -56,10 +56,11 @@ pub struct Layer {
     pub kind: LayerKind,
     pub mask: Option<LayerMask>,
     pub edit_target: EditTarget,
+    pub vector_data: Option<crate::vector::VectorLayerData>,
 }
 
 impl Layer {
-    /// Creates a new transparent layer initialized to `[0, 0, 0, 0]`.
+    /// Creates a new transparent raster layer initialized to `[0, 0, 0, 0]`.
     pub fn new(id: String, name: String, width: u32, height: u32) -> Self {
         Self {
             id,
@@ -74,6 +75,26 @@ impl Layer {
             kind: LayerKind::Raster,
             mask: None,
             edit_target: EditTarget::Pixels,
+            vector_data: None,
+        }
+    }
+
+    /// Creates a new vector layer initialized with an empty vector stroke store.
+    pub fn new_vector(id: String, name: String, width: u32, height: u32) -> Self {
+        Self {
+            id,
+            name,
+            buffer: CanvasView::with_color(width, height, [0, 0, 0, 0]),
+            opacity: 1.0,
+            blend_mode: ColorBlendMode::Normal,
+            visible: true,
+            locked: false,
+            alpha_locked: false,
+            is_clipped: false,
+            kind: LayerKind::Vector,
+            mask: None,
+            edit_target: EditTarget::Pixels,
+            vector_data: Some(crate::vector::VectorLayerData::new()),
         }
     }
 
@@ -92,6 +113,7 @@ impl Layer {
             kind: LayerKind::Raster,
             mask: None,
             edit_target: EditTarget::Pixels,
+            vector_data: None,
         }
     }
 
@@ -110,6 +132,7 @@ impl Layer {
             kind: self.kind,
             mask: self.mask.clone(),
             edit_target: self.edit_target,
+            vector_data: self.vector_data.clone(),
         }
     }
 

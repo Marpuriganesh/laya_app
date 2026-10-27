@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   CornerDownRight,
   CircleDot,
+  PenTool,
 } from "lucide-react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import type { LayerBlendMode } from "@/types/layer";
@@ -40,6 +41,7 @@ export const LayersPanelContent: FC = () => {
     layerStack,
     setActiveLayerId,
     addLayer,
+    addVectorLayer,
     duplicateLayer,
     deleteLayer,
     toggleLayerVisibility,
@@ -51,6 +53,7 @@ export const LayersPanelContent: FC = () => {
     addLayerMask,
     deleteLayerMask,
     setLayerEditTarget,
+    adjustVectorLineWidth,
   } = useDocumentStore();
 
   const activeLayer = layerStack.layers.find(
@@ -72,21 +75,34 @@ export const LayersPanelContent: FC = () => {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 select-none transition-colors">
       {/* Top Controls Bar: Add Layer & Quick Action */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50 dark:bg-zinc-850/60 shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50 dark:bg-zinc-850/60 shrink-0">
         <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
           {layerStack.layers.length} Layers
         </span>
 
-        <button
-          type="button"
-          onClick={addLayer}
-          title="Add new layer"
-          aria-label="Add new layer"
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
-          <span>New Layer</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={addLayer}
+            title="Add new raster layer"
+            aria-label="Add new raster layer"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
+            <span>Layer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={addVectorLayer}
+            title="Add new Clip Studio style vector layer"
+            aria-label="Add new vector layer"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
+          >
+            <PenTool className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
+            <span>Vector</span>
+          </button>
+        </div>
       </div>
 
       {/* Selected Layer Properties: Opacity & Blend Mode */}
@@ -181,6 +197,34 @@ export const LayersPanelContent: FC = () => {
               </button>
             )}
           </div>
+
+          {/* Vector Layer Controls: Line Width Adjustment */}
+          {activeLayer.kind === "vector" && (
+            <div className="flex items-center justify-between gap-1 mt-1 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
+              <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                <PenTool className="w-3 h-3" />
+                Vector Width
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => adjustVectorLineWidth(activeLayer.id, 0.85)}
+                  title="Make vector lines thinner (-15%)"
+                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                >
+                  Thinner
+                </button>
+                <button
+                  type="button"
+                  onClick={() => adjustVectorLineWidth(activeLayer.id, 1.15)}
+                  title="Make vector lines thicker (+15%)"
+                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                >
+                  Thicker
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -208,16 +252,30 @@ export const LayersPanelContent: FC = () => {
                   className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                     layer.isBackground
                       ? "bg-zinc-200 dark:bg-zinc-800"
-                      : "bg-zinc-200/80 dark:bg-zinc-800/80 border border-zinc-300 dark:border-zinc-700/60"
+                      : layer.kind === "vector"
+                      ? "bg-indigo-100 dark:bg-indigo-950/80 border border-indigo-300 dark:border-indigo-700/60 text-indigo-600 dark:text-indigo-400"
+                      : "bg-zinc-200/80 dark:bg-zinc-800/80 border border-zinc-300 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-400"
                   }`}
                 >
-                  <LayersIcon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+                  {layer.kind === "vector" ? (
+                    <PenTool className="w-3.5 h-3.5" />
+                  ) : (
+                    <LayersIcon className="w-3.5 h-3.5" />
+                  )}
                 </div>
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate">
                       {layer.name}
                     </span>
+                    {layer.kind === "vector" && (
+                      <span
+                        className="px-1 py-0.2 text-[9px] font-semibold uppercase tracking-wider rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                        title="Vector Layer (Clip Studio style: records vector paths for intersection erasing & width adjustment)"
+                      >
+                        Vector
+                      </span>
+                    )}
                     {layer.alphaLocked && (
                       <span title="Alpha Locked">
                         <ShieldCheck className="w-3 h-3 text-blue-500 shrink-0" />
