@@ -274,14 +274,14 @@ export class RustBrushBridge {
   ): Promise<[number, number, number, number] | null> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return null;
     try {
-      return await this.invokeFn<[number, number, number, number] | null>("rust_layer_vector_erase_at", {
+      return (await this.invokeFn("rust_layer_vector_erase_at", {
         id,
         x,
         y,
         radius,
         eraseToIntersection,
         erase_to_intersection: eraseToIntersection,
-      });
+      })) as [number, number, number, number] | null;
     } catch (err) {
       console.warn("Failed to erase vector at in Rust:", err);
       return null;
@@ -294,10 +294,10 @@ export class RustBrushBridge {
   ): Promise<[number, number, number, number] | null> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return null;
     try {
-      return await this.invokeFn<[number, number, number, number] | null>("rust_layer_adjust_vector_line_width", {
+      return (await this.invokeFn("rust_layer_adjust_vector_line_width", {
         id,
         factor,
-      });
+      })) as [number, number, number, number] | null;
     } catch (err) {
       console.warn("Failed to adjust vector line width in Rust:", err);
       return null;

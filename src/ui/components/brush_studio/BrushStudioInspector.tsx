@@ -31,6 +31,9 @@ import {
 import { BrushDynamicsPanel } from "@/ui/components/BrushDynamicsPanel";
 import { CurveEditor } from "@/ui/components/CurveEditor";
 import { BrushStrokePreview } from "@/ui/components/BrushStrokePreview";
+import { parseGbr } from "@/engine/brush/gbr_parser";
+import { ShapeRotationDial } from "./ShapeRotationDial";
+import { StylusTiltArcWidget } from "./StylusTiltArcWidget";
 import type { BrushStudioCategoryId } from "./BrushStudioTypes";
 
 const BUILTIN_PROCEDURAL_TEXTURES: readonly BrushTextureConfig[] = [
@@ -214,6 +217,7 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
   const [patternResources, setPatternResources] = useState<ResourceItemDto[]>([]);
   const [tipThumbnails, setTipThumbnails] = useState<Record<string, string>>({});
   const [patternThumbnails, setPatternThumbnails] = useState<Record<string, string>>({});
+  const [tiltThresholdDeg, setTiltThresholdDeg] = useState(15);
 
   const refreshResources = useCallback(async () => {
     const tips = await globalRustBrushBridge.listResources("brushes");
@@ -301,23 +305,44 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
 
   const handleSelectTip = async (item: ResourceItemDto | null) => {
     if (!item) {
+      const curAngle = params?.brushTip?.tipType === "generated" ? (params.brushTip.angleRadians ?? 0) : 0;
+      const curAr = params?.brushTip?.tipType === "generated" ? (params.brushTip.aspectRatio ?? 1.0) : 1.0;
       onUpdateEngineParams({
         brushTip: {
           tipType: "generated",
           diameter: params?.baseSizePx ?? 32,
           hardness: Math.max(0, 1 - (params?.softness ?? 0.45)),
-          aspectRatio: 1.0,
-          angleRadians: 0,
+          aspectRatio: curAr,
+          angleRadians: curAngle,
         },
       });
+      await globalRustBrushBridge.setActiveTip(null);
+      globalWasmBrushBridge.clearBrushPredefinedTip();
+      globalWasmBrushBridge.setBrushAutoTip(curAr, curAngle);
       return;
     }
     const bytes = await globalRustBrushBridge.readResourceFile(item.path);
     if (!bytes) return;
 
+    const curAngle = params?.brushTip ? ((params.brushTip as any).angleRadians ?? 0) : 0;
+
     if (item.file_name.endsWith(".gbr")) {
-      await globalRustBrushBridge.registerTipGbr(item.id, bytes);
-      globalWasmBrushBridge.registerTipGbr(item.id, bytes);
+      const parsed = parseGbr(bytes);
+      if (parsed) {
+        onUpdateEngineParams({
+          brushTip: {
+            tipType: "predefined",
+            imageData: parsed.mask,
+            width: parsed.width,
+            height: parsed.height,
+          },
+        });
+        const maskBytes = new Uint8Array(parsed.mask.buffer, parsed.mask.byteOffset, parsed.mask.byteLength);
+        await globalRustBrushBridge.registerTipMask(item.id, parsed.name, parsed.width, parsed.height, maskBytes, true);
+        globalWasmBrushBridge.registerTipMask(item.id, parsed.name, parsed.width, parsed.height, maskBytes, true);
+        await globalRustBrushBridge.setActiveTip(item.id, 1.0, curAngle);
+        globalWasmBrushBridge.setBrushPredefinedTip(item.id, 1.0, curAngle);
+      }
     } else {
       const decoded = await decodeImageToRgba(bytes);
       if (decoded) {
@@ -333,6 +358,11 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
             height: decoded.height,
           },
         });
+        const alphaBytes = new Uint8Array(alphaMask.buffer, alphaMask.byteOffset, alphaMask.byteLength);
+        await globalRustBrushBridge.registerTipMask(item.id, item.name, decoded.width, decoded.height, alphaBytes, true);
+        globalWasmBrushBridge.registerTipMask(item.id, item.name, decoded.width, decoded.height, alphaBytes, true);
+        await globalRustBrushBridge.setActiveTip(item.id, 1.0, curAngle);
+        globalWasmBrushBridge.setBrushPredefinedTip(item.id, 1.0, curAngle);
       }
     }
   };
@@ -620,13 +650,48 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
   if (category === "shape") {
     const softness = params?.softness ?? 0.45;
     const isPredefined = params?.brushTip?.tipType === "predefined";
+    const currentAngle = params?.brushTip ? ((params.brushTip as any).angleRadians ?? 0) : 0;
+    const currentAspectRatio = params?.brushTip?.tipType === "generated" ? (params.brushTip.aspectRatio ?? 1.0) : 1.0;
+    const scatterAmp = params?.scatterAmplitude ?? 0;
+
+    const handleAngleChange = (newAngleRad: number) => {
+      if (params?.brushTip?.tipType === "generated") {
+        onUpdateEngineParams({
+          brushTip: {
+            ...params.brushTip,
+            angleRadians: newAngleRad,
+          },
+        });
+        globalWasmBrushBridge.setBrushAutoTip(params.brushTip.aspectRatio ?? 1.0, newAngleRad);
+      } else if (params?.brushTip?.tipType === "predefined") {
+        onUpdateEngineParams({
+          brushTip: {
+            ...params.brushTip,
+            angleRadians: newAngleRad,
+          } as any,
+        });
+      }
+    };
+
+    const handleAspectRatioChange = (newRatio: number) => {
+      if (params?.brushTip?.tipType === "generated") {
+        onUpdateEngineParams({
+          brushTip: {
+            ...params.brushTip,
+            aspectRatio: newRatio,
+          },
+        });
+        globalWasmBrushBridge.setBrushAutoTip(newRatio, currentAngle);
+      }
+    };
 
     return (
       <div className="flex flex-col gap-6 p-6">
+        {/* Shape Source Header */}
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Shape Source</h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Select analytical tip or raster mask stamp</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Select procedural tip or raster mask stamp</p>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -649,7 +714,7 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
           </div>
         </div>
 
-        {/* Tip selection grid */}
+        {/* Tip selection gallery */}
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -661,11 +726,18 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
             }`}
           >
             <div className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-200 dark:border-zinc-700">
-              <div className="w-4 h-4 rounded-full bg-zinc-900 dark:bg-zinc-100" />
+              <div
+                className="bg-zinc-900 dark:bg-zinc-100 rounded-full"
+                style={{
+                  width: "18px",
+                  height: `${Math.round(18 * currentAspectRatio)}px`,
+                  transform: `rotate(${Math.round((currentAngle * 180) / Math.PI)}deg)`,
+                }}
+              />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold">Auto Circle</div>
-              <div className="text-[10px] text-zinc-500">Continuous tip</div>
+              <div className="text-xs font-semibold">Auto Shape</div>
+              <div className="text-[10px] text-zinc-500">Continuous analytical tip</div>
             </div>
           </button>
 
@@ -691,20 +763,153 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
           ))}
         </div>
 
-        {/* Softness / Hardness */}
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-medium text-zinc-700 dark:text-zinc-300">Softness / Radial Fade</span>
-            <span className="font-mono text-zinc-500">{Math.round(softness * 100)}%</span>
+        {/* Touch & Rotation Properties */}
+        <div className="flex flex-col gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
+          <h4 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">
+            Touch properties
+          </h4>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Rotation</span>
+              <span className="font-mono text-zinc-500">{Math.round((currentAngle * 180) / Math.PI)}°</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={360}
+              value={Math.round((currentAngle * 180) / Math.PI)}
+              onChange={(e) => handleAngleChange((Number(e.target.value) * Math.PI) / 180)}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
           </div>
-          <input
-            type="range"
-            min={0}
-            max={1.0}
-            step={0.02}
-            value={softness}
-            onChange={(e) => onUpdateEngineParams({ softness: Number(e.target.value) })}
-            className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+        </div>
+
+        {/* Shape Properties (Matching Procreate Image 3) */}
+        <div className="flex flex-col gap-4 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
+          <h4 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">
+            Shape properties
+          </h4>
+
+          {/* Scatter */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Scatter</span>
+              <span className="font-mono text-zinc-500">{scatterAmp > 0 ? `${Math.round(scatterAmp * 100)}%` : "None"}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1.0}
+              step={0.02}
+              value={scatterAmp}
+              onChange={(e) => onUpdateEngineParams({ scatterAmplitude: Number(e.target.value) })}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Count */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Count</span>
+              <span className="font-mono text-zinc-500">1</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={16}
+              defaultValue={1}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Count Jitter */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Count jitter</span>
+              <span className="font-mono text-zinc-500">None</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1.0}
+              step={0.02}
+              defaultValue={0}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Roundness / Aspect Ratio (Analytical tips) */}
+          {!isPredefined && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">Roundness / Aspect Ratio</span>
+                <span className="font-mono text-zinc-500">{Math.round(currentAspectRatio * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0.05}
+                max={1.0}
+                step={0.01}
+                value={currentAspectRatio}
+                onChange={(e) => handleAspectRatioChange(Number(e.target.value))}
+                className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+              />
+            </div>
+          )}
+
+          {/* Softness / Radial Fade */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Softness / Radial Fade</span>
+              <span className="font-mono text-zinc-500">{Math.round(softness * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1.0}
+              step={0.02}
+              value={softness}
+              onChange={(e) => onUpdateEngineParams({ softness: Number(e.target.value) })}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Toggles: Randomized, Flip X, Flip Y */}
+          <div className="flex flex-col gap-2.5 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-700 dark:text-zinc-300 font-medium">Randomized</span>
+              <input
+                type="checkbox"
+                defaultChecked={false}
+                className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-700 dark:text-zinc-300 font-medium">Flip X</span>
+              <input
+                type="checkbox"
+                defaultChecked={false}
+                className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-700 dark:text-zinc-300 font-medium">Flip Y</span>
+              <input
+                type="checkbox"
+                defaultChecked={false}
+                className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Circular Rotation Dial (Matching Image 3 Bottom Dial) */}
+        <div className="flex flex-col items-center gap-2 pt-4 border-t border-zinc-200 dark:border-zinc-800/60">
+          <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Tip Angle Dial</span>
+          <ShapeRotationDial
+            valueRadians={currentAngle}
+            onChange={handleAngleChange}
+            size={120}
           />
         </div>
       </div>
@@ -966,6 +1171,37 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
 
   // 9. Dynamics Inspector (Embedding BrushDynamicsPanel with CurveEditor)
   if (category === "dynamics") {
+    const multi = params?.multiDynamics;
+    const initialDynState: any = {};
+    if (multi) {
+      for (const [pKey, pVal] of Object.entries(multi)) {
+        if (!pVal) continue;
+        const sensorsMap: any = {};
+        if (pVal.sensors) {
+          for (const [sKey, sVal] of Object.entries(pVal.sensors)) {
+            if (sVal) {
+              sensorsMap[sKey] = {
+                enabled: sVal.isEnabled,
+                minOutput: sVal.minOutput ?? 0.0,
+                maxOutput: sVal.maxOutput ?? 1.0,
+                curvePoints:
+                  sVal.curvePoints && sVal.curvePoints.length >= 2
+                    ? sVal.curvePoints.map((pt) => ({ x: pt.inputValue, y: pt.outputValue }))
+                    : createLinearCurve(),
+              };
+            }
+          }
+        }
+        initialDynState[pKey] = {
+          enabled: true,
+          strength: 1.0,
+          selectedSensor: Object.keys(sensorsMap)[0] ?? "pressure",
+          calculationMode: pVal.calculationMode ?? "multiply",
+          sensors: sensorsMap,
+        };
+      }
+    }
+
     return (
       <div className="flex flex-col gap-4 p-6 w-full max-w-full overflow-hidden">
         <div>
@@ -975,6 +1211,7 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
 
         <div className="w-full max-w-full overflow-hidden">
           <BrushDynamicsPanel
+            initialState={Object.keys(initialDynState).length > 0 ? initialDynState : undefined}
             onChange={(state) => {
               // Convert multiDynamics state into engine config
               const multiMap: Record<string, any> = {};
@@ -1001,15 +1238,190 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
     );
   }
 
-  // 10. Apple Pencil & Stylus Response
+  // 10. Stylus Settings (Tilt Dynamics & Pressure Sensitivity)
   if (category === "apple_pencil") {
+    const baseFlow = Math.round((params?.baseFlow ?? 1.0) * 100);
+    const multi = params?.multiDynamics ?? {};
+    const tiltSizeSensor = multi.size?.sensors?.tilt_elevation;
+    const tiltOpacitySensor = multi.opacity?.sensors?.tilt_elevation;
+    const tiltSoftnessSensor = multi.softness?.sensors?.tilt_elevation;
+
+    const tiltSizeVal = tiltSizeSensor?.isEnabled
+      ? Math.round(((tiltSizeSensor.maxOutput ?? 2.0) - 1.0) * 50)
+      : 0;
+    const tiltOpacityVal = tiltOpacitySensor?.isEnabled
+      ? Math.round((tiltOpacitySensor.maxOutput ?? 1.0) * 100)
+      : 0;
+    const tiltBleedVal = tiltSoftnessSensor?.isEnabled
+      ? Math.round((tiltSoftnessSensor.maxOutput ?? 1.0) * 100)
+      : 0;
+
+    const updateTiltMapping = (paramTarget: "size" | "opacity" | "softness", valueNormalized: number, thresholdDegrees = tiltThresholdDeg) => {
+      const updatedMulti: Record<string, any> = { ...multi };
+      const currentParamConfig = updatedMulti[paramTarget] ?? {
+        calculationMode: "multiply",
+        sensors: {},
+      };
+
+      const thresholdNorm = thresholdDegrees / 90.0;
+      const tiltCurve = [
+        { inputValue: 0.0, outputValue: 1.0 },
+        { inputValue: thresholdNorm, outputValue: 0.0 },
+        { inputValue: 1.0, outputValue: 0.0 },
+      ];
+
+      if (valueNormalized > 0.01) {
+        currentParamConfig.sensors = {
+          ...currentParamConfig.sensors,
+          tilt_elevation: {
+            isEnabled: true,
+            minOutput: paramTarget === "size" ? 1.0 : 0.05,
+            maxOutput: paramTarget === "size" ? 1.0 + valueNormalized * 2.0 : valueNormalized,
+            curvePoints: tiltCurve,
+          },
+        };
+      } else if (currentParamConfig.sensors) {
+        const { tilt_elevation, ...restSensors } = currentParamConfig.sensors;
+        currentParamConfig.sensors = restSensors;
+      }
+
+      updatedMulti[paramTarget] = currentParamConfig;
+      onUpdateEngineParams({ multiDynamics: updatedMulti });
+    };
+
     return (
       <div className="flex flex-col gap-6 p-6">
         <div>
-          <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Apple Pencil & Stylus Response</h3>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Stylus pressure transfer curve and hardware sensitivity</p>
+          <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Stylus Settings</h3>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Stylus tilt dynamics, hardware sensitivity, and pressure response curve</p>
         </div>
 
+        {/* Flow & Bleed (Matching Image 1 top) */}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Flow</span>
+              <span className="font-mono text-zinc-500">{baseFlow}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={baseFlow}
+              onChange={(e) => onUpdateEngineParams({ baseFlow: Number(e.target.value) / 100 })}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Bleed</span>
+              <span className="font-mono text-zinc-500">None</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              defaultValue={0}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* Tilt Arc & Properties (Matching Image 1) */}
+        <div className="flex flex-col gap-4 pt-4 border-t border-zinc-200 dark:border-zinc-800/60">
+          <h4 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">
+            Tilt
+          </h4>
+
+          {/* Interactive Quarter-Circle Arc Widget */}
+          <div className="w-full flex justify-center py-2">
+            <StylusTiltArcWidget
+              valueDegrees={tiltThresholdDeg}
+              onChange={(deg) => {
+                setTiltThresholdDeg(deg);
+                if (tiltSizeVal > 0) updateTiltMapping("size", tiltSizeVal / 100, deg);
+                if (tiltOpacityVal > 0) updateTiltMapping("opacity", tiltOpacityVal / 100, deg);
+              }}
+              size={180}
+            />
+          </div>
+
+          {/* Tilt Opacity */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Opacity</span>
+              <span className="font-mono text-zinc-500">{tiltOpacityVal > 0 ? `${tiltOpacityVal}%` : "None"}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={tiltOpacityVal}
+              onChange={(e) => updateTiltMapping("opacity", Number(e.target.value) / 100)}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Tilt Gradation */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Gradation</span>
+              <span className="font-mono text-zinc-500">None</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              defaultValue={0}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Tilt Bleed */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Bleed</span>
+              <span className="font-mono text-zinc-500">{tiltBleedVal > 0 ? `${tiltBleedVal}%` : "None"}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={tiltBleedVal}
+              onChange={(e) => updateTiltMapping("softness", Number(e.target.value) / 100)}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Tilt Size */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Size</span>
+              <span className="font-mono text-zinc-500">{tiltSizeVal > 0 ? `${tiltSizeVal}%` : "None"}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={tiltSizeVal}
+              onChange={(e) => updateTiltMapping("size", Number(e.target.value) / 100)}
+              className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Size Compression Toggle */}
+          <div className="flex items-center justify-between text-xs pt-1">
+            <span className="text-zinc-700 dark:text-zinc-300 font-medium">Size compression</span>
+            <input
+              type="checkbox"
+              defaultChecked={true}
+              className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* Global Pressure Transfer Curve */}
         <div className="flex flex-col gap-3 p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-white/5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Global Pressure Transfer Curve</span>

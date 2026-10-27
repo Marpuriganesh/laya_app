@@ -172,15 +172,19 @@ export const BrushStudioDrawingPad: FC<BrushStudioDrawingPadProps> = ({
       }
     }
 
-    // 3. Predefined tip
+    // 3. Tip geometry (Predefined stamp vs Auto ellipse)
     const tip = params.brushTip;
     if (tip && tip.tipType === "predefined" && tip.imageData && tip.width > 0 && tip.height > 0) {
       const tipId = `pad-tip-${draftPreset.presetId}`;
       const maskBytes = new Uint8Array(tip.imageData.buffer, tip.imageData.byteOffset, tip.imageData.byteLength);
       bridge.registerTipMask(tipId, "Pad Tip", tip.width, tip.height, maskBytes, true);
-      bridge.setBrushPredefinedTip(tipId, 1.0, 0.0);
+      const angle = (tip as any).angleRadians ?? 0.0;
+      bridge.setBrushPredefinedTip(tipId, 1.0, angle);
     } else {
       bridge.clearBrushPredefinedTip();
+      const ar = tip?.tipType === "generated" ? (tip.aspectRatio ?? 1.0) : 1.0;
+      const angle = tip?.tipType === "generated" ? (tip.angleRadians ?? 0.0) : 0.0;
+      bridge.setBrushAutoTip(ar, angle);
     }
 
     // 4. Paper grain texture

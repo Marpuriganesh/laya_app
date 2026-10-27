@@ -75,8 +75,8 @@ export const BRUSH_STUDIO_CATEGORIES: readonly BrushStudioCategoryMeta[] = [
   },
   {
     id: "apple_pencil",
-    label: "Apple Pencil",
-    description: "Stylus pressure curve, tilt sensitivity, and bleed",
+    label: "Stylus settings",
+    description: "Stylus tilt arc dynamics, pressure curve, and hardware sensitivity",
     icon: Pencil,
   },
   {

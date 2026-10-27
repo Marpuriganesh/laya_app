@@ -301,6 +301,8 @@ pub struct BrushDynamicsConfig {
     pub angle: PropertyDynamicsConfig,
     pub jitter: PropertyDynamicsConfig,
     pub softness: PropertyDynamicsConfig,
+    pub ratio: PropertyDynamicsConfig,
+    pub spacing: PropertyDynamicsConfig,
 }
 
 impl BrushDynamicsConfig {
@@ -313,6 +315,8 @@ impl BrushDynamicsConfig {
             "angle" | "rotation" => &mut self.angle,
             "jitter" | "scatter" => &mut self.jitter,
             "softness" => &mut self.softness,
+            "ratio" | "aspect_ratio" => &mut self.ratio,
+            "spacing" => &mut self.spacing,
             _ => return,
         };
 
@@ -340,6 +344,8 @@ impl BrushDynamicsConfig {
             "angle" | "rotation" => &mut self.angle,
             "jitter" | "scatter" => &mut self.jitter,
             "softness" => &mut self.softness,
+            "ratio" | "aspect_ratio" => &mut self.ratio,
+            "spacing" => &mut self.spacing,
             _ => return,
         };
 
@@ -365,6 +371,8 @@ impl BrushDynamicsConfig {
             "angle" | "rotation" => &mut self.angle,
             "jitter" | "scatter" => &mut self.jitter,
             "softness" => &mut self.softness,
+            "ratio" | "aspect_ratio" => &mut self.ratio,
+            "spacing" => &mut self.spacing,
             _ => return,
         };
         prop.calculation_mode = mode;
@@ -378,6 +386,8 @@ impl BrushDynamicsConfig {
         self.angle.clear();
         self.jitter.clear();
         self.softness.clear();
+        self.ratio.clear();
+        self.spacing.clear();
     }
 }
 

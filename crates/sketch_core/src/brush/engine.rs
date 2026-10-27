@@ -124,7 +124,7 @@ impl PixelBrushEngine {
 
                 self.trajectory.add_event(
                     stabilized_event,
-                    |dab| Self::compute_diameter_impl(dab, config, current_velocity, current_distance, current_direction, initial_direction) * config.spacing,
+                    |dab| Self::compute_step_distance_impl(dab, config, current_velocity, current_distance, current_direction, initial_direction),
                     |dab| {
                         if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, current_velocity, current_distance, current_direction, initial_direction, alpha_locked) {
                             dirty_rect = match dirty_rect {
@@ -184,7 +184,7 @@ impl PixelBrushEngine {
         if let Some(final_event) = self.pull_string.finish_stroke(&self.config.pull_string) {
             self.trajectory.add_event(
                 final_event,
-                |dab| Self::compute_diameter_impl(dab, config, vel, dist, current_dir, initial_dir) * config.spacing,
+                |dab| Self::compute_step_distance_impl(dab, config, vel, dist, current_dir, initial_dir),
                 |dab| {
                     if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist, current_dir, initial_dir, alpha_locked) {
                         dirty_rect = match dirty_rect {
@@ -201,7 +201,7 @@ impl PixelBrushEngine {
 
         // Finish remaining trajectory segment to the final smoothed event
         self.trajectory.finish_stroke(
-            |dab| Self::compute_diameter_impl(dab, config, vel, dist, current_dir, initial_dir) * config.spacing,
+            |dab| Self::compute_step_distance_impl(dab, config, vel, dist, current_dir, initial_dir),
             |dab| {
                 if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist, current_dir, initial_dir, alpha_locked) {
                     dirty_rect = match dirty_rect {
@@ -381,6 +381,39 @@ impl PixelBrushEngine {
         }
     }
 
+    #[inline]
+    fn compute_step_distance_impl(
+        event: &StrokeEvent,
+        config: &BrushConfig,
+        velocity_px_sec: f32,
+        distance_px: f32,
+        stroke_direction_rad: f32,
+        initial_stroke_direction_rad: f32,
+    ) -> f32 {
+        let base_diameter = Self::compute_diameter_impl(
+            event,
+            config,
+            velocity_px_sec,
+            distance_px,
+            stroke_direction_rad,
+            initial_stroke_direction_rad,
+        );
+        let spacing_factor = if config.dynamics.spacing.is_active() {
+            let s = config.dynamics.spacing.evaluate(
+                event,
+                velocity_px_sec,
+                distance_px,
+                stroke_direction_rad,
+                initial_stroke_direction_rad,
+                0.0,
+            );
+            (config.spacing * s).clamp(0.01, 10.0)
+        } else {
+            config.spacing
+        };
+        (base_diameter * spacing_factor).max(1.0)
+    }
+
     /// Paints a single circular dab at the given event coordinates.
     pub fn paint_dab_at(&mut self, event: StrokeEvent, canvas: &mut CanvasView) -> Option<Rect> {
         let alpha_locked = self.alpha_locked;
@@ -440,9 +473,15 @@ impl PixelBrushEngine {
         // 1. Generate dab mask according to tip geometry (Auto ellipse vs Predefined image)
         let (dab_w, dab_h) = match config.tip_type {
             crate::brush::tip::BrushTipType::Auto { aspect_ratio, .. } => {
+                let effective_aspect_ratio = if config.dynamics.ratio.is_active() {
+                    let ar_mod = config.dynamics.ratio.evaluate(&event, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad, 0.0);
+                    (aspect_ratio * ar_mod).clamp(0.01, 1.0)
+                } else {
+                    aspect_ratio.clamp(0.01, 1.0)
+                };
                 tip_rasterizer.render_auto_brush(
                     radius,
-                    aspect_ratio,
+                    effective_aspect_ratio,
                     angle_radians,
                     effective_softness,
                     sub_x,

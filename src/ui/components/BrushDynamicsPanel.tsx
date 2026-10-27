@@ -30,6 +30,8 @@ import { useBrushStore } from "@/ui/stores/brush_store";
 
 export type DynamicsParameterId =
   | "size"
+  | "ratio"
+  | "spacing"
   | "opacity"
   | "flow"
   | "softness"
@@ -57,6 +59,7 @@ export interface SensorDynamicsState {
 
 export interface ParameterMultiDynamicsState {
   enabled: boolean;
+  strength?: number; // 0.0 to 1.0 (Krita dynamic strength)
   selectedSensor: SensorTypeId;
   calculationMode: CalculationMode;
   sensors: Record<SensorTypeId, SensorDynamicsState>;
@@ -84,6 +87,22 @@ const PARAMETERS: readonly ParameterMeta[] = [
     description: "Modulates brush diameter",
     icon: Maximize2,
     defaultSensor: "pressure",
+    defaultCurve: createLinearCurve,
+  },
+  {
+    id: "ratio",
+    label: "Ratio",
+    description: "Modulates tip aspect ratio roundness",
+    icon: Compass,
+    defaultSensor: "pressure",
+    defaultCurve: createLinearCurve,
+  },
+  {
+    id: "spacing",
+    label: "Spacing",
+    description: "Modulates dab pacing along stroke",
+    icon: Ruler,
+    defaultSensor: "velocity",
     defaultCurve: createLinearCurve,
   },
   {
@@ -222,6 +241,7 @@ function createDefaultDynamicsState(): Record<DynamicsParameterId, ParameterMult
 
     return {
       enabled: isMasterEnabled,
+      strength: 1.0,
       selectedSensor: defaultPrimary,
       calculationMode: calcMode,
       sensors,
@@ -230,6 +250,8 @@ function createDefaultDynamicsState(): Record<DynamicsParameterId, ParameterMult
 
   return {
     size: createParamState("size", "pressure", true, sizeDyn),
+    ratio: createParamState("ratio", "pressure", false, null),
+    spacing: createParamState("spacing", "velocity", false, null),
     opacity: createParamState("opacity", "pressure", false, opDyn),
     flow: createParamState("flow", "pressure", false, p?.flowDynamics),
     softness: createParamState("softness", "pressure", false, null),
@@ -276,13 +298,16 @@ export const BrushDynamicsPanel: FC<BrushDynamicsPanelProps> = ({
         const isSensorActive = paramState.enabled && sensorConfig.enabled;
         const lut = generateCurveLookupTable256(sensorConfig.curvePoints);
 
+        const strengthMultiplier = paramState.strength ?? 1.0;
+        const effectiveMax = sensorConfig.maxOutput * strengthMultiplier;
+
         // Desktop Tauri Rust core bridge
         void globalRustBrushBridge.setDynamicsMapping(
           paramId,
           isSensorActive,
           s.id,
           sensorConfig.minOutput,
-          sensorConfig.maxOutput,
+          effectiveMax,
           lut
         );
 
@@ -292,7 +317,7 @@ export const BrushDynamicsPanel: FC<BrushDynamicsPanelProps> = ({
           isSensorActive,
           s.id,
           sensorConfig.minOutput,
-          sensorConfig.maxOutput,
+          effectiveMax,
           lut
         );
       }
@@ -475,8 +500,31 @@ export const BrushDynamicsPanel: FC<BrushDynamicsPanelProps> = ({
             {/* Expanded Full-Width Settings Body (Zero Cramping!) */}
             {isExpanded && (
               <div className="p-3 pt-0 border-t border-zinc-100 dark:border-white/5 flex flex-col gap-3 animate-in fade-in duration-100">
+                {/* Krita-Style Strength Slider Bar */}
+                <div className="flex items-center justify-between gap-3 mt-2 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
+                  <span className="font-semibold text-blue-700 dark:text-blue-300 shrink-0">Strength:</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1.0}
+                    step={0.01}
+                    value={paramState.strength ?? 1.0}
+                    onChange={(e) =>
+                      updateParamState(param.id, (prev) => ({
+                        ...prev,
+                        strength: Number(e.target.value),
+                      }))
+                    }
+                    className="flex-1 accent-blue-600 h-1.5 bg-blue-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
+                    title="Overall dynamic modulation strength (Krita option strength)"
+                  />
+                  <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 w-10 text-right shrink-0">
+                    {Math.round((paramState.strength ?? 1.0) * 100)}%
+                  </span>
+                </div>
+
                 {/* Calculation Mode Selector Bar */}
-                <div className="flex items-center justify-between gap-2 pt-2 text-xs">
+                <div className="flex items-center justify-between gap-2 pt-1 text-xs">
                   <span className="text-zinc-600 dark:text-zinc-400 font-medium">Combination Mode:</span>
                   <select
                     value={paramState.calculationMode}

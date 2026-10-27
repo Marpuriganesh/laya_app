@@ -373,6 +373,12 @@ export class WasmBrushBridge {
     }
   }
 
+  public setBrushAutoTip(aspectRatio = 1.0, angleRadians = 0.0): void {
+    if (this.engine) {
+      this.engine.set_brush_auto_tip(aspectRatio, angleRadians);
+    }
+  }
+
   public registerPatternPat(id: string, bytes: Uint8Array): string {
     if (!this.engine) return "";
     try {
