@@ -11,21 +11,10 @@ impl CanvasBlitter {
         Self
     }
 
-    /// Composites a single grayscale dab alpha mask onto the target RGBA canvas buffer.
-    ///
-    /// # Arguments
-    /// * `canvas` - Target mutable canvas buffer.
-    /// * `dab_mask` - Flat array of alpha values `[0..255]`.
-    /// * `dab_w` - Width of the dab mask.
-    /// * `dab_h` - Height of the dab mask.
-    /// * `dest_x` - Canvas X position where the dab top-left begins.
-    /// * `dest_y` - Canvas Y position where the dab top-left begins.
-    /// * `color` - Brush RGBA8 color.
-    /// * `flow_opacity` - Combined flow and opacity multiplier in `[0.0..1.0]`.
-    ///
-    /// Returns the clipped bounding `Rect` modified by this dab, or `None` if completely out of bounds.
+    /// Composites a single grayscale dab alpha mask onto the target RGBA canvas buffer,
+    /// with optional alpha locking to preserve transparent pixels and destination alpha.
     #[allow(clippy::too_many_arguments)]
-    pub fn blit_dab(
+    pub fn blit_dab_locked(
         &self,
         canvas: &mut CanvasView,
         dab_mask: &[u8],
@@ -36,6 +25,7 @@ impl CanvasBlitter {
         color: [u8; 4],
         flow_opacity: f32,
         blend_mode: crate::brush::ColorBlendMode,
+        alpha_locked: bool,
     ) -> Option<Rect> {
         let x_start = dest_x.max(0);
         let y_start = dest_y.max(0);
@@ -71,15 +61,44 @@ impl CanvasBlitter {
                 }
 
                 let c_idx = canvas_row + (x as usize * 4);
+                let da = buffer[c_idx + 3] as u32;
 
-                // High-performance integer fast path for standard Normal blend mode
-                if is_normal_mode {
+                if alpha_locked {
+                    // Alpha Lock: Never paint on transparent areas, and preserve existing layer alpha
+                    if da == 0 {
+                        continue;
+                    }
                     let sa = ((dab_alpha as u32 * flow_scale_256) >> 8).min(255);
                     if sa == 0 {
                         continue;
                     }
 
-                    let da = buffer[c_idx + 3] as u32;
+                    if is_normal_mode {
+                        let inv_sa = 255 - sa;
+                        buffer[c_idx + 0] = ((br as u32 * sa + buffer[c_idx + 0] as u32 * inv_sa + 127) / 255).min(255) as u8;
+                        buffer[c_idx + 1] = ((bg as u32 * sa + buffer[c_idx + 1] as u32 * inv_sa + 127) / 255).min(255) as u8;
+                        buffer[c_idx + 2] = ((bb as u32 * sa + buffer[c_idx + 2] as u32 * inv_sa + 127) / 255).min(255) as u8;
+                        // buffer[c_idx + 3] remains da!
+                    } else {
+                        let src_pixel = [br, bg, bb, dab_alpha];
+                        let dst_pixel = [
+                            buffer[c_idx + 0],
+                            buffer[c_idx + 1],
+                            buffer[c_idx + 2],
+                            buffer[c_idx + 3],
+                        ];
+                        let out = crate::brush::composite_pixel(dst_pixel, src_pixel, flow_alpha_scale, blend_mode);
+                        buffer[c_idx + 0] = out[0];
+                        buffer[c_idx + 1] = out[1];
+                        buffer[c_idx + 2] = out[2];
+                        // buffer[c_idx + 3] remains da!
+                    }
+                } else if is_normal_mode {
+                    // High-performance integer fast path for standard Normal blend mode
+                    let sa = ((dab_alpha as u32 * flow_scale_256) >> 8).min(255);
+                    if sa == 0 {
+                        continue;
+                    }
 
                     if da == 0 {
                         buffer[c_idx + 0] = br;
@@ -127,6 +146,46 @@ impl CanvasBlitter {
             y_end - y_start,
         ))
     }
+
+    /// Composites a single grayscale dab alpha mask onto the target RGBA canvas buffer.
+    ///
+    /// # Arguments
+    /// * `canvas` - Target mutable canvas buffer.
+    /// * `dab_mask` - Flat array of alpha values `[0..255]`.
+    /// * `dab_w` - Width of the dab mask.
+    /// * `dab_h` - Height of the dab mask.
+    /// * `dest_x` - Canvas X position where the dab top-left begins.
+    /// * `dest_y` - Canvas Y position where the dab top-left begins.
+    /// * `color` - Brush RGBA8 color.
+    /// * `flow_opacity` - Combined flow and opacity multiplier in `[0.0..1.0]`.
+    ///
+    /// Returns the clipped bounding `Rect` modified by this dab, or `None` if completely out of bounds.
+    #[allow(clippy::too_many_arguments)]
+    pub fn blit_dab(
+        &self,
+        canvas: &mut CanvasView,
+        dab_mask: &[u8],
+        dab_w: usize,
+        dab_h: usize,
+        dest_x: i32,
+        dest_y: i32,
+        color: [u8; 4],
+        flow_opacity: f32,
+        blend_mode: crate::brush::ColorBlendMode,
+    ) -> Option<Rect> {
+        self.blit_dab_locked(
+            canvas,
+            dab_mask,
+            dab_w,
+            dab_h,
+            dest_x,
+            dest_y,
+            color,
+            flow_opacity,
+            blend_mode,
+            false,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -171,5 +230,43 @@ mod tests {
         );
         assert_eq!(erase_rect, Some(Rect::new(4, 4, 2, 2)));
         assert_eq!(canvas.get_pixel(4, 4), Some([0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn test_blitter_alpha_lock_preserves_transparency_and_alpha() {
+        let mut canvas = CanvasView::with_color(10, 10, [0, 0, 0, 0]);
+        let blitter = CanvasBlitter::new();
+
+        // 1. Paint a semi-transparent blue pixel at (4, 4) with alpha = 120
+        canvas.set_pixel(4, 4, [0, 0, 255, 120]);
+
+        // 2. Blit a 2x2 fully opaque red dab at (4, 4) with alpha_locked = true
+        let mask = vec![255u8; 4];
+        let rect = blitter.blit_dab_locked(
+            &mut canvas,
+            &mask,
+            2,
+            2,
+            4,
+            4,
+            [255, 0, 0, 255], // Red
+            1.0,
+            crate::brush::ColorBlendMode::Normal,
+            true, // alpha_locked!
+        );
+
+        assert_eq!(rect, Some(Rect::new(4, 4, 2, 2)));
+
+        // Transparent pixels at (5, 4), (4, 5), (5, 5) must NOT be painted!
+        assert_eq!(canvas.get_pixel(5, 4), Some([0, 0, 0, 0]));
+        assert_eq!(canvas.get_pixel(4, 5), Some([0, 0, 0, 0]));
+        assert_eq!(canvas.get_pixel(5, 5), Some([0, 0, 0, 0]));
+
+        // Pixel at (4, 4) should have turned red, but with its original alpha of 120 preserved!
+        let p = canvas.get_pixel(4, 4).unwrap();
+        assert_eq!(p[0], 255); // Red
+        assert_eq!(p[1], 0);   // Green
+        assert_eq!(p[2], 0);   // Blue
+        assert_eq!(p[3], 120); // Alpha strictly preserved!
     }
 }

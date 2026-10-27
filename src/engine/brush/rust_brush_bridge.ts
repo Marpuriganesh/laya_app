@@ -321,6 +321,69 @@ export class RustBrushBridge {
     }
   }
 
+  public async setLayerAlphaLock(id: string, locked: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_alpha_lock", { id, locked });
+    } catch (err) {
+      console.warn("Failed to set layer alpha lock in Rust:", err);
+    }
+  }
+
+  public async setLayerClipped(id: string, clipped: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_clipped", { id, clipped });
+    } catch (err) {
+      console.warn("Failed to set layer clipping in Rust:", err);
+    }
+  }
+
+  public async addLayerMask(id: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_add_mask", { id });
+    } catch (err) {
+      console.warn("Failed to add layer mask in Rust:", err);
+    }
+  }
+
+  public async deleteLayerMask(id: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_delete_mask", { id });
+    } catch (err) {
+      console.warn("Failed to delete layer mask in Rust:", err);
+    }
+  }
+
+  public async setLayerMaskEnabled(id: string, enabled: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_mask_enabled", { id, enabled });
+    } catch (err) {
+      console.warn("Failed to set layer mask enabled in Rust:", err);
+    }
+  }
+
+  public async setLayerMaskInverted(id: string, inverted: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_mask_inverted", { id, inverted });
+    } catch (err) {
+      console.warn("Failed to set layer mask inverted in Rust:", err);
+    }
+  }
+
+  public async setLayerEditTarget(id: string, target: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_edit_target", { id, target });
+    } catch (err) {
+      console.warn("Failed to set layer edit target in Rust:", err);
+    }
+  }
+
   public async reorderLayers(orderedIds: string[]): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {

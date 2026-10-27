@@ -70,10 +70,12 @@ function MainWindow() {
   }, [setActivePopover]);
 
   useEffect(() => {
-    // Only full-screen modal dialogs (like New Canvas) block canvas painting entirely.
-    // Floating popovers (Color, Layers, Brush settings) are non-modal and allow painting outside them.
-    globalRustBrushBridge.setModalOpen(activePopover === "newCanvas");
-  }, [activePopover]);
+    // Full-screen modal dialogs (New Canvas, Brush Studio) block native canvas painting.
+    const isModalOpen =
+      activePopover === "newCanvas" ||
+      (isBrushStudioOpen && !detachedPanels.brushSettings);
+    globalRustBrushBridge.setModalOpen(isModalOpen);
+  }, [activePopover, isBrushStudioOpen, detachedPanels.brushSettings]);
 
   const handleDetachPanel = useCallback(async (panelId: DetachablePanelId) => {
     detachPanel(panelId);

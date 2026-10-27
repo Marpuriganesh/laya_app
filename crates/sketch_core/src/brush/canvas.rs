@@ -77,6 +77,16 @@ impl CanvasView {
         ])
     }
 
+    /// Sets the RGBA color at the given coordinate. Returns false if out of bounds.
+    pub fn set_pixel(&mut self, x: u32, y: u32, color: [u8; 4]) -> bool {
+        if x >= self.width || y >= self.height {
+            return false;
+        }
+        let idx = (y as usize * self.stride) + (x as usize * 4);
+        self.buffer[idx..idx + 4].copy_from_slice(&color);
+        true
+    }
+
     /// Read-only access to the underlying byte slice.
     pub fn as_slice(&self) -> &[u8] {
         &self.buffer

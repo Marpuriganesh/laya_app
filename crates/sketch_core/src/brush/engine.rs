@@ -3,7 +3,7 @@ use crate::brush::canvas::CanvasView;
 use crate::brush::config::BrushConfig;
 use crate::brush::rasterizer::MaskRasterizer;
 use crate::brush::rect::Rect;
-use crate::composite::CompositeStack;
+use crate::composite::{CompositeStack, EditTarget};
 use crate::stroke::event::StrokeEvent;
 use crate::stroke::moving_average::MovingAverageStabilizer;
 use crate::stroke::pull_string::PullStringStabilizer;
@@ -20,6 +20,7 @@ pub struct PixelBrushEngine {
     pub rasterizer: MaskRasterizer,
     pub tip_rasterizer: crate::brush::tip::BrushTipRasterizer,
     pub blitter: CanvasBlitter,
+    pub alpha_locked: bool,
     pub current_velocity: f32,
     pub total_distance: f32,
     pub current_stroke_direction: f32,
@@ -40,6 +41,7 @@ impl PixelBrushEngine {
             rasterizer: MaskRasterizer::new(),
             tip_rasterizer: crate::brush::tip::BrushTipRasterizer::new(),
             blitter: CanvasBlitter::new(),
+            alpha_locked: false,
             current_velocity: 0.0,
             total_distance: 0.0,
             current_stroke_direction: 0.0,
@@ -61,6 +63,7 @@ impl PixelBrushEngine {
         let tip_rasterizer = &self.tip_rasterizer;
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
+        let alpha_locked = self.alpha_locked;
 
         self.current_velocity = 0.0;
         self.total_distance = 0.0;
@@ -74,7 +77,7 @@ impl PixelBrushEngine {
         let seed_event = self.pull_string.begin_stroke(event_after_avg, &self.config.pull_string);
 
         self.trajectory.begin_stroke(seed_event, |dab| {
-            dirty = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, 0.0, 0.0, 0.0, 0.0);
+            dirty = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, 0.0, 0.0, 0.0, 0.0, alpha_locked);
         });
 
         dirty
@@ -115,12 +118,13 @@ impl PixelBrushEngine {
                 let tip_rasterizer = &self.tip_rasterizer;
                 let blitter = &self.blitter;
                 let scratch = &mut self.scratch_mask;
+                let alpha_locked = self.alpha_locked;
 
                 self.trajectory.add_event(
                     stabilized_event,
                     |dab| Self::compute_diameter_impl(dab, config, current_velocity, current_distance, current_direction, initial_direction) * config.spacing,
                     |dab| {
-                        if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, current_velocity, current_distance, current_direction, initial_direction) {
+                        if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, current_velocity, current_distance, current_direction, initial_direction, alpha_locked) {
                             dirty_rect = match dirty_rect {
                                 None => Some(r),
                                 Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -167,6 +171,7 @@ impl PixelBrushEngine {
         let tip_rasterizer = &self.tip_rasterizer;
         let blitter = &self.blitter;
         let scratch = &mut self.scratch_mask;
+        let alpha_locked = self.alpha_locked;
 
         // If pull string stabilizer has connect_to_tip_on_release enabled, bridge remaining leash slack
         let vel = self.current_velocity;
@@ -179,7 +184,7 @@ impl PixelBrushEngine {
                 final_event,
                 |dab| Self::compute_diameter_impl(dab, config, vel, dist, current_dir, initial_dir) * config.spacing,
                 |dab| {
-                    if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist, current_dir, initial_dir) {
+                    if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist, current_dir, initial_dir, alpha_locked) {
                         dirty_rect = match dirty_rect {
                             None => Some(r),
                             Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -196,7 +201,7 @@ impl PixelBrushEngine {
         self.trajectory.finish_stroke(
             |dab| Self::compute_diameter_impl(dab, config, vel, dist, current_dir, initial_dir) * config.spacing,
             |dab| {
-                if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist, current_dir, initial_dir) {
+                if let Some(r) = Self::paint_dab_impl(dab, config, tip_rasterizer, blitter, scratch, canvas, vel, dist, current_dir, initial_dir, alpha_locked) {
                     dirty_rect = match dirty_rect {
                         None => Some(r),
                         Some(d) => Some(d.expand_to_include(Some(&r))),
@@ -232,7 +237,20 @@ impl PixelBrushEngine {
             if active_layer.locked || !active_layer.visible {
                 return None;
             }
-            self.begin_stroke(start_event, &mut active_layer.buffer)
+            if active_layer.edit_target == EditTarget::Mask {
+                if let Some(ref mut mask) = active_layer.mask {
+                    if !mask.enabled {
+                        return None;
+                    }
+                    self.alpha_locked = false;
+                    self.begin_stroke(start_event, &mut mask.buffer)
+                } else {
+                    None
+                }
+            } else {
+                self.alpha_locked = active_layer.alpha_locked;
+                self.begin_stroke(start_event, &mut active_layer.buffer)
+            }
         } else {
             None
         };
@@ -252,7 +270,20 @@ impl PixelBrushEngine {
             if active_layer.locked || !active_layer.visible {
                 return None;
             }
-            self.paint_to(next_event, &mut active_layer.buffer)
+            if active_layer.edit_target == EditTarget::Mask {
+                if let Some(ref mut mask) = active_layer.mask {
+                    if !mask.enabled {
+                        return None;
+                    }
+                    self.alpha_locked = false;
+                    self.paint_to(next_event, &mut mask.buffer)
+                } else {
+                    None
+                }
+            } else {
+                self.alpha_locked = active_layer.alpha_locked;
+                self.paint_to(next_event, &mut active_layer.buffer)
+            }
         } else {
             None
         };
@@ -268,7 +299,15 @@ impl PixelBrushEngine {
             if active_layer.locked || !active_layer.visible {
                 return None;
             }
-            self.finish_stroke(&mut active_layer.buffer)
+            if active_layer.edit_target == EditTarget::Mask {
+                if let Some(ref mut mask) = active_layer.mask {
+                    self.finish_stroke(&mut mask.buffer)
+                } else {
+                    None
+                }
+            } else {
+                self.finish_stroke(&mut active_layer.buffer)
+            }
         } else {
             None
         };
@@ -316,6 +355,7 @@ impl PixelBrushEngine {
 
     /// Paints a single circular dab at the given event coordinates.
     pub fn paint_dab_at(&mut self, event: StrokeEvent, canvas: &mut CanvasView) -> Option<Rect> {
+        let alpha_locked = self.alpha_locked;
         Self::paint_dab_impl(
             event,
             &self.config,
@@ -327,6 +367,7 @@ impl PixelBrushEngine {
             self.total_distance,
             self.current_stroke_direction,
             self.initial_stroke_direction,
+            alpha_locked,
         )
     }
 
@@ -342,6 +383,7 @@ impl PixelBrushEngine {
         distance_px: f32,
         stroke_direction_rad: f32,
         initial_stroke_direction_rad: f32,
+        alpha_locked: bool,
     ) -> Option<Rect> {
         let diameter = Self::compute_diameter_impl(&event, config, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad);
         let radius = diameter * 0.5;
@@ -356,7 +398,8 @@ impl PixelBrushEngine {
         };
 
         if config.dynamics.angle.is_active() {
-            angle_radians += config.dynamics.angle.evaluate(&event, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad, 0.0);
+            let dyn_angle = config.dynamics.angle.evaluate(&event, velocity_px_sec, distance_px, stroke_direction_rad, initial_stroke_direction_rad, 0.0);
+            angle_radians += dyn_angle * std::f32::consts::TAU;
         }
 
         let effective_softness = if config.dynamics.softness.is_active() {
@@ -442,7 +485,7 @@ impl PixelBrushEngine {
             config.blend_mode
         };
 
-        blitter.blit_dab(
+        blitter.blit_dab_locked(
             canvas,
             scratch_mask,
             dab_w,
@@ -452,6 +495,7 @@ impl PixelBrushEngine {
             config.color,
             flow_opacity,
             mode,
+            alpha_locked,
         )
     }
 }

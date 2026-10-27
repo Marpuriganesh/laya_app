@@ -1,5 +1,5 @@
 pub mod layer;
 pub mod stack;
 
-pub use layer::Layer;
+pub use layer::{EditTarget, Layer, LayerKind, LayerMask};
 pub use stack::CompositeStack;

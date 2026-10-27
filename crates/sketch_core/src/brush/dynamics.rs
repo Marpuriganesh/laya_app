@@ -145,10 +145,20 @@ impl SensorDynamicsMapping {
             SensorType::Distance => (distance_px / 500.0).fract(),
             SensorType::Random => random_seed.clamp(0.0, 1.0),
             SensorType::StrokeDirection => {
-                ((stroke_direction_rad + PI) / TAU).clamp(0.0, 1.0)
+                let norm = if stroke_direction_rad < 0.0 {
+                    (stroke_direction_rad + TAU) / TAU
+                } else {
+                    stroke_direction_rad / TAU
+                };
+                norm.clamp(0.0, 1.0)
             }
             SensorType::InitialStrokeDirection => {
-                ((initial_stroke_direction_rad + PI) / TAU).clamp(0.0, 1.0)
+                let norm = if initial_stroke_direction_rad < 0.0 {
+                    (initial_stroke_direction_rad + TAU) / TAU
+                } else {
+                    initial_stroke_direction_rad / TAU
+                };
+                norm.clamp(0.0, 1.0)
             }
         };
 
@@ -439,13 +449,17 @@ mod tests {
         let map_init = SensorDynamicsMapping::new(SensorType::InitialStrokeDirection, 0.0, 1.0);
         let event = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
 
-        // Direction angle 0.0 rad -> maps to (0 + pi) / 2pi = 0.5
+        // Direction angle 0.0 rad (Right) -> maps to 0.0
         let out_dir = map_dir.evaluate(&event, 0.0, 0.0, 0.0, PI, 0.0);
-        assert!((out_dir - 0.5).abs() < 0.02);
+        assert!((out_dir - 0.0).abs() < 0.02);
 
-        // Initial direction PI rad -> maps to (pi + pi) / 2pi = 1.0
+        // Direction angle PI/2 rad (Down) -> maps to 0.25
+        let out_down = map_dir.evaluate(&event, 0.0, 0.0, std::f32::consts::FRAC_PI_2, PI, 0.0);
+        assert!((out_down - 0.25).abs() < 0.02);
+
+        // Initial direction PI rad (Left) -> maps to 0.5
         let out_init = map_init.evaluate(&event, 0.0, 0.0, 0.0, PI, 0.0);
-        assert!((out_init - 1.0).abs() < 0.02);
+        assert!((out_init - 0.5).abs() < 0.02);
     }
 
     #[test]

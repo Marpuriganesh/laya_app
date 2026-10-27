@@ -86,6 +86,12 @@ export interface DocumentState {
   setLayerOpacity: (id: string, opacity: number) => void;
   setLayerBlendMode: (id: string, blendMode: LayerBlendMode) => void;
   renameLayer: (id: string, name: string) => void;
+  toggleLayerAlphaLock: (id: string) => void;
+  toggleLayerClipping: (id: string) => void;
+  addLayerMask: (id: string) => void;
+  deleteLayerMask: (id: string) => void;
+  toggleLayerMaskEnabled: (id: string) => void;
+  setLayerEditTarget: (id: string, target: "pixels" | "mask") => void;
 }
 
 let layerSequence = 1;
@@ -294,6 +300,9 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         opacity: 1.0,
         blendMode: "normal",
         locked: false,
+        alphaLocked: false,
+        isClipped: false,
+        kind: "raster",
       };
 
       // Sync layer creation to Rust core
@@ -460,6 +469,84 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         ),
       },
     })),
+
+  toggleLayerAlphaLock: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        const nextLocked = !l.alphaLocked;
+        globalRustBrushBridge.setLayerAlphaLock(id, nextLocked);
+        globalWasmBrushBridge.setLayerAlphaLock(id, nextLocked);
+        return { ...l, alphaLocked: nextLocked };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  toggleLayerClipping: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        const nextClipped = !l.isClipped;
+        globalRustBrushBridge.setLayerClipped(id, nextClipped);
+        globalWasmBrushBridge.setLayerClipped(id, nextClipped);
+        return { ...l, isClipped: nextClipped };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  addLayerMask: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        globalRustBrushBridge.addLayerMask(id);
+        globalWasmBrushBridge.addLayerMask(id);
+        return {
+          ...l,
+          mask: { enabled: true, inverted: false },
+          activeTarget: "mask" as const,
+        };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  deleteLayerMask: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        globalRustBrushBridge.deleteLayerMask(id);
+        globalWasmBrushBridge.deleteLayerMask(id);
+        const { mask, ...rest } = l;
+        return { ...rest, activeTarget: "pixels" as const };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  toggleLayerMaskEnabled: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || !l.mask) return l;
+        const nextEnabled = !l.mask.enabled;
+        globalRustBrushBridge.setLayerMaskEnabled(id, nextEnabled);
+        globalWasmBrushBridge.setLayerMaskEnabled(id, nextEnabled);
+        return {
+          ...l,
+          mask: { ...l.mask, enabled: nextEnabled },
+        };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  setLayerEditTarget: (id: string, target: "pixels" | "mask") =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id) return l;
+        if (target === "mask" && !l.mask) return l;
+        globalRustBrushBridge.setLayerEditTarget(id, target);
+        globalWasmBrushBridge.setLayerEditTarget(id, target);
+        return { ...l, activeTarget: target };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
 }));
 
 // Subscribe to dedicated brush store so useDocumentStore stays synchronized

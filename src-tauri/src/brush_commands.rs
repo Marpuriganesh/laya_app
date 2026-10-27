@@ -463,6 +463,94 @@ pub async fn rust_layer_set_visibility(id: String, visible: bool) -> Result<(), 
 }
 
 #[tauri::command]
+pub async fn rust_layer_set_alpha_lock(id: String, locked: bool) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_alpha_lock(&id, locked);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_clipped(id: String, clipped: bool) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_clipped(&id, clipped);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_add_mask(id: String) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.add_layer_mask(&id);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_delete_mask(id: String) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.remove_layer_mask(&id);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_mask_enabled(id: String, enabled: bool) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_mask_enabled(&id, enabled);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_mask_inverted(id: String, inverted: bool) -> Result<(), String> {
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_mask_inverted(&id, inverted);
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        trigger_native_overlay_repaint();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rust_layer_set_edit_target(id: String, target: String) -> Result<(), String> {
+    let edit_target = if target.eq_ignore_ascii_case("mask") {
+        sketch_core::composite::EditTarget::Mask
+    } else {
+        sketch_core::composite::EditTarget::Pixels
+    };
+    let mut guard = GLOBAL_SESSION.lock().unwrap();
+    if let Some(session) = guard.as_mut() {
+        session.stack.set_layer_edit_target(&id, edit_target);
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn rust_layer_reorder(ordered_ids: Vec<String>) -> Result<(), String> {
     let mut guard = GLOBAL_SESSION.lock().unwrap();
     if let Some(session) = guard.as_mut() {

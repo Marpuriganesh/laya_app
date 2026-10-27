@@ -1,7 +1,7 @@
 use crate::brush::blend::{composite_pixel, ColorBlendMode};
 use crate::brush::canvas::CanvasView;
 use crate::brush::rect::Rect;
-use crate::composite::layer::Layer;
+use crate::composite::layer::{EditTarget, Layer};
 
 /// Manages an ordered stack of drawing layers, background canvas properties,
 /// and incremental dirty-rect composition into the final display framebuffer.
@@ -223,6 +223,81 @@ impl CompositeStack {
         }
     }
 
+    /// Sets layer alpha lock status (lock transparent pixels).
+    pub fn set_layer_alpha_lock(&mut self, id: &str, locked: bool) -> bool {
+        if let Some(l) = self.get_layer_mut(id) {
+            l.set_alpha_locked(locked);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Sets whether this layer clips its opacity to the base layer directly below it.
+    pub fn set_layer_clipped(&mut self, id: &str, clipped: bool) -> bool {
+        if let Some(l) = self.get_layer_mut(id) {
+            l.set_clipped(clipped);
+            self.composite_all();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Attaches an 8-bit layer mask channel initialized to white.
+    pub fn add_layer_mask(&mut self, id: &str) -> bool {
+        if let Some(l) = self.get_layer_mut(id) {
+            l.add_mask();
+            self.composite_all();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Removes the attached layer mask channel.
+    pub fn remove_layer_mask(&mut self, id: &str) -> bool {
+        if let Some(l) = self.get_layer_mut(id) {
+            l.remove_mask();
+            self.composite_all();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Sets whether the layer's mask is enabled.
+    pub fn set_layer_mask_enabled(&mut self, id: &str, enabled: bool) -> bool {
+        if let Some(l) = self.get_layer_mut(id) {
+            l.set_mask_enabled(enabled);
+            self.composite_all();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Sets whether the layer's mask is inverted.
+    pub fn set_layer_mask_inverted(&mut self, id: &str, inverted: bool) -> bool {
+        if let Some(l) = self.get_layer_mut(id) {
+            l.set_mask_inverted(inverted);
+            self.composite_all();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Sets the active editing target for the layer (pixels vs. mask).
+    pub fn set_layer_edit_target(&mut self, id: &str, target: EditTarget) -> bool {
+        if let Some(l) = self.get_layer_mut(id) {
+            l.set_edit_target(target);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Clears the pixels of the active layer to transparent `[0, 0, 0, 0]`.
     pub fn clear_active_layer(&mut self) {
         if let Some(l) = self.active_layer_mut() {
@@ -282,14 +357,42 @@ impl CompositeStack {
                 let pixel_offset = row_offset + (x as usize * 4);
 
                 let mut current_color = bg;
+                let mut current_base_alpha: u8 = 0;
 
                 for layer in &self.layers {
                     if !layer.visible || layer.opacity <= 0.0001 {
+                        if !layer.is_clipped {
+                            current_base_alpha = 0;
+                        }
                         continue;
                     }
 
                     let l_buf = &layer.buffer.buffer;
-                    let src_a = l_buf[pixel_offset + 3];
+                    let mut src_a = l_buf[pixel_offset + 3];
+
+                    // Modulate by layer mask channel if present and active
+                    if let Some(ref mask) = layer.mask {
+                        if mask.enabled {
+                            let mask_val = if mask.inverted {
+                                255 - mask.buffer.buffer[pixel_offset]
+                            } else {
+                                mask.buffer.buffer[pixel_offset]
+                            };
+                            src_a = ((src_a as u32 * mask_val as u32 + 127) / 255) as u8;
+                        }
+                    }
+
+                    if !layer.is_clipped {
+                        // Base layer: record effective alpha for subsequent clipped layers
+                        current_base_alpha = src_a;
+                    } else {
+                        // Clipped layer: masked to the base layer's alpha silhouette
+                        if current_base_alpha == 0 {
+                            continue;
+                        }
+                        src_a = ((src_a as u32 * current_base_alpha as u32 + 127) / 255) as u8;
+                    }
+
                     if src_a == 0 {
                         continue;
                     }
@@ -491,6 +594,96 @@ mod tests {
         assert_eq!(
             stack.display_framebuffer.get_pixel(0, 0),
             Some([255, 0, 0, 255])
+        );
+    }
+
+    #[test]
+    fn test_layer_clipping_mask_single_and_chain() {
+        let mut stack = CompositeStack::with_background(10, 10, [255, 255, 255, 255], true);
+
+        // Layer 1 (Base): Red pixel at (0, 0), transparent everywhere else
+        stack.get_layer_mut("layer-1").unwrap().set_pixel(0, 0, [255, 0, 0, 255]);
+
+        // Layer 2: Clipped to Layer 1. Blue pixel at (0, 0) AND at (1, 1)
+        stack.add_layer("layer-2".into(), "Clipped Layer".into()).unwrap();
+        stack.get_layer_mut("layer-2").unwrap().set_pixel(0, 0, [0, 0, 255, 255]);
+        stack.get_layer_mut("layer-2").unwrap().set_pixel(1, 1, [0, 0, 255, 255]);
+        stack.set_layer_clipped("layer-2", true);
+
+        stack.composite_all();
+
+        // At (0, 0), Layer 2 is clipped over Layer 1 -> Blue!
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(0, 0),
+            Some([0, 0, 255, 255])
+        );
+
+        // At (1, 1), Layer 1 has 0 alpha -> Layer 2 is clipped out -> White paper background!
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(1, 1),
+            Some([255, 255, 255, 255])
+        );
+
+        // Add Layer 3: Also clipped (multi-layer clipping chain). Green at (0, 0) and (2, 2)
+        stack.add_layer("layer-3".into(), "Clipped Chain".into()).unwrap();
+        stack.get_layer_mut("layer-3").unwrap().set_pixel(0, 0, [0, 255, 0, 255]);
+        stack.get_layer_mut("layer-3").unwrap().set_pixel(2, 2, [0, 255, 0, 255]);
+        stack.set_layer_clipped("layer-3", true);
+
+        stack.composite_all();
+
+        // (0, 0) becomes Green (top of clip chain)
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(0, 0),
+            Some([0, 255, 0, 255])
+        );
+        // (2, 2) is clipped out by base Layer 1 -> White paper!
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(2, 2),
+            Some([255, 255, 255, 255])
+        );
+    }
+
+    #[test]
+    fn test_layer_mask_black_white_and_invert() {
+        let mut stack = CompositeStack::with_background(10, 10, [255, 255, 255, 255], true);
+
+        // Layer 1: Red at (0, 0) and (1, 1)
+        let l1 = stack.get_layer_mut("layer-1").unwrap();
+        l1.set_pixel(0, 0, [255, 0, 0, 255]);
+        l1.set_pixel(1, 1, [255, 0, 0, 255]);
+
+        // Add mask to Layer 1
+        stack.add_layer_mask("layer-1");
+
+        // Set mask: Black (0) at (0, 0) [hides pixel], White (255) at (1, 1) [reveals pixel]
+        let l1 = stack.get_layer_mut("layer-1").unwrap();
+        let mask = l1.mask.as_mut().unwrap();
+        mask.buffer.set_pixel(0, 0, [0, 0, 0, 255]);
+        mask.buffer.set_pixel(1, 1, [255, 255, 255, 255]);
+
+        stack.composite_all();
+
+        // (0, 0) is masked out by black -> reveals background paper (white)
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(0, 0),
+            Some([255, 255, 255, 255])
+        );
+        // (1, 1) is revealed by white -> Red!
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(1, 1),
+            Some([255, 0, 0, 255])
+        );
+
+        // Invert mask: (0, 0) should now be revealed, and (1, 1) should be hidden
+        stack.set_layer_mask_inverted("layer-1", true);
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(0, 0),
+            Some([255, 0, 0, 255])
+        );
+        assert_eq!(
+            stack.display_framebuffer.get_pixel(1, 1),
+            Some([255, 255, 255, 255])
         );
     }
 }

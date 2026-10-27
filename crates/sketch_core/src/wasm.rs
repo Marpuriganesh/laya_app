@@ -105,6 +105,46 @@ impl WasmBrushEngine {
         self.stack.set_layer_visibility(id, visible)
     }
 
+    /// Sets layer alpha lock status (lock transparent pixels).
+    pub fn set_layer_alpha_lock(&mut self, id: &str, locked: bool) -> bool {
+        self.stack.set_layer_alpha_lock(id, locked)
+    }
+
+    /// Sets whether this layer clips its opacity to the base layer directly below it.
+    pub fn set_layer_clipped(&mut self, id: &str, clipped: bool) -> bool {
+        self.stack.set_layer_clipped(id, clipped)
+    }
+
+    /// Attaches an 8-bit layer mask channel initialized to white.
+    pub fn add_layer_mask(&mut self, id: &str) -> bool {
+        self.stack.add_layer_mask(id)
+    }
+
+    /// Removes the attached layer mask channel.
+    pub fn remove_layer_mask(&mut self, id: &str) -> bool {
+        self.stack.remove_layer_mask(id)
+    }
+
+    /// Sets whether the layer's mask is enabled.
+    pub fn set_layer_mask_enabled(&mut self, id: &str, enabled: bool) -> bool {
+        self.stack.set_layer_mask_enabled(id, enabled)
+    }
+
+    /// Sets whether the layer's mask is inverted.
+    pub fn set_layer_mask_inverted(&mut self, id: &str, inverted: bool) -> bool {
+        self.stack.set_layer_mask_inverted(id, inverted)
+    }
+
+    /// Sets the active editing target for the layer ("pixels" vs "mask").
+    pub fn set_layer_edit_target(&mut self, id: &str, target: &str) -> bool {
+        let edit_target = if target.eq_ignore_ascii_case("mask") {
+            crate::composite::EditTarget::Mask
+        } else {
+            crate::composite::EditTarget::Pixels
+        };
+        self.stack.set_layer_edit_target(id, edit_target)
+    }
+
     /// Sets the canvas paper background color.
     pub fn set_background_color(&mut self, r: u8, g: u8, b: u8, a: u8) {
         self.stack.set_background_color([r, g, b, a]);

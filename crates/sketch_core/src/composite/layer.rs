@@ -1,10 +1,47 @@
 use crate::brush::blend::ColorBlendMode;
 use crate::brush::canvas::CanvasView;
 
-/// Represents an individual raster layer in the drawing canvas.
+/// Distinguishes the functional behavior and storage backend of a layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayerKind {
+    Raster,
+    Vector,
+    Group,
+}
+
+/// Identifies whether stylus painting targets the layer's pixel buffer or its mask.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditTarget {
+    Pixels,
+    Mask,
+}
+
+/// Represents a non-destructive layer mask channel attached to a layer.
+///
+/// The mask buffer stores grayscale luminance where 255 = fully visible,
+/// 0 = fully transparent/hidden, and intermediate values represent partial opacity.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerMask {
+    pub buffer: CanvasView,
+    pub enabled: bool,
+    pub inverted: bool,
+}
+
+impl LayerMask {
+    /// Creates a new layer mask filled with opaque white (`[255, 255, 255, 255]`).
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            buffer: CanvasView::with_color(width, height, [255, 255, 255, 255]),
+            enabled: true,
+            inverted: false,
+        }
+    }
+}
+
+/// Represents an individual raster or vector layer in the drawing canvas.
 ///
 /// Each layer owns its RGBA8 pixel buffer (`CanvasView`), an opacity factor,
-/// a color blend mode, visibility, and lock flags.
+/// a color blend mode, visibility, lock flags, clipping mask status, and optional layer mask.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
     pub id: String,
@@ -14,6 +51,11 @@ pub struct Layer {
     pub blend_mode: ColorBlendMode,
     pub visible: bool,
     pub locked: bool,
+    pub alpha_locked: bool,
+    pub is_clipped: bool,
+    pub kind: LayerKind,
+    pub mask: Option<LayerMask>,
+    pub edit_target: EditTarget,
 }
 
 impl Layer {
@@ -27,6 +69,11 @@ impl Layer {
             blend_mode: ColorBlendMode::Normal,
             visible: true,
             locked: false,
+            alpha_locked: false,
+            is_clipped: false,
+            kind: LayerKind::Raster,
+            mask: None,
+            edit_target: EditTarget::Pixels,
         }
     }
 
@@ -40,6 +87,11 @@ impl Layer {
             blend_mode: ColorBlendMode::Normal,
             visible: true,
             locked: false,
+            alpha_locked: false,
+            is_clipped: false,
+            kind: LayerKind::Raster,
+            mask: None,
+            edit_target: EditTarget::Pixels,
         }
     }
 
@@ -53,12 +105,22 @@ impl Layer {
             blend_mode: self.blend_mode,
             visible: self.visible,
             locked: false,
+            alpha_locked: self.alpha_locked,
+            is_clipped: self.is_clipped,
+            kind: self.kind,
+            mask: self.mask.clone(),
+            edit_target: self.edit_target,
         }
     }
 
     /// Clears the layer's pixel buffer to transparent `[0, 0, 0, 0]` or a specified fill color.
     pub fn clear(&mut self, color: [u8; 4]) {
         self.buffer.clear(color);
+    }
+
+    /// Sets an individual pixel color in the layer buffer.
+    pub fn set_pixel(&mut self, x: u32, y: u32, color: [u8; 4]) -> bool {
+        self.buffer.set_pixel(x, y, color)
     }
 
     /// Sets layer opacity in `[0.0, 1.0]`.
@@ -79,6 +141,51 @@ impl Layer {
     /// Sets layer lock status.
     pub fn set_locked(&mut self, locked: bool) {
         self.locked = locked;
+    }
+
+    /// Sets layer alpha lock status (lock transparent pixels).
+    pub fn set_alpha_locked(&mut self, locked: bool) {
+        self.alpha_locked = locked;
+    }
+
+    /// Sets whether this layer clips its opacity to the base layer directly below it.
+    pub fn set_clipped(&mut self, clipped: bool) {
+        self.is_clipped = clipped;
+    }
+
+    /// Attaches an 8-bit layer mask channel initialized to white.
+    pub fn add_mask(&mut self) {
+        if self.mask.is_none() {
+            self.mask = Some(LayerMask::new(self.buffer.width, self.buffer.height));
+        }
+    }
+
+    /// Removes the attached layer mask channel.
+    pub fn remove_mask(&mut self) {
+        self.mask = None;
+        self.edit_target = EditTarget::Pixels;
+    }
+
+    /// Sets whether the attached layer mask is enabled.
+    pub fn set_mask_enabled(&mut self, enabled: bool) {
+        if let Some(ref mut mask) = self.mask {
+            mask.enabled = enabled;
+        }
+    }
+
+    /// Sets whether the attached layer mask is inverted.
+    pub fn set_mask_inverted(&mut self, inverted: bool) {
+        if let Some(ref mut mask) = self.mask {
+            mask.inverted = inverted;
+        }
+    }
+
+    /// Sets the active editing target (pixels vs. mask).
+    pub fn set_edit_target(&mut self, target: EditTarget) {
+        if target == EditTarget::Mask && self.mask.is_none() {
+            return;
+        }
+        self.edit_target = target;
     }
 }
 
@@ -113,5 +220,40 @@ mod tests {
         assert_eq!(dup.opacity, 0.75);
         assert_eq!(dup.blend_mode, ColorBlendMode::Multiply);
         assert_eq!(dup.buffer.get_pixel(0, 0), Some([255, 0, 0, 255]));
+    }
+
+    #[test]
+    fn test_layer_mask_and_clipping_defaults() {
+        let mut layer = Layer::new("layer-1".into(), "Layer 1".into(), 10, 10);
+        assert!(!layer.alpha_locked);
+        assert!(!layer.is_clipped);
+        assert!(layer.mask.is_none());
+        assert_eq!(layer.edit_target, EditTarget::Pixels);
+
+        layer.set_alpha_locked(true);
+        layer.set_clipped(true);
+        layer.add_mask();
+        assert!(layer.alpha_locked);
+        assert!(layer.is_clipped);
+        assert!(layer.mask.is_some());
+
+        // Mask initializes to white [255, 255, 255, 255]
+        let mask = layer.mask.as_ref().unwrap();
+        assert_eq!(mask.buffer.get_pixel(0, 0), Some([255, 255, 255, 255]));
+        assert!(mask.enabled);
+        assert!(!mask.inverted);
+
+        layer.set_edit_target(EditTarget::Mask);
+        assert_eq!(layer.edit_target, EditTarget::Mask);
+
+        let dup = layer.duplicate("dup-mask".into(), "Copy Mask".into());
+        assert!(dup.alpha_locked);
+        assert!(dup.is_clipped);
+        assert!(dup.mask.is_some());
+        assert_eq!(dup.edit_target, EditTarget::Mask);
+
+        layer.remove_mask();
+        assert!(layer.mask.is_none());
+        assert_eq!(layer.edit_target, EditTarget::Pixels);
     }
 }

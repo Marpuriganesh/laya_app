@@ -232,6 +232,45 @@ export class WasmBrushBridge {
     return this.engine.set_layer_visibility(id, visible);
   }
 
+  public setLayerAlphaLock(id: string, locked: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_alpha_lock(id, locked);
+  }
+
+  public setLayerClipped(id: string, clipped: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_clipped(id, clipped);
+  }
+
+  public addLayerMask(id: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.add_layer_mask(id);
+  }
+
+  public removeLayerMask(id: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.remove_layer_mask(id);
+  }
+
+  public deleteLayerMask(id: string): boolean {
+    return this.removeLayerMask(id);
+  }
+
+  public setLayerMaskEnabled(id: string, enabled: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_mask_enabled(id, enabled);
+  }
+
+  public setLayerMaskInverted(id: string, inverted: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_mask_inverted(id, inverted);
+  }
+
+  public setLayerEditTarget(id: string, target: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_edit_target(id, target);
+  }
+
   public setBackgroundColor(r: number, g: number, b: number, a: number): void {
     if (!this.engine) return;
     this.engine.set_background_color(r, g, b, a);
