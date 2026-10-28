@@ -12,13 +12,10 @@
 
 import { useState, useCallback, useMemo, type FC } from "react";
 import {
-  SlidersHorizontal,
   RotateCcw,
   Check,
   Sparkles,
-  Layers,
   ChevronDown,
-  Paintbrush,
   CopyPlus,
   ArrowLeft,
 } from "lucide-react";

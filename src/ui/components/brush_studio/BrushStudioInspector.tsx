@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, type FC } from "react";
 import {
-  Waves,
   FolderOpen,
   RefreshCw,
   Paintbrush,
@@ -11,7 +10,6 @@ import type {
   StrokeSmoothingConfig,
   PixelBrushParameters,
   BrushTextureConfig,
-  TextureBlendMode,
   PullStringConfig,
   MovingAverageConfig,
 } from "@/types/brush";
@@ -152,42 +150,6 @@ async function generateThumbnailDataUrl(
   return "";
 }
 
-function generateGrayscaleThumbnailDataUrl(
-  bytes: Uint8Array,
-  width: number,
-  height: number,
-  size = 36
-): string {
-  if (typeof document === "undefined") return "";
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return "";
-
-    const srcCanvas = document.createElement("canvas");
-    srcCanvas.width = width;
-    srcCanvas.height = height;
-    const sctx = srcCanvas.getContext("2d");
-    if (!sctx) return "";
-
-    const imgData = sctx.createImageData(width, height);
-    for (let i = 0; i < width * height; i++) {
-      const lum = bytes[i];
-      imgData.data[i * 4 + 0] = lum;
-      imgData.data[i * 4 + 1] = lum;
-      imgData.data[i * 4 + 2] = lum;
-      imgData.data[i * 4 + 3] = 255;
-    }
-    sctx.putImageData(imgData, 0, 0);
-    ctx.drawImage(srcCanvas, 0, 0, size, size);
-    return canvas.toDataURL("image/png");
-  } catch {
-    return "";
-  }
-}
-
 export interface BrushStudioInspectorProps {
   category: BrushStudioCategoryId;
   draftPreset: BrushPreset;
@@ -217,9 +179,7 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
 
   // Disk resources state
   const [brushResources, setBrushResources] = useState<ResourceItemDto[]>([]);
-  const [patternResources, setPatternResources] = useState<ResourceItemDto[]>([]);
   const [tipThumbnails, setTipThumbnails] = useState<Record<string, string>>({});
-  const [patternThumbnails, setPatternThumbnails] = useState<Record<string, string>>({});
   const [tiltThresholdDeg, setTiltThresholdDeg] = useState(15);
 
   const refreshResources = useCallback(async () => {
@@ -263,7 +223,6 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
     }
 
     setBrushResources(mergedTips);
-    setPatternResources(mergedPats);
   }, []);
 
   useEffect(() => {
@@ -299,34 +258,6 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
     };
   }, [brushResources]);
 
-  useEffect(() => {
-    let active = true;
-    async function loadPatternThumbnails() {
-      const thumbs: Record<string, string> = {};
-      for (const pat of patternResources) {
-        try {
-          if (pat.path.startsWith("__builtin__:")) {
-            const bp = BUILTIN_PROCEDURAL_TEXTURES.find((b) => b.patternId === pat.id);
-            if (bp && active) {
-              const bBytes = bp.bytes instanceof Uint8Array ? bp.bytes : new Uint8Array(bp.bytes);
-              thumbs[pat.id] = generateGrayscaleThumbnailDataUrl(bBytes, bp.width, bp.height, 36);
-            }
-          } else {
-            const bytes = await globalRustBrushBridge.readResourceFile(pat.path);
-            if (bytes && active) {
-              const thumb = await generateThumbnailDataUrl(bytes, pat.file_name, 36);
-              if (thumb) thumbs[pat.id] = thumb;
-            }
-          }
-        } catch {}
-      }
-      if (active) setPatternThumbnails(thumbs);
-    }
-    if (patternResources.length > 0) loadPatternThumbnails();
-    return () => {
-      active = false;
-    };
-  }, [patternResources]);
 
   const handleSelectTip = async (item: ResourceItemDto | null) => {
     if (!item) {
@@ -400,65 +331,6 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
     }
   };
 
-  const handleSelectPattern = async (item: ResourceItemDto | null) => {
-    if (!item) {
-      onUpdateEngineParams({ grainTexture: null });
-      return;
-    }
-
-    let texConfig: BrushTextureConfig | null = null;
-    const currentScale = params?.grainTexture?.scale ?? 1.0;
-    const currentMode = params?.grainTexture?.mode ?? "multiply";
-    const currentStrength = params?.grainTexture?.strength ?? 1.0;
-    const currentByPressure = params?.grainTexture?.byPressure ?? false;
-
-    if (item.path.startsWith("__builtin__:")) {
-      const bp = BUILTIN_PROCEDURAL_TEXTURES.find((b) => b.patternId === item.id);
-      if (bp) {
-        const bBytes = bp.bytes instanceof Uint8Array ? bp.bytes : new Uint8Array(bp.bytes);
-        texConfig = {
-          patternId: bp.patternId,
-          name: bp.name,
-          width: bp.width,
-          height: bp.height,
-          bytes: bBytes,
-          scale: currentScale,
-          mode: (currentMode as TextureBlendMode) || bp.mode,
-          strength: currentStrength,
-          byPressure: currentByPressure,
-        };
-      }
-    } else {
-      const bytes = await globalRustBrushBridge.readResourceFile(item.path);
-      if (bytes) {
-        const decoded = await decodeImageToRgba(bytes);
-        if (decoded) {
-          const lumBytes = new Uint8Array(decoded.width * decoded.height);
-          for (let i = 0; i < decoded.width * decoded.height; i++) {
-            const r = decoded.rgba[i * 4 + 0];
-            const g = decoded.rgba[i * 4 + 1];
-            const b = decoded.rgba[i * 4 + 2];
-            lumBytes[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-          }
-          texConfig = {
-            patternId: item.id,
-            name: item.name,
-            width: decoded.width,
-            height: decoded.height,
-            bytes: lumBytes,
-            scale: currentScale,
-            mode: (currentMode as TextureBlendMode) || "multiply",
-            strength: currentStrength,
-            byPressure: currentByPressure,
-          };
-        }
-      }
-    }
-
-    if (texConfig) {
-      onUpdateEngineParams({ grainTexture: texConfig });
-    }
-  };
 
   // 1. Stroke Path Inspector
   if (category === "stroke_path") {

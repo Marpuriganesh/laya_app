@@ -7,8 +7,9 @@
  *    Retina 2x/3x DPR backing, touch-action: none).
  * 3. Multi-theme support: Procreate Dark, Crisp Studio Light, and 50% Neutral Gray paper.
  * 4. Customizable stroke colors with quick artist presets and custom picker.
- * 5. Trajectory presets (Procreate S-Curve, Dynamic Whip & Flick, Undulating Ribbon, Pencil Hatching).
+ * 5. Compact, bounded trajectories (Procreate S-Curve, Dynamic Whip & Flick, Undulating Ribbon, Pencil Hatching).
  * 6. Dual mode: Live Preview Mode vs Freehand Scribble Mode with instant reset.
+ * 7. Native Cocoa AppKit overlay integration for Tauri desktop app on macOS.
  */
 
 import {
@@ -20,17 +21,7 @@ import {
   type FC,
   type PointerEvent,
 } from "react";
-import {
-  Trash2,
-  Wand2,
-  RotateCcw,
-  Sun,
-  Moon,
-  Sparkles,
-  PenTool,
-  Palette,
-  Maximize2,
-} from "lucide-react";
+import { Trash2, RotateCcw, Sun, Moon, Sparkles, PenTool } from "lucide-react";
 import { WasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 import { generateCurveLookupTable256 } from "@/engine/math/dynamics_curve";
@@ -57,7 +48,11 @@ export interface ProcreateLiveDrawingPadProps {
   onPresetChangeRequest?: (preset: BrushPreset) => void;
 }
 
-const PRESET_COLORS: readonly { label: string; hex: string; rgb: [number, number, number] }[] = [
+const PRESET_COLORS: readonly {
+  label: string;
+  hex: string;
+  rgb: [number, number, number];
+}[] = [
   { label: "Titanium White", hex: "#ffffff", rgb: [255, 255, 255] },
   { label: "Carbon Black", hex: "#18181b", rgb: [24, 24, 27] },
   { label: "Sketching Blue", hex: "#2563eb", rgb: [37, 99, 235] },
@@ -77,7 +72,10 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
   const bridgeRef = useRef<WasmBrushBridge | null>(null);
 
   // Pad sizing & state
-  const [dimensions, setDimensions] = useState<{ width: number; height: number }>({
+  const [dimensions, setDimensions] = useState<{
+    width: number;
+    height: number;
+  }>({
     width: 520,
     height: 640,
   });
@@ -86,7 +84,8 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
   // Theme & Color States
   const [padTheme, setPadTheme] = useState<PadTheme>("dark");
   const [activeColorHex, setActiveColorHex] = useState<string>("#ffffff");
-  const [trajectoryType, setTrajectoryType] = useState<TrajectoryType>("s-curve");
+  const [trajectoryType, setTrajectoryType] =
+    useState<TrajectoryType>("s-curve");
 
   // Interaction Mode: "preview" (auto-updates canonical stroke) vs "freehand" (user scribbles)
   const [isFreehandMode, setIsFreehandMode] = useState<boolean>(false);
@@ -99,7 +98,9 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
 
   // Derive RGB from active hex
   const activeColorRgb = useMemo<[number, number, number]>(() => {
-    const found = PRESET_COLORS.find((c) => c.hex.toLowerCase() === activeColorHex.toLowerCase());
+    const found = PRESET_COLORS.find(
+      (c) => c.hex.toLowerCase() === activeColorHex.toLowerCase(),
+    );
     if (found) return found.rgb;
 
     const clean = activeColorHex.replace("#", "");
@@ -122,66 +123,6 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
     }
   };
 
-  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-  const isMac = typeof navigator !== "undefined" && /macintosh|mac os x/i.test(navigator.userAgent);
-  const isMacNativeOverlay = isTauri && isMac;
-
-  // In Tauri standalone app on macOS, synchronize the native Cocoa AppKit artboard rect
-  // so Cocoa intercepts the Apple Pencil / Wacom stylus with 120-240Hz hardware pressure and tilt!
-  useEffect(() => {
-    if (!isMacNativeOverlay || !containerRef.current) return;
-    const updateNativeOverlay = () => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      void globalRustBrushBridge.setModalOpen(false);
-      void globalRustBrushBridge.updateArtboardRect(
-        rect.left,
-        rect.top,
-        rect.width,
-        rect.height
-      );
-      void globalRustBrushBridge.setDocumentSize(
-        Math.round(rect.width),
-        Math.round(rect.height)
-      );
-    };
-
-    updateNativeOverlay();
-    const timer = setTimeout(updateNativeOverlay, 80);
-    window.addEventListener("resize", updateNativeOverlay);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("resize", updateNativeOverlay);
-      void globalRustBrushBridge.updateArtboardRect(0, 0, 0, 0);
-    };
-  }, [dimensions, isMacNativeOverlay]);
-
-  // Ensure default canonical stroke is rendered immediately on ready
-  useEffect(() => {
-    if (isReady && !isFreehandMode && !hasUserDrawn) {
-      syncBridgeConfig();
-      renderCanonicalStroke();
-    }
-  }, [isReady, syncBridgeConfig, renderCanonicalStroke, isFreehandMode, hasUserDrawn]);
-
-  // Sync canvas size with container dimensions via ResizeObserver
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 80 && height > 80) {
-          setDimensions({ width: Math.round(width), height: Math.round(height) });
-        }
-      }
-    });
-
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
-
   // Synchronizes full draft preset parameters, tip geometry, dynamics, and textures to Wasm bridge
   const syncBridgeConfig = useCallback(() => {
     if (!bridgeRef.current?.ready) return;
@@ -189,9 +130,11 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
     const params = draftPreset.engineParameters;
     if (params.engineId !== "pixelbrush") return;
 
-    const scatterAmp = typeof params.scatterAmplitude === "number" ? params.scatterAmplitude : 0;
+    const scatterAmp =
+      typeof params.scatterAmplitude === "number" ? params.scatterAmplitude : 0;
     const hasScatter = Boolean(
-      (params.scatterDynamics && params.scatterDynamics.isEnabled) || scatterAmp > 0.01
+      (params.scatterDynamics && params.scatterDynamics.isEnabled) ||
+      scatterAmp > 0.01,
     );
 
     // 1. Base parameters
@@ -228,7 +171,10 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
             const lut =
               sVal.curvePoints && sVal.curvePoints.length >= 2
                 ? generateCurveLookupTable256(
-                    sVal.curvePoints.map((p) => ({ x: p.inputValue, y: p.outputValue }))
+                    sVal.curvePoints.map((p) => ({
+                      x: p.inputValue,
+                      y: p.outputValue,
+                    })),
                   )
                 : new Float32Array(256);
             bridge.setDynamicsMapping(
@@ -237,7 +183,7 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
               sensorKey,
               sVal.minOutput ?? 0.0,
               sVal.maxOutput ?? 1.0,
-              lut
+              lut,
             );
           }
         }
@@ -246,20 +192,54 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
       // Legacy dynamics
       const sizeDyn = params.sizeDynamics;
       if (sizeDyn && sizeDyn.isEnabled && sizeDyn.curvePoints.length >= 2) {
-        const pts = sizeDyn.curvePoints.map((p) => ({ x: p.inputValue, y: p.outputValue }));
+        const pts = sizeDyn.curvePoints.map((p) => ({
+          x: p.inputValue,
+          y: p.outputValue,
+        }));
         const lut = generateCurveLookupTable256(pts);
-        bridge.setDynamicsMapping("size", true, sizeDyn.sensorInput, 0.02, 1.0, lut);
+        bridge.setDynamicsMapping(
+          "size",
+          true,
+          sizeDyn.sensorInput,
+          0.02,
+          1.0,
+          lut,
+        );
       } else {
-        bridge.setDynamicsMapping("size", false, "pressure", 0.0, 1.0, new Float32Array(256));
+        bridge.setDynamicsMapping(
+          "size",
+          false,
+          "pressure",
+          0.0,
+          1.0,
+          new Float32Array(256),
+        );
       }
 
       const opDyn = params.opacityDynamics;
       if (opDyn && opDyn.isEnabled && opDyn.curvePoints.length >= 2) {
-        const pts = opDyn.curvePoints.map((p) => ({ x: p.inputValue, y: p.outputValue }));
+        const pts = opDyn.curvePoints.map((p) => ({
+          x: p.inputValue,
+          y: p.outputValue,
+        }));
         const lut = generateCurveLookupTable256(pts);
-        bridge.setDynamicsMapping("opacity", true, opDyn.sensorInput, 0.05, 1.0, lut);
+        bridge.setDynamicsMapping(
+          "opacity",
+          true,
+          opDyn.sensorInput,
+          0.05,
+          1.0,
+          lut,
+        );
       } else {
-        bridge.setDynamicsMapping("opacity", false, "pressure", 0.0, 1.0, new Float32Array(256));
+        bridge.setDynamicsMapping(
+          "opacity",
+          false,
+          "pressure",
+          0.0,
+          1.0,
+          new Float32Array(256),
+        );
       }
 
       if (hasScatter) {
@@ -268,34 +248,62 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
         const maxOut = Math.max(scatterAmp, 0.6);
         bridge.setDynamicsMapping("jitter", true, "random", 0.0, maxOut, lut);
       } else {
-        bridge.setDynamicsMapping("jitter", false, "random", 0.0, 0.0, new Float32Array(256));
+        bridge.setDynamicsMapping(
+          "jitter",
+          false,
+          "random",
+          0.0,
+          0.0,
+          new Float32Array(256),
+        );
       }
     }
 
     // 4. Tip geometry (Predefined stamp vs Auto ellipse)
     const tip = params.brushTip;
-    if (tip && tip.tipType === "predefined" && tip.imageData && tip.width > 0 && tip.height > 0) {
+    if (
+      tip &&
+      tip.tipType === "predefined" &&
+      tip.imageData &&
+      tip.width > 0 &&
+      tip.height > 0
+    ) {
       const tipId = `pad-tip-${draftPreset.presetId}`;
       const maskBytes = new Uint8Array(
         tip.imageData.buffer,
         tip.imageData.byteOffset,
-        tip.imageData.byteLength
+        tip.imageData.byteLength,
       );
-      bridge.registerTipMask(tipId, "Pad Tip", tip.width, tip.height, maskBytes, true);
+      bridge.registerTipMask(
+        tipId,
+        "Pad Tip",
+        tip.width,
+        tip.height,
+        maskBytes,
+        true,
+      );
       const angle = (tip as any).angleRadians ?? 0.0;
       bridge.setBrushPredefinedTip(tipId, 1.0, angle);
     } else {
       bridge.clearBrushPredefinedTip();
-      const ar = tip?.tipType === "generated" ? tip.aspectRatio ?? 1.0 : 1.0;
-      const angle = tip?.tipType === "generated" ? tip.angleRadians ?? 0.0 : 0.0;
+      const ar = tip?.tipType === "generated" ? (tip.aspectRatio ?? 1.0) : 1.0;
+      const angle =
+        tip?.tipType === "generated" ? (tip.angleRadians ?? 0.0) : 0.0;
       bridge.setBrushAutoTip(ar, angle);
     }
 
     // 5. Paper grain texture
     const tex = params.grainTexture;
     if (tex && tex.bytes && tex.bytes.length > 0) {
-      const patBytes = tex.bytes instanceof Uint8Array ? tex.bytes : new Uint8Array(tex.bytes);
-      bridge.registerPatternGrayscale(tex.patternId, tex.name, tex.width, tex.height, patBytes);
+      const patBytes =
+        tex.bytes instanceof Uint8Array ? tex.bytes : new Uint8Array(tex.bytes);
+      bridge.registerPatternGrayscale(
+        tex.patternId,
+        tex.name,
+        tex.width,
+        tex.height,
+        patBytes,
+      );
       bridge.setBrushTextureResource(
         tex.patternId,
         tex.scale ?? 1.0,
@@ -304,7 +312,7 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
         tex.invert ?? false,
         tex.brightness ?? 0.0,
         tex.contrast ?? 1.0,
-        tex.byPressure ?? false
+        tex.byPressure ?? false,
       );
     } else {
       bridge.clearBrushTexture();
@@ -346,7 +354,8 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     bridge.clear(0, 0, 0, 0);
 
-    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const dpr =
+      typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
     const w = dimensions.width * dpr;
     const h = dimensions.height * dpr;
 
@@ -377,13 +386,47 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
     });
   }, [isFreehandMode, hasUserDrawn, syncBridgeConfig, renderCanonicalStroke]);
 
+  // Reset back to canonical live stroke preview
+  const handleResetToCanonical = useCallback(() => {
+    setIsFreehandMode(false);
+    setHasUserDrawn(false);
+    syncBridgeConfig();
+    renderCanonicalStroke();
+  }, [syncBridgeConfig, renderCanonicalStroke]);
+
+  // ============================================================================
+  // Lifecycle & Synchronization Effects
+  // ============================================================================
+
+  // Sync canvas size with container dimensions via ResizeObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 80 && height > 80) {
+          setDimensions({
+            width: Math.round(width),
+            height: Math.round(height),
+          });
+        }
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
   // Initialize and resize isolated Wasm engine with devicePixelRatio scaling
   useEffect(() => {
     let active = true;
     const { width, height } = dimensions;
     if (width <= 0 || height <= 0) return;
 
-    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const dpr =
+      typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
     const bufferWidth = Math.round(width * dpr);
     const bufferHeight = Math.round(height * dpr);
 
@@ -419,22 +462,77 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
         cancelAnimationFrame(pendingRafRef.current);
       }
     };
-  }, [dimensions, syncBridgeConfig, renderCanonicalStroke, isFreehandMode, hasUserDrawn]);
+  }, [
+    dimensions,
+    syncBridgeConfig,
+    renderCanonicalStroke,
+    isFreehandMode,
+    hasUserDrawn,
+  ]);
 
   // Live update trigger whenever draft brush settings change
   useEffect(() => {
     if (isReady) {
       scheduleLivePreviewUpdate();
     }
-  }, [isReady, scheduleLivePreviewUpdate, draftPreset, draftSmoothing, draftPressureCurve]);
+  }, [
+    isReady,
+    scheduleLivePreviewUpdate,
+    draftPreset,
+    draftSmoothing,
+    draftPressureCurve,
+  ]);
 
-  // Reset back to canonical live stroke preview
-  const handleResetToCanonical = useCallback(() => {
-    setIsFreehandMode(false);
-    setHasUserDrawn(false);
-    syncBridgeConfig();
-    renderCanonicalStroke();
-  }, [syncBridgeConfig, renderCanonicalStroke]);
+  // Ensure default canonical stroke is rendered immediately on ready
+  useEffect(() => {
+    if (isReady && !isFreehandMode && !hasUserDrawn) {
+      syncBridgeConfig();
+      renderCanonicalStroke();
+    }
+  }, [
+    isReady,
+    syncBridgeConfig,
+    renderCanonicalStroke,
+    isFreehandMode,
+    hasUserDrawn,
+  ]);
+
+  // In Tauri standalone app on macOS, synchronize the native Cocoa AppKit artboard rect
+  // so Cocoa intercepts the Apple Pencil / Wacom stylus with 120-240Hz hardware pressure and tilt!
+  const isTauri =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /macintosh|mac os x/i.test(navigator.userAgent);
+  const isMacNativeOverlay = isTauri && isMac;
+
+  useEffect(() => {
+    if (!isMacNativeOverlay || !containerRef.current) return;
+    const updateNativeOverlay = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      void globalRustBrushBridge.setModalOpen(false);
+      void globalRustBrushBridge.updateArtboardRect(
+        rect.left,
+        rect.top,
+        rect.width,
+        rect.height,
+      );
+      void globalRustBrushBridge.setDocumentSize(
+        Math.round(rect.width),
+        Math.round(rect.height),
+      );
+    };
+
+    updateNativeOverlay();
+    const timer = setTimeout(updateNativeOverlay, 80);
+    window.addEventListener("resize", updateNativeOverlay);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", updateNativeOverlay);
+      void globalRustBrushBridge.updateArtboardRect(0, 0, 0, 0);
+    };
+  }, [dimensions, isMacNativeOverlay]);
 
   // ============================================================================
   // Pointer Event Handling (Apple Pencil / Wacom Stylus with Coalescing & DPR)
@@ -444,9 +542,10 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return { scale: 1, panX: 0, panY: 0, rotation: 0 };
     const rect = canvas.getBoundingClientRect();
-    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const dpr =
+      typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
     return {
-      scale: rect.width > 0 ? (canvas.width / rect.width) : dpr,
+      scale: rect.width > 0 ? canvas.width / rect.width : dpr,
       panX: rect.left,
       panY: rect.top,
       rotation: 0,
@@ -492,7 +591,7 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
     const points = normalizeCoalescedPointerEvents(
       e.nativeEvent,
       transform,
-      lastStrokePointRef.current
+      lastStrokePointRef.current,
     );
 
     const ctx = canvas.getContext("2d");
@@ -505,7 +604,7 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
       const singlePoint = normalizePointerEvent(
         e.nativeEvent,
         transform,
-        lastStrokePointRef.current
+        lastStrokePointRef.current,
       );
       bridgeRef.current.extendStroke(singlePoint, ctx);
       lastStrokePointRef.current = singlePoint;
@@ -576,7 +675,11 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
               className="bg-transparent text-xs text-zinc-200 focus:outline-none cursor-pointer"
             >
               {TRAJECTORY_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id} className="bg-zinc-800 text-zinc-100">
+                <option
+                  key={opt.id}
+                  value={opt.id}
+                  className="bg-zinc-800 text-zinc-100"
+                >
                   {opt.label}
                 </option>
               ))}
@@ -593,7 +696,9 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
                 : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
             }`}
           >
-            {isFreehandMode || hasUserDrawn ? "Freehand Scribble" : "Live Preview (Procreate)"}
+            {isFreehandMode || hasUserDrawn
+              ? "Freehand Scribble"
+              : "Live Preview (Procreate)"}
           </span>
         </div>
 
@@ -634,7 +739,9 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
               onClick={() => handleThemeChange("dark")}
               title="Procreate Dark Slate"
               className={`p-1 rounded text-xs transition-colors ${
-                padTheme === "dark" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200"
+                padTheme === "dark"
+                  ? "bg-zinc-700 text-white"
+                  : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
               <Moon className="w-3.5 h-3.5" />
@@ -644,7 +751,9 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
               onClick={() => handleThemeChange("light")}
               title="Studio Crisp Light"
               className={`p-1 rounded text-xs transition-colors ${
-                padTheme === "light" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200"
+                padTheme === "light"
+                  ? "bg-zinc-700 text-white"
+                  : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
               <Sun className="w-3.5 h-3.5" />
@@ -654,7 +763,9 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
               onClick={() => handleThemeChange("neutral")}
               title="50% Neutral Grey"
               className={`p-1 rounded text-xs font-bold transition-colors ${
-                padTheme === "neutral" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200"
+                padTheme === "neutral"
+                  ? "bg-zinc-700 text-white"
+                  : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
               <span className="text-[10px] px-1">50%</span>
@@ -712,7 +823,10 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
         {!isFreehandMode && !hasUserDrawn && (
           <div className="absolute bottom-6 right-6 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-md border border-white/10 text-zinc-400 text-xs">
             <PenTool className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-            <span>Draw with stylus to test pressure, or tweak sliders to see live updates</span>
+            <span>
+              Draw with stylus to test pressure, or tweak sliders to see live
+              updates
+            </span>
           </div>
         )}
       </div>

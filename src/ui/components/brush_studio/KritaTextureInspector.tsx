@@ -10,15 +10,7 @@ import { useState, useEffect, useCallback, useMemo, type FC } from "react";
 import {
   Waves,
   Search,
-  Sliders,
-  Sparkles,
-  RotateCcw,
-  Eye,
   Check,
-  FolderOpen,
-  Shuffle,
-  Activity,
-  Layers,
 } from "lucide-react";
 import type { BrushTextureConfig, TextureBlendMode } from "@/types/brush";
 import {
@@ -28,7 +20,7 @@ import {
   loadPatternBytes,
 } from "@/engine/brush/builtin_resources";
 import { CurveEditor } from "@/ui/components/CurveEditor";
-import { createLinearCurve, type CurvePoint } from "@/engine/math/dynamics_curve";
+import type { CurvePoint } from "@/engine/math/dynamics_curve";
 
 export interface KritaTextureInspectorProps {
   textureConfig: BrushTextureConfig | null;

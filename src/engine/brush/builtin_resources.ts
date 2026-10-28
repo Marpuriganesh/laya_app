@@ -353,8 +353,8 @@ export async function getBrushTipThumbnail(meta: BrushTipResourceMeta, size = 64
       if (!sCtx) return "";
 
       const imgData = sCtx.createImageData(gbr.width, gbr.height);
-      for (let i = 0; i < gbr.imageData.length; i++) {
-        const a = gbr.imageData[i];
+      for (let i = 0; i < gbr.mask.length; i++) {
+        const a = gbr.mask[i];
         const p = i * 4;
         imgData.data[p] = 240;
         imgData.data[p + 1] = 240;
