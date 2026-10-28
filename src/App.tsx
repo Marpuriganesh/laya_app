@@ -4,8 +4,14 @@ import { useDetachedWindowSync } from "@/ui/hooks/useDetachedWindowSync";
 import { useWindowKeyShortcuts } from "@/ui/hooks/useWindowKeyShortcuts";
 import { useSpringLoadedToolShortcuts } from "@/ui/hooks/useSpringLoadedToolShortcuts";
 import { useNativeUiRectsSync } from "@/ui/hooks/useNativeUiRectsSync";
-import { detachPanelWindow, focusDetachedWindow } from "@/ui/window/window_manager";
-import { DETACHABLE_PANEL_CONFIGS, type DetachablePanelId } from "@/types/window";
+import {
+  detachPanelWindow,
+  focusDetachedWindow,
+} from "@/ui/window/window_manager";
+import {
+  DETACHABLE_PANEL_CONFIGS,
+  type DetachablePanelId,
+} from "@/types/window";
 import { TopNavBar } from "@/ui/components/TopNavBar";
 import { SidebarRail } from "@/ui/components/SidebarRail";
 import { CanvasViewport } from "@/ui/components/CanvasViewport";
@@ -19,14 +25,36 @@ import { ErrorBoundary } from "@/ui/components/ErrorBoundary";
 import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
 import { ThemeProvider, useTheme } from "@/ui/theme/ThemeProvider";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
+import { StandaloneScratchpadPoc } from "@/ui/components/scratchpad_poc/StandaloneScratchpadPoc";
 
 export default function App() {
-  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const urlParams =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : null;
+  const isScratchpadPoc =
+    urlParams?.get("poc") === "scratchpad" || urlParams?.has("scratchpad");
   const detachedPanel = urlParams?.get("detached") as DetachablePanelId | null;
+
+  if (isScratchpadPoc) {
+    return (
+      <ThemeProvider defaultTheme="dark">
+        <StandaloneScratchpadPoc
+          onBackToApp={() => {
+            window.location.href = window.location.pathname;
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider defaultTheme="dark">
-      {detachedPanel ? <DetachedWindowRoot panelId={detachedPanel} /> : <MainWindow />}
+      {detachedPanel ? (
+        <DetachedWindowRoot panelId={detachedPanel} />
+      ) : (
+        <MainWindow />
+      )}
     </ThemeProvider>
   );
 }
@@ -62,7 +90,10 @@ function MainWindow() {
     setSoftProofMode,
   } = useDocumentStore();
 
-  useWindowKeyShortcuts({ enableMinimize: true, onToggleDebug: toggleDebugPanel });
+  useWindowKeyShortcuts({
+    enableMinimize: true,
+    onToggleDebug: toggleDebugPanel,
+  });
   useSpringLoadedToolShortcuts();
 
   useNativeUiRectsSync(activePopover);
@@ -83,21 +114,27 @@ function MainWindow() {
     globalRustBrushBridge.setModalOpen(isModalOpen);
   }, [activePopover, isBrushStudioOpen, detachedPanels.brushSettings]);
 
-  const handleDetachPanel = useCallback(async (panelId: DetachablePanelId) => {
-    detachPanel(panelId);
-    const config = DETACHABLE_PANEL_CONFIGS[panelId];
-    await detachPanelWindow(config);
-  }, [detachPanel]);
+  const handleDetachPanel = useCallback(
+    async (panelId: DetachablePanelId) => {
+      detachPanel(panelId);
+      const config = DETACHABLE_PANEL_CONFIGS[panelId];
+      await detachPanelWindow(config);
+    },
+    [detachPanel],
+  );
 
-  const handleFocusDetached = useCallback(async (panelId: DetachablePanelId) => {
-    await focusDetachedWindow(panelId);
-  }, []);
+  const handleFocusDetached = useCallback(
+    async (panelId: DetachablePanelId) => {
+      await focusDetachedWindow(panelId);
+    },
+    [],
+  );
 
   const handleResetZoom = useCallback(() => {
     const scaleFactor = Math.min(
       (window.innerWidth * 0.85) / document.width,
       (window.innerHeight * 0.85) / document.height,
-      1.0
+      1.0,
     );
     const scale = Math.max(0.05, Math.min(scaleFactor, 2.0));
     const panX = (window.innerWidth - document.width * scale) / 2;
@@ -168,7 +205,9 @@ function MainWindow() {
       />
 
       <BrushLibraryPopover
-        isOpen={activePopover === "brushLibrary" && !detachedPanels.brushLibrary}
+        isOpen={
+          activePopover === "brushLibrary" && !detachedPanels.brushLibrary
+        }
         onClose={handleClosePopover}
         onOpenSettings={() => setBrushStudioOpen(true)}
         onDetach={() => handleDetachPanel("brushLibrary")}
@@ -186,7 +225,10 @@ function MainWindow() {
         onCreateDocument={setDocument}
       />
 
-      <ErrorBoundary fallbackTitle="Brush Debug Panel Error" onReset={() => setDebugPanelOpen(false)}>
+      <ErrorBoundary
+        fallbackTitle="Brush Debug Panel Error"
+        onReset={() => setDebugPanelOpen(false)}
+      >
         <BrushDebugPanel
           isOpen={isDebugPanelOpen}
           onClose={() => setDebugPanelOpen(false)}

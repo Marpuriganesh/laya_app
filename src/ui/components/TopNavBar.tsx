@@ -20,6 +20,7 @@ import {
   Keyboard,
   Spline,
   Activity,
+  Sparkles,
 } from "lucide-react";
 import { useTheme } from "@/ui/theme/ThemeProvider";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
@@ -283,6 +284,25 @@ export const TopNavBar: FC<TopNavBarProps> = ({
               >
                 <FilePlus2 className="w-3.5 h-3.5 text-zinc-400" />
                 <span>New Canvas...</span>
+              </button>
+
+              {/* Standalone Scratchpad POC */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionsMenuOpen(false);
+                  window.location.search = "?poc=scratchpad";
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/70 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left cursor-pointer"
+                title="Open standalone live brush scratchpad & studio POC"
+              >
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Scratchpad Studio POC</span>
+                </div>
+                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                  POC
+                </span>
               </button>
 
               {/* Brush Input Debugger */}
