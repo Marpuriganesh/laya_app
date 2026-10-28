@@ -1,12 +1,14 @@
 /**
  * Procreate-style Stroke Trajectories for Live Brush Preview & Scratchpad Testing
- * Provides parametric high-fidelity stroke point collections with authentic
+ * Provides compact, high-performance stroke trajectories with authentic
  * physical stylus sensor profiles (varying pressure ramps, tilt arcs, velocities, and barrel angles).
+ * Uses bounded point counts (~50-65 points) matching Procreate Brush Studio.
  */
 
 import type { StrokePoint } from "@/types/stroke";
 
-export type TrajectoryType = "s-curve" | "taper-flick" | "ribbon-wave" | "hatching";
+export type TrajectoryType =
+  "s-curve" | "taper-flick" | "ribbon-wave" | "hatching";
 
 export interface TrajectoryOption {
   readonly id: TrajectoryType;
@@ -18,32 +20,37 @@ export const TRAJECTORY_OPTIONS: readonly TrajectoryOption[] = [
   {
     id: "s-curve",
     label: "Procreate S-Curve",
-    description: "Authentic double-bend curve with pressure swell and tapered flick",
+    description:
+      "Authentic double-bend curve with pressure swell and tapered flick",
   },
   {
     id: "taper-flick",
     label: "Dynamic Whip & Flick",
-    description: "Fast accelerating stroke testing streamline, tip taper, and falloff",
+    description:
+      "Fast accelerating stroke testing streamline, tip taper, and falloff",
   },
   {
     id: "ribbon-wave",
     label: "Undulating Ribbon",
-    description: "Flowing horizontal wave showcasing tip rotation, aspect ratio, and grain",
+    description:
+      "Flowing horizontal wave showcasing tip rotation, aspect ratio, and grain",
   },
   {
     id: "hatching",
     label: "Pencil Hatching",
-    description: "Series of angled parallel strokes testing textural buildup and jitter",
+    description:
+      "Series of angled parallel strokes testing textural buildup and jitter",
   },
 ];
 
 /**
  * Generates the classic Procreate Brush Studio S-Curve stroke.
+ * Compact ~60 points for sub-millisecond real-time slider evaluation.
  */
 export function generateProcreateSCurve(
   width: number,
   height: number,
-  steps = 110
+  steps = 60,
 ): StrokePoint[] {
   const points: StrokePoint[] = [];
 
@@ -62,7 +69,7 @@ export function generateProcreateSCurve(
     const tiltY = Math.cos(t * Math.PI * 2) * 20; // -20 to +20 degrees
 
     const speed = 400 + Math.sin(t * Math.PI) * 850;
-    const timeMs = i * 16.66; // 60fps equivalent timestamp cadence
+    const timeMs = i * 16.66;
 
     points.push({
       canvasX: x,
@@ -85,7 +92,7 @@ export function generateProcreateSCurve(
 export function generateTaperFlick(
   width: number,
   height: number,
-  steps = 90
+  steps = 48,
 ): StrokePoint[] {
   const points: StrokePoint[] = [];
 
@@ -95,7 +102,11 @@ export function generateTaperFlick(
     // Accelerating curved flick
     const easeT = Math.pow(t, 1.4);
     const x = width * (0.15 + 0.7 * easeT);
-    const y = height * (0.65 - 0.45 * Math.sin(t * Math.PI * 0.85) + (t * 0.1 * height) / height);
+    const y =
+      height *
+      (0.65 -
+        0.45 * Math.sin(t * Math.PI * 0.85) +
+        (t * 0.1 * height) / height);
 
     // Initial heavy pressure tapering down sharply at the end
     let pressure = 0.95;
@@ -131,7 +142,7 @@ export function generateTaperFlick(
 export function generateRibbonWave(
   width: number,
   height: number,
-  steps = 140
+  steps = 64,
 ): StrokePoint[] {
   const points: StrokePoint[] = [];
 
@@ -168,7 +179,7 @@ export function generateRibbonWave(
 export function getTrajectoryPoints(
   type: TrajectoryType,
   width: number,
-  height: number
+  height: number,
 ): StrokePoint[][] {
   switch (type) {
     case "taper-flick":
@@ -182,7 +193,7 @@ export function getTrajectoryPoints(
       for (let l = 0; l < lines; l++) {
         const linePts: StrokePoint[] = [];
         const xOffset = width * (0.25 + l * 0.15);
-        const steps = 45;
+        const steps = 28;
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
           const x = xOffset + (t - 0.5) * (width * 0.2);

@@ -35,6 +35,9 @@ import { parseGbr } from "@/engine/brush/gbr_parser";
 import { ShapeRotationDial } from "./ShapeRotationDial";
 import { StylusTiltArcWidget } from "./StylusTiltArcWidget";
 import type { BrushStudioCategoryId } from "./BrushStudioTypes";
+import { KritaTextureInspector } from "./KritaTextureInspector";
+import { BUILTIN_BRUSH_TIPS_CATALOG, getBrushTipThumbnail } from "@/engine/brush/builtin_resources";
+
 
 const BUILTIN_PROCEDURAL_TEXTURES: readonly BrushTextureConfig[] = [
   createDefaultCanvasTextureConfig(),
@@ -223,6 +226,20 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
     const tips = await globalRustBrushBridge.listResources("brushes");
     const pats = await globalRustBrushBridge.listResources("patterns");
 
+    const mergedTips = [...tips];
+    for (const bTip of BUILTIN_BRUSH_TIPS_CATALOG) {
+      if (!mergedTips.some((t) => t.id === bTip.id)) {
+        mergedTips.push({
+          id: bTip.id,
+          name: bTip.name,
+          file_name: bTip.fileName,
+          path: bTip.path,
+          resource_type: "brushes",
+          file_size_bytes: bTip.width * bTip.height,
+        });
+      }
+    }
+
     for (const bp of BUILTIN_PROCEDURAL_TEXTURES) {
       const bBytes = bp.bytes instanceof Uint8Array ? bp.bytes : new Uint8Array(bp.bytes);
       globalWasmBrushBridge.registerPatternGrayscale(bp.patternId, bp.name, bp.width, bp.height, bBytes);
@@ -245,7 +262,7 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
       }
     }
 
-    setBrushResources(tips);
+    setBrushResources(mergedTips);
     setPatternResources(mergedPats);
   }, []);
 
@@ -259,10 +276,18 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
       const thumbs: Record<string, string> = {};
       for (const res of brushResources) {
         try {
-          const bytes = await globalRustBrushBridge.readResourceFile(res.path);
-          if (bytes && active) {
-            const thumb = await generateThumbnailDataUrl(bytes, res.file_name, 36);
-            if (thumb) thumbs[res.id] = thumb;
+          if (res.path.startsWith("/")) {
+            const bMeta = BUILTIN_BRUSH_TIPS_CATALOG.find((t) => t.id === res.id);
+            if (bMeta) {
+              const url = await getBrushTipThumbnail(bMeta, 36);
+              if (url && active) thumbs[res.id] = url;
+            }
+          } else {
+            const bytes = await globalRustBrushBridge.readResourceFile(res.path);
+            if (bytes && active) {
+              const thumb = await generateThumbnailDataUrl(bytes, res.file_name, 36);
+              if (thumb) thumbs[res.id] = thumb;
+            }
           }
         } catch {}
       }
@@ -321,7 +346,15 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
       globalWasmBrushBridge.setBrushAutoTip(curAr, curAngle);
       return;
     }
-    const bytes = await globalRustBrushBridge.readResourceFile(item.path);
+    let bytes: Uint8Array | null = null;
+    if (item.path.startsWith("/")) {
+      try {
+        const resp = await fetch(item.path);
+        if (resp.ok) bytes = new Uint8Array(await resp.arrayBuffer());
+      } catch {}
+    } else {
+      bytes = await globalRustBrushBridge.readResourceFile(item.path);
+    }
     if (!bytes) return;
 
     const curAngle = params?.brushTip ? ((params.brushTip as any).angleRadians ?? 0) : 0;
@@ -971,114 +1004,14 @@ export const BrushStudioInspector: FC<BrushStudioInspectorProps> = ({
     );
   }
 
-  // 5. Grain Inspector
+  // 5. Grain Inspector (Krita 3-Tab KisTextureOption)
   if (category === "grain") {
-    const tex = params?.grainTexture;
-    const hasTexture = Boolean(tex);
-
     return (
-      <div className="flex flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Grain Source</h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Modulate stroke tooth with seamless paper textures</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => globalRustBrushBridge.openResourceFolder("patterns")}
-              title="Open patterns directory"
-              className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline px-1 py-0.5 cursor-pointer"
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-              <span>Open Folder</span>
-            </button>
-            <input
-              type="checkbox"
-              checked={hasTexture}
-              onChange={(e) => {
-                if (!e.target.checked) {
-                  onUpdateEngineParams({ grainTexture: null });
-                } else if (patternResources.length > 0) {
-                  handleSelectPattern(patternResources[0]);
-                }
-              }}
-              className="accent-blue-600 w-4 h-4 rounded cursor-pointer"
-            />
-          </div>
-        </div>
-
-        {hasTexture && (
-          <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-2">
-              {patternResources.map((pat) => {
-                const isSelected = tex?.patternId === pat.id;
-                return (
-                  <button
-                    key={pat.id}
-                    type="button"
-                    onClick={() => handleSelectPattern(pat)}
-                    className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer flex items-center gap-3 ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 ring-1 ring-blue-500"
-                        : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300"
-                    }`}
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-center overflow-hidden shrink-0">
-                      {patternThumbnails[pat.id] ? (
-                        <img src={patternThumbnails[pat.id]} alt={pat.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <Waves className="w-4 h-4 text-zinc-400" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-semibold truncate">{pat.name}</div>
-                      <div className="text-[10px] text-zinc-500 truncate">{pat.file_name}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Pattern Scale */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">Pattern Scale</span>
-                <span className="font-mono text-zinc-500">{(tex?.scale ?? 1.0).toFixed(2)}x</span>
-              </div>
-              <input
-                type="range"
-                min={0.2}
-                max={4.0}
-                step={0.1}
-                value={tex?.scale ?? 1.0}
-                onChange={(e) => {
-                  if (tex) onUpdateEngineParams({ grainTexture: { ...tex, scale: Number(e.target.value) } });
-                }}
-                className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
-              />
-            </div>
-
-            {/* Modulation Strength */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">Modulation Strength</span>
-                <span className="font-mono text-zinc-500">{Math.round((tex?.strength ?? 1.0) * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1.0}
-                step={0.02}
-                value={tex?.strength ?? 1.0}
-                onChange={(e) => {
-                  if (tex) onUpdateEngineParams({ grainTexture: { ...tex, strength: Number(e.target.value) } });
-                }}
-                className="w-full accent-blue-600 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg cursor-pointer"
-              />
-            </div>
-          </div>
-        )}
+      <div className="flex flex-col h-full w-full">
+        <KritaTextureInspector
+          textureConfig={params?.grainTexture ?? null}
+          onChange={(cfg) => onUpdateEngineParams({ grainTexture: cfg })}
+        />
       </div>
     );
   }

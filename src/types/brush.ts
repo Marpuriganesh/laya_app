@@ -29,8 +29,34 @@ export interface BrushTextureConfig {
   readonly invert?: boolean;
   /** Brightness adjustment [-1.0..1.0] */
   readonly brightness?: number;
-  /** Contrast adjustment [0.0..2.0] */
+  /** Contrast adjustment [0.0..3.0] */
   readonly contrast?: number;
+  /** Mid-tone neutral point [0.0..1.0] (default: 0.5) */
+  readonly neutralPoint?: number;
+  /** Lower cutoff threshold [0.0..1.0] (default: 0.0) */
+  readonly cutoffLeft?: number;
+  /** Upper cutoff threshold [0.0..1.0] (default: 1.0) */
+  readonly cutoffRight?: number;
+  /** Cutoff policy */
+  readonly cutoffPolicy?: "disabled" | "below" | "above";
+  /** Horizontal texture offset in pixels */
+  readonly offsetX?: number;
+  /** Vertical texture offset in pixels */
+  readonly offsetY?: number;
+  /** Whether texture coordinates are randomized per stroke */
+  readonly randomOffset?: boolean;
+  /** Whether soft texturing filtering is applied */
+  readonly softTexturing?: boolean;
+  /** Whether texture is automatically inverted when erasing */
+  readonly autoInvertForEraser?: boolean;
+  /** Texturing mode name (Linear Height, Multiply, Subtract, Add, Screen) */
+  readonly texturingMode?: string;
+  /** Active sensor input modulating texture strength */
+  readonly sensorInput?: string;
+  /** Dynamics transfer curve points for texture strength */
+  readonly sensorCurvePoints?: ReadonlyArray<{ readonly x: number; readonly y: number }>;
+  /** Calculation mode when combining curves */
+  readonly curveCalculationMode?: "multiply" | "add" | "max" | "min";
 }
 
 /**

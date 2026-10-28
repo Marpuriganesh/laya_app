@@ -32,6 +32,7 @@ import {
   Maximize2,
 } from "lucide-react";
 import { WasmBrushBridge } from "@/engine/wasm/wasm_brush_bridge";
+import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
 import { generateCurveLookupTable256 } from "@/engine/math/dynamics_curve";
 import {
   normalizePointerEvent,
@@ -120,6 +121,48 @@ export const ProcreateLiveDrawingPad: FC<ProcreateLiveDrawingPadProps> = ({
       setActiveColorHex("#18181b");
     }
   };
+
+  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const isMac = typeof navigator !== "undefined" && /macintosh|mac os x/i.test(navigator.userAgent);
+  const isMacNativeOverlay = isTauri && isMac;
+
+  // In Tauri standalone app on macOS, synchronize the native Cocoa AppKit artboard rect
+  // so Cocoa intercepts the Apple Pencil / Wacom stylus with 120-240Hz hardware pressure and tilt!
+  useEffect(() => {
+    if (!isMacNativeOverlay || !containerRef.current) return;
+    const updateNativeOverlay = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      void globalRustBrushBridge.setModalOpen(false);
+      void globalRustBrushBridge.updateArtboardRect(
+        rect.left,
+        rect.top,
+        rect.width,
+        rect.height
+      );
+      void globalRustBrushBridge.setDocumentSize(
+        Math.round(rect.width),
+        Math.round(rect.height)
+      );
+    };
+
+    updateNativeOverlay();
+    const timer = setTimeout(updateNativeOverlay, 80);
+    window.addEventListener("resize", updateNativeOverlay);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", updateNativeOverlay);
+      void globalRustBrushBridge.updateArtboardRect(0, 0, 0, 0);
+    };
+  }, [dimensions, isMacNativeOverlay]);
+
+  // Ensure default canonical stroke is rendered immediately on ready
+  useEffect(() => {
+    if (isReady && !isFreehandMode && !hasUserDrawn) {
+      syncBridgeConfig();
+      renderCanonicalStroke();
+    }
+  }, [isReady, syncBridgeConfig, renderCanonicalStroke, isFreehandMode, hasUserDrawn]);
 
   // Sync canvas size with container dimensions via ResizeObserver
   useEffect(() => {
