@@ -4,20 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       target_branch:
-        description: 'Branch, Tag, or Commit SHA to build (leave blank to build the branch chosen in the dropdown)'
+        description: "Branch, Tag, or Commit SHA to build (leave blank to build the branch chosen in the dropdown)"
         required: false
-        default: ''
+        default: ""
         type: string
       build_mode:
-        description: 'Build Mode'
+        description: "Build Mode"
         required: true
-        default: 'release'
+        default: "release"
         type: choice
         options:
           - release
           - debug
 
-# Ensure concurrent runs on the same branch are cancelled to conserve CI minutes
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.target_branch || github.ref }}
   cancel-in-progress: true
@@ -25,13 +24,21 @@ concurrency:
 jobs:
   build-ipa:
     name: Build iPadOS Unsigned IPA
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.target_branch != '' && github.event.inputs.target_branch || github.ref }}
+
+      - name: Select Xcode 16
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "^16"
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -42,7 +49,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Setup Rust & iOS target
         uses: dtolnay/rust-toolchain@stable
