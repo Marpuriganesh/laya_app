@@ -100,8 +100,8 @@ jobs:
             BUILD_FLAG="--debug"
           fi
 
-          # Build targeting physical iPadOS devices without signing, restricting target to iPad
-          pnpm tauri ios build --target aarch64 --no-sign --export-method debugging $BUILD_FLAG -- TARGETED_DEVICE_FAMILY=2
+          # Build targeting physical iPadOS devices without signing
+          pnpm tauri ios build --target aarch64 --no-sign --export-method debugging $BUILD_FLAG
 
       - name: Package App into Sideloadable IPA
         run: |
