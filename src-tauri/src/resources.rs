@@ -181,5 +181,10 @@ pub async fn rust_resource_open_folder(
             .map_err(|e| e.to_string())?;
     }
 
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        let _ = target_dir;
+    }
+
     Ok(())
 }

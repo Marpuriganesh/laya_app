@@ -78,7 +78,7 @@ jobs:
       - name: Build Web Assets & SketchCore WASM
         run: pnpm run build
 
-      - name: Initialize Tauri iOS Project (if needed)
+      - name: Initialize Tauri iOS Project & Enforce iPad Only
         run: |
           if [ ! -d "src-tauri/gen/apple" ]; then
             echo "src-tauri/gen/apple not found, generating Xcode project with Tauri..."
@@ -87,15 +87,21 @@ jobs:
             echo "src-tauri/gen/apple already exists, skipping init."
           fi
 
-      - name: Build Tauri iOS App
+          echo "Configuring project to target iPad only (TARGETED_DEVICE_FAMILY = 2)..."
+          find src-tauri/gen/apple -type f \( -name "project.yml" -o -name "project.pbxproj" \) -exec sed -i '' 's/TARGETED_DEVICE_FAMILY = "1,2"/TARGETED_DEVICE_FAMILY = "2"/g' {} + || true
+          find src-tauri/gen/apple -type f \( -name "project.yml" -o -name "project.pbxproj" \) -exec sed -i '' 's/TARGETED_DEVICE_FAMILY = 1,2/TARGETED_DEVICE_FAMILY = 2/g' {} + || true
+          find src-tauri/gen/apple -type f -name "project.yml" -exec sed -i '' 's/TARGETED_DEVICE_FAMILY: "1,2"/TARGETED_DEVICE_FAMILY: "2"/g' {} + || true
+          find src-tauri/gen/apple -type f -name "project.yml" -exec sed -i '' 's/TARGETED_DEVICE_FAMILY: 1,2/TARGETED_DEVICE_FAMILY: 2/g' {} + || true
+
+      - name: Build Tauri iOS App (iPad Only)
         run: |
           BUILD_FLAG=""
           if [ "${{ github.event.inputs.build_mode }}" = "debug" ]; then
             BUILD_FLAG="--debug"
           fi
 
-          # Build targeting physical iPadOS devices without signing
-          pnpm tauri ios build --target aarch64 --no-sign --export-method debugging $BUILD_FLAG
+          # Build targeting physical iPadOS devices without signing, restricting target to iPad
+          pnpm tauri ios build --target aarch64 --no-sign --export-method debugging $BUILD_FLAG -- TARGETED_DEVICE_FAMILY=2
 
       - name: Package App into Sideloadable IPA
         run: |
