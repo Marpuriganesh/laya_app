@@ -87,6 +87,15 @@ jobs:
             echo "src-tauri/gen/apple already exists, skipping init."
           fi
 
+          echo "Applying custom App Icons to iOS Assets..."
+          pnpm tauri icon src-tauri/icons/icon.png || true
+
+          # Ensure custom icons overwrite any AppIcon.appiconset in the generated Xcode project
+          for ICON_DIR in $(find src-tauri/gen/apple -name "AppIcon.appiconset" -type d 2>/dev/null); do
+            echo "Copying custom icons to $ICON_DIR"
+            cp -f src-tauri/icons/ios/*.png "$ICON_DIR/" 2>/dev/null || true
+          done
+
           echo "Configuring project to target iPad only (TARGETED_DEVICE_FAMILY = 2)..."
           find src-tauri/gen/apple -type f \( -name "project.yml" -o -name "project.pbxproj" \) -exec sed -i '' 's/TARGETED_DEVICE_FAMILY = "1,2"/TARGETED_DEVICE_FAMILY = "2"/g' {} + || true
           find src-tauri/gen/apple -type f \( -name "project.yml" -o -name "project.pbxproj" \) -exec sed -i '' 's/TARGETED_DEVICE_FAMILY = 1,2/TARGETED_DEVICE_FAMILY = 2/g' {} + || true
