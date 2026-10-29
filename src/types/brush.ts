@@ -107,8 +107,9 @@ export interface PullStringConfig {
   readonly velocityMultiplier: number;     // Velocity scaling multiplier [0..10] (default: 3.0)
   readonly catchUpSpeed: number;           // Leash catch-up rate [0.05..1.0] (default: 0.20)
   readonly baseDeadzone: number;           // Base deadzone radius in pixels (default: 0)
-  readonly connectToTipOnRelease: boolean; // Connect brush tip on release (default: true)
+  readonly connectToTipOnRelease: boolean; // Connect brush tip on release (default: false)
   readonly pressureSmoothing: number;      // Pressure response smoothing [0..1] (default: 0.35)
+  readonly weight?: number;                // Inertial weight factor [0..1] (default: 0.0)
 }
 
 export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
@@ -117,8 +118,9 @@ export const DEFAULT_PULL_STRING_CONFIG: PullStringConfig = {
   velocityMultiplier: 1.5,
   catchUpSpeed: 0.35,
   baseDeadzone: 0.0,
-  connectToTipOnRelease: true,
+  connectToTipOnRelease: false,
   pressureSmoothing: 0.35,
+  weight: 0.0,
 };
 
 /**
@@ -128,12 +130,14 @@ export interface MovingAverageConfig {
   readonly enabled: boolean;
   readonly windowSize: number;           // Sample window count [2..24] (default: 8)
   readonly velocityMultiplier: number;    // Velocity scaling multiplier [0..5.0] (default: 1.5)
+  readonly weight?: number;               // Inertial weight factor [0..1] (default: 0.0)
 }
 
 export const DEFAULT_MOVING_AVERAGE_CONFIG: MovingAverageConfig = {
   enabled: false,
   windowSize: 8,
   velocityMultiplier: 1.5,
+  weight: 0.0,
 };
 
 /**

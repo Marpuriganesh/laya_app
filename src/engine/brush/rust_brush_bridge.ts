@@ -4,6 +4,8 @@
  * Controls real-time brush parameters, color palettes, layers, resources, and persistent settings.
  */
 
+import type { StrokeTelemetryDto } from "@/types/telemetry";
+
 export interface BrushConfigDto {
   diameter: number;
   spacing: number;
@@ -129,10 +131,21 @@ export class RustBrushBridge {
     }
   }
 
+  public async getTelemetry(): Promise<StrokeTelemetryDto | null> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
+    try {
+      const result = await this.invokeFn("rust_brush_get_telemetry");
+      return (result as StrokeTelemetryDto) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   public async setMovingAverageConfig(config: {
     enabled: boolean;
     windowSize: number;
     velocityMultiplier: number;
+    weight?: number;
   }): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
@@ -140,6 +153,7 @@ export class RustBrushBridge {
         enabled: config.enabled,
         windowSize: config.windowSize,
         velocityMultiplier: config.velocityMultiplier,
+        weight: config.weight ?? 0.0,
       });
     } catch (err) {
       console.warn("Failed to sync moving average config to Rust:", err);
@@ -154,6 +168,7 @@ export class RustBrushBridge {
     baseDeadzone: number;
     connectToTipOnRelease: boolean;
     pressureSmoothing?: number;
+    weight?: number;
   }): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
@@ -165,6 +180,7 @@ export class RustBrushBridge {
         baseDeadzone: config.baseDeadzone,
         connectToTipOnRelease: config.connectToTipOnRelease,
         pressureSmoothing: config.pressureSmoothing ?? 0.35,
+        weight: config.weight ?? 0.0,
       });
     } catch (err) {
       console.warn("Failed to sync pull string config to Rust:", err);
@@ -256,6 +272,54 @@ export class RustBrushBridge {
     }
   }
 
+  public async addVectorLayer(id: string, name: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_add_vector", { id, name });
+    } catch (err) {
+      console.warn("Failed to add vector layer in Rust:", err);
+    }
+  }
+
+  public async vectorEraseAt(
+    id: string,
+    x: number,
+    y: number,
+    radius: number,
+    eraseToIntersection: boolean
+  ): Promise<[number, number, number, number] | null> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
+    try {
+      return (await this.invokeFn("rust_layer_vector_erase_at", {
+        id,
+        x,
+        y,
+        radius,
+        eraseToIntersection,
+        erase_to_intersection: eraseToIntersection,
+      })) as [number, number, number, number] | null;
+    } catch (err) {
+      console.warn("Failed to erase vector at in Rust:", err);
+      return null;
+    }
+  }
+
+  public async adjustVectorLineWidth(
+    id: string,
+    factor: number
+  ): Promise<[number, number, number, number] | null> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return null;
+    try {
+      return (await this.invokeFn("rust_layer_adjust_vector_line_width", {
+        id,
+        factor,
+      })) as [number, number, number, number] | null;
+    } catch (err) {
+      console.warn("Failed to adjust vector line width in Rust:", err);
+      return null;
+    }
+  }
+
   public async deleteLayer(id: string): Promise<void> {
     if (!(await this.checkAvailability()) || !this.invokeFn) return;
     try {
@@ -318,6 +382,69 @@ export class RustBrushBridge {
       await this.invokeFn("rust_layer_set_visibility", { id, visible });
     } catch (err) {
       console.warn("Failed to set layer visibility in Rust:", err);
+    }
+  }
+
+  public async setLayerAlphaLock(id: string, locked: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_alpha_lock", { id, locked });
+    } catch (err) {
+      console.warn("Failed to set layer alpha lock in Rust:", err);
+    }
+  }
+
+  public async setLayerClipped(id: string, clipped: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_clipped", { id, clipped });
+    } catch (err) {
+      console.warn("Failed to set layer clipping in Rust:", err);
+    }
+  }
+
+  public async addLayerMask(id: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_add_mask", { id });
+    } catch (err) {
+      console.warn("Failed to add layer mask in Rust:", err);
+    }
+  }
+
+  public async deleteLayerMask(id: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_delete_mask", { id });
+    } catch (err) {
+      console.warn("Failed to delete layer mask in Rust:", err);
+    }
+  }
+
+  public async setLayerMaskEnabled(id: string, enabled: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_mask_enabled", { id, enabled });
+    } catch (err) {
+      console.warn("Failed to set layer mask enabled in Rust:", err);
+    }
+  }
+
+  public async setLayerMaskInverted(id: string, inverted: boolean): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_mask_inverted", { id, inverted });
+    } catch (err) {
+      console.warn("Failed to set layer mask inverted in Rust:", err);
+    }
+  }
+
+  public async setLayerEditTarget(id: string, target: string): Promise<void> {
+    if (!(await this.checkAvailability()) || !this.invokeFn) return;
+    try {
+      await this.invokeFn("rust_layer_set_edit_target", { id, target });
+    } catch (err) {
+      console.warn("Failed to set layer edit target in Rust:", err);
     }
   }
 

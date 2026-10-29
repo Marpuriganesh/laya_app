@@ -29,6 +29,20 @@ describe("useDocumentStore (Zustand)", () => {
     expect(state.softProofMode).toBe("none");
     expect(state.palmRejection).toBe(true);
     expect(state.activePopover).toBe("none");
+    expect(state.isDebugPanelOpen).toBe(false);
+  });
+
+  it("updates and toggles debug panel state", () => {
+    const { setDebugPanelOpen, toggleDebugPanel } = useDocumentStore.getState();
+
+    setDebugPanelOpen(true);
+    expect(useDocumentStore.getState().isDebugPanelOpen).toBe(true);
+
+    toggleDebugPanel();
+    expect(useDocumentStore.getState().isDebugPanelOpen).toBe(false);
+
+    toggleDebugPanel();
+    expect(useDocumentStore.getState().isDebugPanelOpen).toBe(true);
   });
 
   it("updates and toggles palm rejection state", () => {

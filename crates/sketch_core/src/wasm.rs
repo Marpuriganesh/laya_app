@@ -64,6 +64,44 @@ impl WasmBrushEngine {
             .map_err(|e| JsValue::from_str(&e))
     }
 
+    /// Adds a new Vector Layer and makes it active.
+    pub fn add_vector_layer(&mut self, id: String, name: String) -> Result<(), JsValue> {
+        self.stack
+            .add_vector_layer(id, name)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Checks if a layer is a Vector Layer.
+    pub fn is_vector_layer(&self, id: &str) -> bool {
+        self.stack.is_vector_layer(id)
+    }
+
+    /// Gets the number of vector strokes on a Vector Layer.
+    pub fn get_vector_stroke_count(&self, id: &str) -> usize {
+        self.stack.get_vector_stroke_count(id)
+    }
+
+    /// Erases vector strokes touching (x, y) within radius on the specified layer.
+    pub fn vector_erase_at(
+        &mut self,
+        id: &str,
+        x: f32,
+        y: f32,
+        radius: f32,
+        erase_to_intersection: bool,
+    ) -> Option<Box<[i32]>> {
+        self.stack
+            .vector_erase_at(id, x, y, radius, erase_to_intersection)
+            .map(rect_to_boxed_slice)
+    }
+
+    /// Scales the line width of all strokes on a vector layer.
+    pub fn adjust_vector_line_width(&mut self, id: &str, factor: f32) -> Option<Box<[i32]>> {
+        self.stack
+            .adjust_vector_line_width(id, factor)
+            .map(rect_to_boxed_slice)
+    }
+
     /// Removes a layer by ID.
     pub fn remove_layer(&mut self, id: &str) -> Result<(), JsValue> {
         self.stack
@@ -103,6 +141,46 @@ impl WasmBrushEngine {
     /// Sets layer visibility.
     pub fn set_layer_visibility(&mut self, id: &str, visible: bool) -> bool {
         self.stack.set_layer_visibility(id, visible)
+    }
+
+    /// Sets layer alpha lock status (lock transparent pixels).
+    pub fn set_layer_alpha_lock(&mut self, id: &str, locked: bool) -> bool {
+        self.stack.set_layer_alpha_lock(id, locked)
+    }
+
+    /// Sets whether this layer clips its opacity to the base layer directly below it.
+    pub fn set_layer_clipped(&mut self, id: &str, clipped: bool) -> bool {
+        self.stack.set_layer_clipped(id, clipped)
+    }
+
+    /// Attaches an 8-bit layer mask channel initialized to white.
+    pub fn add_layer_mask(&mut self, id: &str) -> bool {
+        self.stack.add_layer_mask(id)
+    }
+
+    /// Removes the attached layer mask channel.
+    pub fn remove_layer_mask(&mut self, id: &str) -> bool {
+        self.stack.remove_layer_mask(id)
+    }
+
+    /// Sets whether the layer's mask is enabled.
+    pub fn set_layer_mask_enabled(&mut self, id: &str, enabled: bool) -> bool {
+        self.stack.set_layer_mask_enabled(id, enabled)
+    }
+
+    /// Sets whether the layer's mask is inverted.
+    pub fn set_layer_mask_inverted(&mut self, id: &str, inverted: bool) -> bool {
+        self.stack.set_layer_mask_inverted(id, inverted)
+    }
+
+    /// Sets the active editing target for the layer ("pixels" vs "mask").
+    pub fn set_layer_edit_target(&mut self, id: &str, target: &str) -> bool {
+        let edit_target = if target.eq_ignore_ascii_case("mask") {
+            crate::composite::EditTarget::Mask
+        } else {
+            crate::composite::EditTarget::Pixels
+        };
+        self.stack.set_layer_edit_target(id, edit_target)
     }
 
     /// Sets the canvas paper background color.
@@ -313,11 +391,13 @@ impl WasmBrushEngine {
         enabled: bool,
         window_size: u32,
         velocity_multiplier: f32,
+        weight: Option<f32>,
     ) {
         self.engine.config.moving_average = crate::stroke::MovingAverageConfig {
             enabled,
             window_size: window_size as usize,
             velocity_multiplier,
+            weight: weight.unwrap_or(0.0),
         };
     }
 
@@ -331,6 +411,7 @@ impl WasmBrushEngine {
         base_deadzone: f32,
         connect_to_tip_on_release: bool,
         pressure_smoothing: f32,
+        weight: Option<f32>,
     ) {
         self.engine.config.pull_string = crate::stroke::PullStringConfig {
             enabled,
@@ -340,6 +421,7 @@ impl WasmBrushEngine {
             base_deadzone,
             connect_to_tip_on_release,
             pressure_smoothing,
+            weight: weight.unwrap_or(0.0),
         };
     }
 

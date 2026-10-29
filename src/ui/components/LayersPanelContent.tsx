@@ -8,6 +8,11 @@ import {
   Trash2,
   Copy,
   Layers as LayersIcon,
+  Shield,
+  ShieldCheck,
+  CornerDownRight,
+  CircleDot,
+  PenTool,
 } from "lucide-react";
 import { useDocumentStore } from "@/ui/hooks/useDocumentStore";
 import type { LayerBlendMode } from "@/types/layer";
@@ -36,12 +41,19 @@ export const LayersPanelContent: FC = () => {
     layerStack,
     setActiveLayerId,
     addLayer,
+    addVectorLayer,
     duplicateLayer,
     deleteLayer,
     toggleLayerVisibility,
     toggleLayerLock,
     setLayerOpacity,
     setLayerBlendMode,
+    toggleLayerAlphaLock,
+    toggleLayerClipping,
+    addLayerMask,
+    deleteLayerMask,
+    setLayerEditTarget,
+    adjustVectorLineWidth,
   } = useDocumentStore();
 
   const activeLayer = layerStack.layers.find(
@@ -63,21 +75,34 @@ export const LayersPanelContent: FC = () => {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 select-none transition-colors">
       {/* Top Controls Bar: Add Layer & Quick Action */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50 dark:bg-zinc-850/60 shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50 dark:bg-zinc-850/60 shrink-0">
         <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
           {layerStack.layers.length} Layers
         </span>
 
-        <button
-          type="button"
-          onClick={addLayer}
-          title="Add new layer"
-          aria-label="Add new layer"
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
-          <span>New Layer</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={addLayer}
+            title="Add new raster layer"
+            aria-label="Add new raster layer"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
+            <span>Layer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={addVectorLayer}
+            title="Add new Clip Studio style vector layer"
+            aria-label="Add new vector layer"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
+          >
+            <PenTool className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
+            <span>Vector</span>
+          </button>
+        </div>
       </div>
 
       {/* Selected Layer Properties: Opacity & Blend Mode */}
@@ -115,6 +140,91 @@ export const LayersPanelContent: FC = () => {
               ))}
             </select>
           </div>
+
+          {/* Quick Action Toggles: Alpha Lock, Clipping Mask, Layer Mask */}
+          <div className="flex items-center gap-1.5 mt-1 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
+            <button
+              type="button"
+              onClick={() => toggleLayerAlphaLock(activeLayer.id)}
+              title={activeLayer.alphaLocked ? "Disable Alpha Lock" : "Enable Alpha Lock (Lock Transparency)"}
+              className={`flex-1 flex items-center justify-center gap-1 py-1 px-1.5 rounded text-[11px] font-medium border transition-colors ${
+                activeLayer.alphaLocked
+                  ? "bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400"
+                  : "bg-zinc-100 dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              {activeLayer.alphaLocked ? (
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              ) : (
+                <Shield className="w-3.5 h-3.5 opacity-60" />
+              )}
+              <span>Alpha Lock</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => toggleLayerClipping(activeLayer.id)}
+              title={activeLayer.isClipped ? "Release Clipping Mask" : "Clip to Layer Below"}
+              className={`flex-1 flex items-center justify-center gap-1 py-1 px-1.5 rounded text-[11px] font-medium border transition-colors ${
+                activeLayer.isClipped
+                  ? "bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400"
+                  : "bg-zinc-100 dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              <CornerDownRight className="w-3.5 h-3.5" />
+              <span>Clipping</span>
+            </button>
+
+            {activeLayer.mask ? (
+              <button
+                type="button"
+                onClick={() => deleteLayerMask(activeLayer.id)}
+                title="Remove Layer Mask"
+                className="flex items-center justify-center gap-1 py-1 px-2 rounded text-[11px] font-medium border bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+              >
+                <CircleDot className="w-3.5 h-3.5" />
+                <span>Mask</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => addLayerMask(activeLayer.id)}
+                title="Add Layer Mask"
+                className="flex items-center justify-center gap-1 py-1 px-2 rounded text-[11px] font-medium border bg-zinc-100 dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+              >
+                <CircleDot className="w-3.5 h-3.5 opacity-60" />
+                <span>+ Mask</span>
+              </button>
+            )}
+          </div>
+
+          {/* Vector Layer Controls: Line Width Adjustment */}
+          {activeLayer.kind === "vector" && (
+            <div className="flex items-center justify-between gap-1 mt-1 pt-2 border-t border-zinc-200 dark:border-zinc-800/60">
+              <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                <PenTool className="w-3 h-3" />
+                Vector Width
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => adjustVectorLineWidth(activeLayer.id, 0.85)}
+                  title="Make vector lines thinner (-15%)"
+                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                >
+                  Thinner
+                </button>
+                <button
+                  type="button"
+                  onClick={() => adjustVectorLineWidth(activeLayer.id, 1.15)}
+                  title="Make vector lines thicker (+15%)"
+                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                >
+                  Thicker
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -127,25 +237,51 @@ export const LayersPanelContent: FC = () => {
               key={layer.id}
               onClick={() => setActiveLayerId(layer.id)}
               className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
+                layer.isClipped ? "pl-5 ml-2 border-l-2 border-blue-500/50" : ""
+              } ${
                 isActive
                   ? "bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 shadow-sm"
                   : "bg-transparent hover:bg-zinc-100/70 dark:hover:bg-zinc-900/80 border border-transparent"
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
+                {layer.isClipped && (
+                  <CornerDownRight className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                )}
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                     layer.isBackground
                       ? "bg-zinc-200 dark:bg-zinc-800"
-                      : "bg-zinc-200/80 dark:bg-zinc-800/80 border border-zinc-300 dark:border-zinc-700/60"
+                      : layer.kind === "vector"
+                      ? "bg-indigo-100 dark:bg-indigo-950/80 border border-indigo-300 dark:border-indigo-700/60 text-indigo-600 dark:text-indigo-400"
+                      : "bg-zinc-200/80 dark:bg-zinc-800/80 border border-zinc-300 dark:border-zinc-700/60 text-zinc-600 dark:text-zinc-400"
                   }`}
                 >
-                  <LayersIcon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+                  {layer.kind === "vector" ? (
+                    <PenTool className="w-3.5 h-3.5" />
+                  ) : (
+                    <LayersIcon className="w-3.5 h-3.5" />
+                  )}
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate">
-                    {layer.name}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate">
+                      {layer.name}
+                    </span>
+                    {layer.kind === "vector" && (
+                      <span
+                        className="px-1 py-0.2 text-[9px] font-semibold uppercase tracking-wider rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                        title="Vector Layer (Clip Studio style: records vector paths for intersection erasing & width adjustment)"
+                      >
+                        Vector
+                      </span>
+                    )}
+                    {layer.alphaLocked && (
+                      <span title="Alpha Locked">
+                        <ShieldCheck className="w-3 h-3 text-blue-500 shrink-0" />
+                      </span>
+                    )}
+                  </div>
                   {!layer.isBackground && (
                     <span className="text-[10px] text-zinc-500 font-mono">
                       {layer.blendMode} • {Math.round(layer.opacity * 100)}%
@@ -159,6 +295,52 @@ export const LayersPanelContent: FC = () => {
                 className="flex items-center gap-1 shrink-0"
                 onClick={(e) => e.stopPropagation()}
               >
+                {/* Layer Mask Toggle (if mask exists) */}
+                {layer.mask && !layer.isBackground && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLayerEditTarget(
+                        layer.id,
+                        layer.activeTarget === "mask" ? "pixels" : "mask"
+                      )
+                    }
+                    title={
+                      layer.activeTarget === "mask"
+                        ? "Currently editing Mask (click to edit pixels)"
+                        : "Currently editing Pixels (click to edit mask)"
+                    }
+                    className={`p-1 rounded transition-colors ${
+                      layer.activeTarget === "mask"
+                        ? "text-amber-500 bg-amber-500/15"
+                        : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                    }`}
+                  >
+                    <CircleDot className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Alpha Lock Quick Button (non-background only) */}
+                {!layer.isBackground && (
+                  <button
+                    type="button"
+                    onClick={() => toggleLayerAlphaLock(layer.id)}
+                    title={layer.alphaLocked ? "Disable Alpha Lock" : "Enable Alpha Lock"}
+                    aria-label="Toggle Alpha Lock"
+                    className={`p-1 rounded transition-colors ${
+                      layer.alphaLocked
+                        ? "text-blue-600 dark:text-blue-400 bg-blue-500/10"
+                        : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    {layer.alphaLocked ? (
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                    ) : (
+                      <Shield className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
+
                 {/* Visibility Toggle */}
                 <button
                   type="button"

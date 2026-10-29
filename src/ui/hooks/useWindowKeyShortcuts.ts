@@ -4,12 +4,14 @@ export interface WindowKeyEventLike {
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;
+  shiftKey?: boolean;
   preventDefault: () => void;
 }
 
 export interface WindowKeyActionHandlers {
   onMinimize?: () => void;
   onClose?: () => void;
+  onToggleDebug?: () => void;
   enableMinimize?: boolean;
 }
 
@@ -40,11 +42,19 @@ export function handleWindowKeyEvent(
     return true;
   }
 
+  // Cmd+Shift+D / Ctrl+Shift+D: Toggle Brush Input Debugger
+  if (handlers.onToggleDebug && e.shiftKey && key === "d") {
+    e.preventDefault();
+    handlers.onToggleDebug();
+    return true;
+  }
+
   return false;
 }
 
 export interface WindowKeyShortcutsOptions {
   onClose?: () => void;
+  onToggleDebug?: () => void;
   enableMinimize?: boolean;
 }
 
@@ -52,9 +62,10 @@ export interface WindowKeyShortcutsOptions {
  * React hook handling cross-platform window management shortcuts:
  * - Cmd+M (macOS) / Ctrl+M (Windows/Linux): Minimize current window.
  * - Cmd+W (macOS) / Ctrl+W (Windows/Linux): Close / dock window (if onClose provided).
+ * - Cmd+Shift+D / Ctrl+Shift+D: Toggle brush input debug panel.
  */
 export function useWindowKeyShortcuts(options: WindowKeyShortcutsOptions = {}): void {
-  const { onClose, enableMinimize = true } = options;
+  const { onClose, onToggleDebug, enableMinimize = true } = options;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -63,6 +74,7 @@ export function useWindowKeyShortcuts(options: WindowKeyShortcutsOptions = {}): 
       handleWindowKeyEvent(e, {
         enableMinimize,
         onClose,
+        onToggleDebug,
         onMinimize: async () => {
           const isTauri = "__TAURI_INTERNALS__" in window;
           if (isTauri) {

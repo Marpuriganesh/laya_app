@@ -33,6 +33,7 @@ export interface DocumentState {
   transform: CanvasTransform;
   activePopover: PopoverType;
   isBrushStudioOpen: boolean;
+  isDebugPanelOpen: boolean;
   activePresetId: string;
   softProofMode: SoftProofMode;
   palmRejection: boolean;
@@ -57,6 +58,8 @@ export interface DocumentState {
   setTransform: (transform: CanvasTransform) => void;
   setActivePopover: (popover: PopoverType) => void;
   setBrushStudioOpen: (open: boolean) => void;
+  setDebugPanelOpen: (open: boolean) => void;
+  toggleDebugPanel: () => void;
   setActivePresetId: (id: string) => void;
   togglePopover: (popover: PopoverType) => void;
   setSoftProofMode: (mode: SoftProofMode) => void;
@@ -78,6 +81,7 @@ export interface DocumentState {
 
   // Layer Management Actions
   addLayer: () => void;
+  addVectorLayer: () => void;
   deleteLayer: (id: string) => void;
   duplicateLayer: (id: string) => void;
   setActiveLayerId: (id: string) => void;
@@ -86,6 +90,13 @@ export interface DocumentState {
   setLayerOpacity: (id: string, opacity: number) => void;
   setLayerBlendMode: (id: string, blendMode: LayerBlendMode) => void;
   renameLayer: (id: string, name: string) => void;
+  toggleLayerAlphaLock: (id: string) => void;
+  toggleLayerClipping: (id: string) => void;
+  addLayerMask: (id: string) => void;
+  deleteLayerMask: (id: string) => void;
+  toggleLayerMaskEnabled: (id: string) => void;
+  setLayerEditTarget: (id: string, target: "pixels" | "mask") => void;
+  adjustVectorLineWidth: (id: string, factor: number) => void;
 }
 
 let layerSequence = 1;
@@ -120,6 +131,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   },
   activePopover: "none",
   isBrushStudioOpen: useBrushStore.getState().isBrushStudioOpen,
+  isDebugPanelOpen: false,
   activePresetId: useBrushStore.getState().activePresetId,
   softProofMode: "none",
   palmRejection: true,
@@ -189,6 +201,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     useBrushStore.getState().setBrushStudioOpen(open);
     set({ isBrushStudioOpen: open });
   },
+  setDebugPanelOpen: (open) => set({ isDebugPanelOpen: open }),
+  toggleDebugPanel: () => set((state) => ({ isDebugPanelOpen: !state.isDebugPanelOpen })),
   setActivePresetId: (activePresetId) => {
     useBrushStore.getState().setActivePresetId(activePresetId);
     set({ activePresetId });
@@ -294,11 +308,69 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         opacity: 1.0,
         blendMode: "normal",
         locked: false,
+        alphaLocked: false,
+        isClipped: false,
+        kind: "raster",
       };
 
       // Sync layer creation to Rust core
-      globalRustBrushBridge.addLayer(newLayer.id, newLayer.name);
-      globalWasmBrushBridge.addLayer(newLayer.id, newLayer.name);
+      try {
+        globalRustBrushBridge.addLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Rust addLayer warning:", err);
+      }
+      try {
+        globalWasmBrushBridge.addLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Wasm addLayer warning:", err);
+      }
+
+      // Insert above current active layer or at the very top (index 0)
+      const activeIndex = existingLayers.findIndex((l) => l.id === state.layerStack.activeLayerId);
+      const insertIndex = activeIndex >= 0 ? activeIndex : 0;
+      const nextLayers = [
+        ...existingLayers.slice(0, insertIndex),
+        newLayer,
+        ...existingLayers.slice(insertIndex),
+      ];
+
+      return {
+        layerStack: {
+          layers: nextLayers,
+          activeLayerId: newLayerId,
+        },
+      };
+    }),
+
+  addVectorLayer: () =>
+    set((state) => {
+      const existingLayers = state.layerStack.layers;
+      const vectorCount = existingLayers.filter((l) => l.kind === "vector").length + 1;
+      const newLayerId = generateUniqueLayerId();
+      const newLayer: LayerItem = {
+        id: newLayerId,
+        name: `Vector ${vectorCount}`,
+        visible: true,
+        opacity: 1.0,
+        blendMode: "normal",
+        locked: false,
+        alphaLocked: false,
+        isClipped: false,
+        kind: "vector",
+        activeTarget: "pixels",
+      };
+
+      // Sync vector layer creation to Rust core
+      try {
+        globalRustBrushBridge.addVectorLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Rust addVectorLayer warning:", err);
+      }
+      try {
+        globalWasmBrushBridge.addVectorLayer(newLayer.id, newLayer.name);
+      } catch (err) {
+        console.warn("Wasm addVectorLayer warning:", err);
+      }
 
       // Insert above current active layer or at the very top (index 0)
       const activeIndex = existingLayers.findIndex((l) => l.id === state.layerStack.activeLayerId);
@@ -460,6 +532,89 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         ),
       },
     })),
+
+  toggleLayerAlphaLock: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        const nextLocked = !l.alphaLocked;
+        globalRustBrushBridge.setLayerAlphaLock(id, nextLocked);
+        globalWasmBrushBridge.setLayerAlphaLock(id, nextLocked);
+        return { ...l, alphaLocked: nextLocked };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  toggleLayerClipping: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        const nextClipped = !l.isClipped;
+        globalRustBrushBridge.setLayerClipped(id, nextClipped);
+        globalWasmBrushBridge.setLayerClipped(id, nextClipped);
+        return { ...l, isClipped: nextClipped };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  addLayerMask: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        globalRustBrushBridge.addLayerMask(id);
+        globalWasmBrushBridge.addLayerMask(id);
+        return {
+          ...l,
+          mask: { enabled: true, inverted: false },
+          activeTarget: "mask" as const,
+        };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  deleteLayerMask: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || l.isBackground) return l;
+        globalRustBrushBridge.deleteLayerMask(id);
+        globalWasmBrushBridge.deleteLayerMask(id);
+        const { mask, ...rest } = l;
+        return { ...rest, activeTarget: "pixels" as const };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  toggleLayerMaskEnabled: (id: string) =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id || !l.mask) return l;
+        const nextEnabled = !l.mask.enabled;
+        globalRustBrushBridge.setLayerMaskEnabled(id, nextEnabled);
+        globalWasmBrushBridge.setLayerMaskEnabled(id, nextEnabled);
+        return {
+          ...l,
+          mask: { ...l.mask, enabled: nextEnabled },
+        };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  setLayerEditTarget: (id: string, target: "pixels" | "mask") =>
+    set((state) => {
+      const nextLayers = state.layerStack.layers.map((l) => {
+        if (l.id !== id) return l;
+        if (target === "mask" && !l.mask) return l;
+        globalRustBrushBridge.setLayerEditTarget(id, target);
+        globalWasmBrushBridge.setLayerEditTarget(id, target);
+        return { ...l, activeTarget: target };
+      });
+      return { layerStack: { ...state.layerStack, layers: nextLayers } };
+    }),
+
+  adjustVectorLineWidth: (id: string, factor: number) => {
+    void globalRustBrushBridge.adjustVectorLineWidth(id, factor);
+    globalWasmBrushBridge.adjustVectorLineWidth(id, factor);
+  },
 }));
 
 // Subscribe to dedicated brush store so useDocumentStore stays synchronized

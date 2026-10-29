@@ -75,12 +75,12 @@ export const DETACHABLE_PANEL_CONFIGS: Record<DetachablePanelId, DetachedWindowC
   brushSettings: {
     panelId: "brushSettings",
     title: "Brush Studio",
-    defaultWidth: 720,
-    defaultHeight: 540,
-    minWidth: 580,
-    minHeight: 420,
-    maxWidth: 1080,
-    maxHeight: 860,
+    defaultWidth: 1040,
+    defaultHeight: 700,
+    minWidth: 800,
+    minHeight: 520,
+    maxWidth: 1600,
+    maxHeight: 1100,
   },
   colorGamut: {
     panelId: "colorGamut",

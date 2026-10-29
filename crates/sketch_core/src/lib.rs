@@ -7,11 +7,13 @@
 pub mod stroke;
 pub mod brush;
 pub mod composite;
+pub mod vector;
 pub mod wasm;
 
 pub use stroke::*;
 pub use brush::*;
 pub use composite::*;
+pub use vector::{VectorLayerData, VectorStroke};
 pub use wasm::*;
 
 
@@ -126,6 +128,7 @@ mod tests {
                 enabled: true,
                 window_size: 6,
                 velocity_multiplier: 1.5,
+                ..Default::default()
             },
             pull_string: crate::stroke::PullStringConfig {
                 enabled: true,
@@ -133,8 +136,9 @@ mod tests {
                 velocity_multiplier: 2.0,
                 catch_up_speed: 0.25,
                 base_deadzone: 0.0,
-                connect_to_tip_on_release: true,
+                connect_to_tip_on_release: false,
                 pressure_smoothing: 0.4,
+                ..Default::default()
             },
             ..Default::default()
         };

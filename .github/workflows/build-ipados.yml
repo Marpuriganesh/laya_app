@@ -1,0 +1,131 @@
+name: Build iPadOS IPA (Sideloadable)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch, Tag, or Commit SHA to build (leave blank to build the branch chosen in the dropdown)'
+        required: false
+        default: ''
+        type: string
+      build_mode:
+        description: 'Build Mode'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+# Ensure concurrent runs on the same branch are cancelled to conserve CI minutes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.target_branch || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ipa:
+    name: Build iPadOS Unsigned IPA
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch != '' && github.event.inputs.target_branch || github.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Setup Rust & iOS target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            src-tauri
+            crates/sketch_core
+
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install system dependencies (xcodegen)
+        run: |
+          brew install xcodegen
+
+      - name: Install Node dependencies
+        run: pnpm install
+
+      - name: Build Web Assets & SketchCore WASM
+        run: pnpm run build
+
+      - name: Initialize Tauri iOS Project (if needed)
+        run: |
+          if [ ! -d "src-tauri/gen/apple" ]; then
+            echo "src-tauri/gen/apple not found, generating Xcode project with Tauri..."
+            pnpm tauri ios init --ci --skip-targets-install
+          else
+            echo "src-tauri/gen/apple already exists, skipping init."
+          fi
+
+      - name: Build Tauri iOS App
+        run: |
+          BUILD_FLAG=""
+          if [ "${{ github.event.inputs.build_mode }}" = "debug" ]; then
+            BUILD_FLAG="--debug"
+          fi
+
+          # Build targeting physical iPadOS devices without signing
+          pnpm tauri ios build --target aarch64 --no-sign --export-method debugging $BUILD_FLAG
+
+      - name: Package App into Sideloadable IPA
+        run: |
+          echo "Locating built app / ipa artifacts..."
+
+          # Look for existing .ipa
+          IPA_FILE=$(find src-tauri/gen/apple/build -name "*.ipa" 2>/dev/null | head -n 1)
+          if [ -n "$IPA_FILE" ]; then
+            echo "Found existing IPA at: $IPA_FILE"
+            cp "$IPA_FILE" Laya-iPadOS-unsigned.ipa
+          else
+            echo "No direct .ipa found; packaging .app bundle into standard Payload IPA..."
+            APP_BUNDLE=$(find src-tauri/gen/apple/build -name "*.app" -type d 2>/dev/null | head -n 1)
+
+            if [ -z "$APP_BUNDLE" ]; then
+              APP_BUNDLE=$(find src-tauri/target -name "*.app" -type d 2>/dev/null | head -n 1)
+            fi
+
+            if [ -z "$APP_BUNDLE" ]; then
+              echo "Error: Could not find compiled .app bundle!"
+              exit 1
+            fi
+
+            echo "Found App bundle: $APP_BUNDLE"
+            mkdir -p staging/Payload
+            cp -R "$APP_BUNDLE" staging/Payload/
+            cd staging
+            zip -r -9 ../Laya-iPadOS-unsigned.ipa Payload
+            cd ..
+            rm -rf staging
+          fi
+
+          echo "IPA packaging complete: $(ls -lh Laya-iPadOS-unsigned.ipa)"
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Laya-iPadOS-${{ github.event.inputs.build_mode || 'release' }}
+          path: Laya-iPadOS-unsigned.ipa
+          retention-days: 14

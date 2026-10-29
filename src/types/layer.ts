@@ -21,6 +21,15 @@ export type LayerBlendMode =
   | "difference"
   | "exclusion";
 
+export type LayerKind = "raster" | "vector" | "group";
+
+export type LayerEditTarget = "pixels" | "mask";
+
+export interface LayerMaskItem {
+  readonly enabled: boolean;
+  readonly inverted: boolean;
+}
+
 export interface LayerItem {
   readonly id: string;
   readonly name: string;
@@ -28,6 +37,11 @@ export interface LayerItem {
   readonly opacity: number; // 0.0 to 1.0
   readonly blendMode: LayerBlendMode;
   readonly locked: boolean;
+  readonly alphaLocked: boolean;
+  readonly isClipped: boolean;
+  readonly kind: LayerKind;
+  readonly mask?: LayerMaskItem;
+  readonly activeTarget?: LayerEditTarget;
   readonly isBackground?: boolean;
   readonly backgroundColor?: string;
   readonly thumbnailDataUrl?: string;
@@ -50,6 +64,10 @@ export function createDefaultLayerStack(): LayerStack {
         opacity: 1.0,
         blendMode: "normal",
         locked: false,
+        alphaLocked: false,
+        isClipped: false,
+        kind: "raster",
+        activeTarget: "pixels",
       },
       {
         id: "background-layer",
@@ -58,6 +76,9 @@ export function createDefaultLayerStack(): LayerStack {
         opacity: 1.0,
         blendMode: "normal",
         locked: true,
+        alphaLocked: false,
+        isClipped: false,
+        kind: "raster",
         isBackground: true,
         backgroundColor: "#ffffff",
       },

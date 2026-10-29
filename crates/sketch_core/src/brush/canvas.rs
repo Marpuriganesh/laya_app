@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+use crate::brush::rect::Rect;
 
 /// Contiguous 1D RGBA8 pixel buffer with row stride.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +64,22 @@ impl CanvasView {
         }
     }
 
+    /// Clears a rectangular sub-region to the specified RGBA color.
+    pub fn clear_rect(&mut self, rect: &Rect, color: [u8; 4]) {
+        let x_start = rect.x.max(0) as u32;
+        let y_start = rect.y.max(0) as u32;
+        let x_end = ((rect.x + rect.w).max(0) as u32).min(self.width);
+        let y_end = ((rect.y + rect.h).max(0) as u32).min(self.height);
+
+        for y in y_start..y_end {
+            let row_offset = (y as usize) * self.stride;
+            for x in x_start..x_end {
+                let idx = row_offset + (x as usize * 4);
+                self.buffer[idx..idx + 4].copy_from_slice(&color);
+            }
+        }
+    }
+
     /// Returns the RGBA color at the given coordinate, or None if out of bounds.
     pub fn get_pixel(&self, x: u32, y: u32) -> Option<[u8; 4]> {
         if x >= self.width || y >= self.height {
@@ -75,6 +92,16 @@ impl CanvasView {
             self.buffer[idx + 2],
             self.buffer[idx + 3],
         ])
+    }
+
+    /// Sets the RGBA color at the given coordinate. Returns false if out of bounds.
+    pub fn set_pixel(&mut self, x: u32, y: u32, color: [u8; 4]) -> bool {
+        if x >= self.width || y >= self.height {
+            return false;
+        }
+        let idx = (y as usize * self.stride) + (x as usize * 4);
+        self.buffer[idx..idx + 4].copy_from_slice(&color);
+        true
     }
 
     /// Read-only access to the underlying byte slice.

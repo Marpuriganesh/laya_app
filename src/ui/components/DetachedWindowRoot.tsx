@@ -120,7 +120,10 @@ export const DetachedWindowRoot: FC<DetachedWindowRootProps> = ({ panelId }) => 
         onDock={dockToMainWindow}
         onClose={closeDetachedWindow}
       >
-        <BrushStudioContent />
+        <BrushStudioContent
+          onClose={closeDetachedWindow}
+          isDetached={true}
+        />
       </DetachedWindowLayout>
     );
   }

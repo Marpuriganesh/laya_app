@@ -14,6 +14,8 @@ import { ColorPickerPopover } from "@/ui/components/ColorPickerPopover";
 import { BrushLibraryPopover } from "@/ui/components/BrushLibraryPopover";
 import { BrushSettingsPopover } from "@/ui/components/BrushSettingsPopover";
 import { LayersPopover } from "@/ui/components/LayersPopover";
+import { BrushDebugPanel } from "@/ui/components/BrushDebugPanel";
+import { ErrorBoundary } from "@/ui/components/ErrorBoundary";
 import { DetachedWindowRoot } from "@/ui/components/DetachedWindowRoot";
 import { ThemeProvider, useTheme } from "@/ui/theme/ThemeProvider";
 import { globalRustBrushBridge } from "@/engine/brush/rust_brush_bridge";
@@ -31,8 +33,6 @@ export default function App() {
 
 function MainWindow() {
   useDetachedWindowSync({ role: "main" });
-  useWindowKeyShortcuts({ enableMinimize: true });
-  useSpringLoadedToolShortcuts();
   const { resolvedTheme } = useTheme();
 
   const {
@@ -44,6 +44,7 @@ function MainWindow() {
     transform,
     activePopover,
     isBrushStudioOpen,
+    isDebugPanelOpen,
     softProofMode,
     detachedPanels,
     detachPanel,
@@ -55,9 +56,14 @@ function MainWindow() {
     setTransform,
     setActivePopover,
     setBrushStudioOpen,
+    setDebugPanelOpen,
+    toggleDebugPanel,
     togglePopover,
     setSoftProofMode,
   } = useDocumentStore();
+
+  useWindowKeyShortcuts({ enableMinimize: true, onToggleDebug: toggleDebugPanel });
+  useSpringLoadedToolShortcuts();
 
   useNativeUiRectsSync(activePopover);
 
@@ -70,10 +76,12 @@ function MainWindow() {
   }, [setActivePopover]);
 
   useEffect(() => {
-    // Only full-screen modal dialogs (like New Canvas) block canvas painting entirely.
-    // Floating popovers (Color, Layers, Brush settings) are non-modal and allow painting outside them.
-    globalRustBrushBridge.setModalOpen(activePopover === "newCanvas");
-  }, [activePopover]);
+    // Full-screen modal dialogs (New Canvas, Brush Studio) block native canvas painting.
+    const isModalOpen =
+      activePopover === "newCanvas" ||
+      (isBrushStudioOpen && !detachedPanels.brushSettings);
+    globalRustBrushBridge.setModalOpen(isModalOpen);
+  }, [activePopover, isBrushStudioOpen, detachedPanels.brushSettings]);
 
   const handleDetachPanel = useCallback(async (panelId: DetachablePanelId) => {
     detachPanel(panelId);
@@ -177,6 +185,13 @@ function MainWindow() {
         onClose={handleClosePopover}
         onCreateDocument={setDocument}
       />
+
+      <ErrorBoundary fallbackTitle="Brush Debug Panel Error" onReset={() => setDebugPanelOpen(false)}>
+        <BrushDebugPanel
+          isOpen={isDebugPanelOpen}
+          onClose={() => setDebugPanelOpen(false)}
+        />
+      </ErrorBoundary>
     </div>
   );
 }

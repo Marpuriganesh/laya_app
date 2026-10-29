@@ -21,11 +21,15 @@ pub struct PullStringConfig {
     /// Base deadzone radius in pixels (default: 0.0).
     pub base_deadzone: f32,
     /// Whether the stroke automatically completes the remaining leash segment to the
-    /// exact stylus lift position on stroke release, guaranteeing zero gaps.
+    /// exact stylus lift position on stroke release (default: false).
+    /// Disabled by default to prevent thin flick/whiplash lines at stroke endings.
     pub connect_to_tip_on_release: bool,
     /// Pressure response smoothing factor [0.0..1.0] (default: 0.35).
     /// 0.0 = raw 1:1 stylus pressure; higher values filter out jitter and pressure steps.
     pub pressure_smoothing: f32,
+    /// Inertial weight factor [0.0..1.0] (default: 0.0).
+    /// Maintains steady leash length even at zero or slow speeds so slow strokes stay controlled.
+    pub weight: f32,
 }
 
 impl Default for PullStringConfig {
@@ -36,8 +40,9 @@ impl Default for PullStringConfig {
             velocity_multiplier: 1.5,
             catch_up_speed: 0.35,
             base_deadzone: 0.0,
-            connect_to_tip_on_release: true,
+            connect_to_tip_on_release: false,
             pressure_smoothing: 0.35,
+            weight: 0.0,
         }
     }
 }
@@ -104,11 +109,12 @@ impl PullStringStabilizer {
 
     /// Begins a new stroke at `start_event`.
     /// Immediately anchors the virtual brush tip to the initial stylus touch.
-    pub fn begin_stroke(&mut self, start_event: StrokeEvent, _config: &PullStringConfig) -> StrokeEvent {
+    pub fn begin_stroke(&mut self, start_event: StrokeEvent, config: &PullStringConfig) -> StrokeEvent {
         let pos = (start_event.x, start_event.y);
         self.smoothed_tip = Some(pos);
         self.prev_cursor = Some(pos);
-        self.current_string_length = 0.0;
+        let weight = config.weight.clamp(0.0, 1.0);
+        self.current_string_length = config.base_deadzone.max(config.max_string_length * weight * 0.85);
         self.last_time = start_event.time;
         self.last_pressure = start_event.pressure;
         self.smoothed_pressure = start_event.pressure;
@@ -121,6 +127,7 @@ impl PullStringStabilizer {
     ///
     /// - Dynamically scales string length with instantaneous cursor velocity.
     /// - Smoothly contracts string length when slowing down, guiding the tip into corners.
+    /// - When weight > 0, preserves minimum leash length at slow speeds to filter hand tremors.
     /// - When distance exceeds the dynamic leash length: pulls the brush tip and returns `Some(stabilized_event)`.
     pub fn add_event(&mut self, event: StrokeEvent, config: &PullStringConfig) -> Option<StrokeEvent> {
         if !self.is_active {
@@ -159,11 +166,14 @@ impl PullStringStabilizer {
             return Some(StrokeEvent::with_tilt(current_cursor.0, current_cursor.1, smoothed_p, event.time, event.tilt_x, event.tilt_y));
         }
 
+        let weight = config.weight.clamp(0.0, 1.0);
+        let weighted_min_length = config.base_deadzone.max(config.max_string_length * weight * 0.85);
         let target_string_length = (velocity * config.velocity_multiplier)
-            .clamp(config.base_deadzone, config.max_string_length);
+            .clamp(weighted_min_length, config.max_string_length);
 
         // 2. Smoothly Interpolate String Length (Catch-Up Mechanics)
-        let rate = (config.catch_up_speed * (effective_dt / 0.01667)).clamp(0.05, 0.95);
+        let damped_catch_up = (config.catch_up_speed * (1.0 - weight * 0.4)).clamp(0.02, 1.0);
+        let rate = (damped_catch_up * (effective_dt / 0.01667)).clamp(0.05, 0.95);
         self.current_string_length += (target_string_length - self.current_string_length) * rate;
 
         // 3. Dynamic Pulled String Calculation
@@ -285,6 +295,27 @@ mod tests {
     }
 
     #[test]
+    fn test_finish_stroke_default_does_not_connect_to_tip() {
+        let mut stabilizer = PullStringStabilizer::new();
+        let config = PullStringConfig {
+            enabled: true,
+            max_string_length: 40.0,
+            velocity_multiplier: 3.0,
+            ..Default::default()
+        };
+
+        let p0 = StrokeEvent::new(0.0, 0.0, 0.75, 0.0);
+        stabilizer.begin_stroke(p0, &config);
+
+        let p1 = StrokeEvent::new(80.0, 0.0, 0.85, 0.01667);
+        stabilizer.add_event(p1, &config);
+
+        // By default (connect_to_tip_on_release = false), stabilizer terminates at smoothed tip without snap
+        let final_event = stabilizer.finish_stroke(&config);
+        assert!(final_event.is_none(), "Default must not emit trailing snap event to prevent thin lines");
+    }
+
+    #[test]
     fn test_disabled_smoothing_passes_raw_events() {
         let mut stabilizer = PullStringStabilizer::new();
         let config = PullStringConfig {
@@ -347,5 +378,28 @@ mod tests {
         assert_eq!(out1.y, 20.0);
         // Pressure must still be smoothly filtered!
         assert!(out1.pressure > 0.2 && out1.pressure < 1.0, "Pressure smoothing must work with leash disabled: got {}", out1.pressure);
+    }
+
+    #[test]
+    fn test_pull_string_weight_preserves_leash_at_slow_speeds() {
+        let mut stabilizer = PullStringStabilizer::new();
+        let config = PullStringConfig {
+            enabled: true,
+            max_string_length: 50.0,
+            velocity_multiplier: 1.0,
+            catch_up_speed: 0.5,
+            weight: 0.8, // 80% weight
+            ..Default::default()
+        };
+
+        let p0 = StrokeEvent::new(0.0, 0.0, 1.0, 0.0);
+        stabilizer.begin_stroke(p0, &config);
+
+        // Near-stationary movement: 0.1px over 16.6ms
+        let p1 = StrokeEvent::new(0.1, 0.0, 1.0, 0.01667);
+        stabilizer.add_event(p1, &config);
+
+        // Leash length must stay weighted (around 50.0 * 0.8 * 0.85 = 34px), NOT collapse to 0
+        assert!(stabilizer.current_string_length > 30.0, "Weight must hold steady leash at slow speed: got {}", stabilizer.current_string_length);
     }
 }

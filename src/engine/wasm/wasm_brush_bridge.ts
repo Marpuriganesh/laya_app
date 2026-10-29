@@ -153,7 +153,8 @@ export class WasmBrushBridge {
     this.engine.set_moving_average_config(
       config.enabled,
       config.windowSize,
-      config.velocityMultiplier
+      config.velocityMultiplier,
+      config.weight ?? 0.0
     );
   }
 
@@ -169,7 +170,8 @@ export class WasmBrushBridge {
       config.catchUpSpeed,
       config.baseDeadzone,
       config.connectToTipOnRelease,
-      config.pressureSmoothing ?? 0.35
+      config.pressureSmoothing ?? 0.35,
+      config.weight ?? 0.0
     );
   }
 
@@ -202,6 +204,57 @@ export class WasmBrushBridge {
     this.engine.add_layer(id, name);
   }
 
+  public addVectorLayer(id: string, name: string): void {
+    if (!this.engine || typeof (this.engine as any).add_vector_layer !== "function") return;
+    try {
+      this.engine.add_vector_layer(id, name);
+    } catch (err) {
+      console.warn("Failed to add vector layer in Wasm:", err);
+    }
+  }
+
+  public isVectorLayer(id: string): boolean {
+    if (!this.engine || typeof (this.engine as any).is_vector_layer !== "function") return false;
+    try {
+      return this.engine.is_vector_layer(id);
+    } catch {
+      return false;
+    }
+  }
+
+  public getVectorStrokeCount(id: string): number {
+    if (!this.engine || typeof (this.engine as any).get_vector_stroke_count !== "function") return 0;
+    try {
+      return this.engine.get_vector_stroke_count(id);
+    } catch {
+      return 0;
+    }
+  }
+
+  public vectorEraseAt(
+    id: string,
+    x: number,
+    y: number,
+    radius: number,
+    eraseToIntersection: boolean
+  ): Int32Array | null {
+    if (!this.engine || typeof (this.engine as any).vector_erase_at !== "function") return null;
+    try {
+      return this.engine.vector_erase_at(id, x, y, radius, eraseToIntersection) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  public adjustVectorLineWidth(id: string, factor: number): Int32Array | null {
+    if (!this.engine || typeof (this.engine as any).adjust_vector_line_width !== "function") return null;
+    try {
+      return this.engine.adjust_vector_line_width(id, factor) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   public removeLayer(id: string): void {
     if (!this.engine) return;
     this.engine.remove_layer(id);
@@ -230,6 +283,45 @@ export class WasmBrushBridge {
   public setLayerVisibility(id: string, visible: boolean): boolean {
     if (!this.engine) return false;
     return this.engine.set_layer_visibility(id, visible);
+  }
+
+  public setLayerAlphaLock(id: string, locked: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_alpha_lock(id, locked);
+  }
+
+  public setLayerClipped(id: string, clipped: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_clipped(id, clipped);
+  }
+
+  public addLayerMask(id: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.add_layer_mask(id);
+  }
+
+  public removeLayerMask(id: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.remove_layer_mask(id);
+  }
+
+  public deleteLayerMask(id: string): boolean {
+    return this.removeLayerMask(id);
+  }
+
+  public setLayerMaskEnabled(id: string, enabled: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_mask_enabled(id, enabled);
+  }
+
+  public setLayerMaskInverted(id: string, inverted: boolean): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_mask_inverted(id, inverted);
+  }
+
+  public setLayerEditTarget(id: string, target: string): boolean {
+    if (!this.engine) return false;
+    return this.engine.set_layer_edit_target(id, target);
   }
 
   public setBackgroundColor(r: number, g: number, b: number, a: number): void {
@@ -280,6 +372,12 @@ export class WasmBrushBridge {
   public clearBrushPredefinedTip(): void {
     if (this.engine) {
       this.engine.clear_brush_predefined_tip();
+    }
+  }
+
+  public setBrushAutoTip(aspectRatio = 1.0, angleRadians = 0.0): void {
+    if (this.engine) {
+      this.engine.set_brush_auto_tip(aspectRatio, angleRadians);
     }
   }
 
