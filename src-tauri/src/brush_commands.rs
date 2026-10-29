@@ -388,6 +388,8 @@ pub async fn rust_set_workspace_theme(is_dark: bool) -> Result<(), String> {
     unsafe {
         set_workspace_theme(is_dark);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = is_dark;
     Ok(())
 }
 
@@ -398,6 +400,8 @@ pub async fn rust_set_ui_blocking_rects(rects: Vec<[f32; 4]>) -> Result<(), Stri
         let flattened: Vec<f32> = rects.iter().flat_map(|r| r.iter().copied()).collect();
         set_ui_blocking_rects(flattened.as_ptr(), rects.len() as u32);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = rects;
     Ok(())
 }
 
@@ -407,6 +411,8 @@ pub async fn rust_update_artboard_rect(x: f32, y: f32, width: f32, height: f32) 
     unsafe {
         update_canvas_artboard_rect(x, y, width, height);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (x, y, width, height);
     Ok(())
 }
 
@@ -416,6 +422,8 @@ pub async fn rust_brush_set_pan_active(is_panning: bool) -> Result<(), String> {
     unsafe {
         set_native_overlay_pan_active(is_panning);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = is_panning;
     Ok(())
 }
 
@@ -1128,6 +1136,8 @@ pub async fn rust_brush_set_modal_open(is_open: bool) -> Result<(), String> {
     unsafe {
         set_native_overlay_modal_open(is_open);
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = is_open;
     Ok(())
 }
 

@@ -41,6 +41,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "iOS": {
+      "minimumSystemVersion": "15.0",
+      "infoPlist": "Info.ios.plist"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

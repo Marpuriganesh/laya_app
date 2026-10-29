@@ -38,35 +38,42 @@ async fn detach_panel(
     max_width: Option<f64>,
     max_height: Option<f64>,
 ) -> Result<(), String> {
-    // If window already exists, bring it to front and focus
-    if let Some(existing_window) = app.get_webview_window(&label) {
-        let _ = existing_window.show();
-        let _ = existing_window.unminimize();
-        let _ = existing_window.set_focus();
-        return Ok(());
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        // If window already exists, bring it to front and focus
+        if let Some(existing_window) = app.get_webview_window(&label) {
+            let _ = existing_window.show();
+            let _ = existing_window.unminimize();
+            let _ = existing_window.set_focus();
+            return Ok(());
+        }
+
+        let max_w = max_width.unwrap_or(width * 2.0);
+        let max_h = max_height.unwrap_or(height * 2.0);
+
+        let url = format!("/?detached={}", panel_id);
+        let win_builder = tauri::WebviewWindowBuilder::new(
+            &app,
+            &label,
+            tauri::WebviewUrl::App(url.into()),
+        )
+        .title(&title)
+        .inner_size(width, height)
+        .min_inner_size(240.0, 200.0)
+        .max_inner_size(max_w, max_h)
+        .resizable(true)
+        .maximizable(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(true)
+        .accept_first_mouse(true);
+
+        win_builder.build().map_err(|e| e.to_string())?;
     }
-
-    let max_w = max_width.unwrap_or(width * 2.0);
-    let max_h = max_height.unwrap_or(height * 2.0);
-
-    let url = format!("/?detached={}", panel_id);
-    let win_builder = tauri::WebviewWindowBuilder::new(
-        &app,
-        &label,
-        tauri::WebviewUrl::App(url.into()),
-    )
-    .title(&title)
-    .inner_size(width, height)
-    .min_inner_size(240.0, 200.0)
-    .max_inner_size(max_w, max_h)
-    .resizable(true)
-    .maximizable(false)
-    .decorations(false)
-    .transparent(true)
-    .shadow(true)
-    .accept_first_mouse(true);
-
-    win_builder.build().map_err(|e| e.to_string())?;
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (&app, &label, &title, &panel_id, width, height, max_width, max_height);
+    }
     Ok(())
 }
 
@@ -75,7 +82,15 @@ async fn set_always_on_top(
     window: tauri::Window,
     always_on_top: bool,
 ) -> Result<(), String> {
-    window.set_always_on_top(always_on_top).map_err(|e| e.to_string())
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        window.set_always_on_top(always_on_top).map_err(|e| e.to_string())?;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (&window, always_on_top);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -97,7 +112,7 @@ pub fn run() {
                     let _ = app.set_menu(menu);
                 }
             }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(all(not(target_os = "macos"), not(any(target_os = "android", target_os = "ios"))))]
             {
                 let _ = app.remove_menu();
             }
